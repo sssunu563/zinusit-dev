@@ -40,7 +40,7 @@ export const assetMenuItems: NavItem[] = [
     },
     {
         title: 'Laptop',
-        href: '/asset?type=assets&category=laptop',
+        href: '/asset?type=laptop',
         icon: Laptop,
     },
     {

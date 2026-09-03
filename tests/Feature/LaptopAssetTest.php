@@ -58,7 +58,7 @@ class LaptopAssetTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_laptop_listing_uses_hardware_page_with_laptop_filter(): void
+    public function test_laptop_listing_uses_laptop_type_with_hardware_filter(): void
     {
         $user = User::factory()->create();
 
@@ -91,12 +91,12 @@ class LaptopAssetTest extends TestCase
         $mockSnipe->shouldReceive('requestPool')->andReturn([]);
         $this->app->instance(SnipeItService::class, $mockSnipe);
 
-        $response = $this->actingAs($user)->get('/asset?type=assets&category=laptop');
+        $response = $this->actingAs($user)->get('/asset?type=laptop');
 
         $response->assertInertia(fn (\Inertia\Testing\AssertableInertia $page) => $page
             ->component('Asset/List')
-            ->where('activeType', 'assets')
-            ->where('activeTypeLabel', 'Assets')
+            ->where('activeType', 'laptop')
+            ->where('activeTypeLabel', 'Laptop')
             ->has('assets', 1)
             ->where('assets.0.name', 'Laptop Dell'));
     }

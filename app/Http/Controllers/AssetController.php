@@ -744,7 +744,9 @@ class AssetController extends Controller
         $requestedType = $this->normalizeType((string) $request->query('type', 'assets'));
         $laptopOnly = $requestedType === 'laptop'
             || strtolower((string) $request->query('category', '')) === 'laptop';
-        $activeType = $laptopOnly ? 'assets' : $requestedType;
+        $activeType = $laptopOnly && $requestedType === 'laptop'
+            ? 'laptop'
+            : ($laptopOnly ? 'assets' : $requestedType);
         $forceRefresh = $request->boolean('refresh') || $request->boolean('force_refresh');
 
         $statuses = collect($this->snipe->fetchRows('statuslabels', [], 500, $forceRefresh))
