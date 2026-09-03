@@ -40,7 +40,14 @@ const isItemActive = (item: NavItem) =>
         (!hasChildren(item) && isCurrentUrl(item.href)) ||
         item.children?.some((child) => isCurrentOrParentUrl(child.href)),
     );
-const isSubItemActive = (item: NavItem) => isCurrentUrl(item.href);
+const isSubItemActive = (item: NavItem) => {
+    const current = new URL(currentUrl.value, window.location.origin);
+    const target = new URL(String(item.href), window.location.origin);
+
+    return (
+        current.pathname === target.pathname && current.search === target.search
+    );
+};
 const isGroupExpanded = (item: NavItem) =>
     hasChildren(item) && expandedGroupTitle.value === item.title;
 
