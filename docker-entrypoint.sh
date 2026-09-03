@@ -4,9 +4,9 @@ set -e
 echo "[entrypoint] Starting Zinus IT..."
 
 # Fix permissions (secure: 755 for dirs, 644 for files)
-chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
-chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
-find /var/www/html/storage /var/www/html/bootstrap/cache -type f -exec chmod 644 {} \; 2>/dev/null || true
+chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
+find /var/www/html/storage /var/www/html/bootstrap/cache -type f -exec chmod 644 {} \;
 
 # Hapus public/hot — kalau ada, Laravel akan pakai Vite dev server (blank page)
 rm -f /var/www/html/public/hot

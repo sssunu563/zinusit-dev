@@ -7,7 +7,9 @@ RUN a2enmod rewrite headers deflate
 RUN apt-get update && apt-get install -y \
     git curl zip unzip \
     libpng-dev libonig-dev libxml2-dev libldap2-dev libzip-dev libicu-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/pear
 
 # PHP extensions
 RUN docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu/ \
@@ -63,8 +65,6 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown www-data:www-data /usr/local/bin/docker-entrypoint.sh
-
-USER www-data
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["apache2-foreground"]
