@@ -43,6 +43,10 @@ return [
         'fallback_supplier_id' => env('SNIPEIT_FALLBACK_SUPPLIER_ID', 1),
     ],
 
+    'pdf' => [
+        'browser_path' => env('PDF_BROWSER_PATH'),
+    ],
+
     'grafana' => [
         'api_key' => env('GRAFANA_API_KEY'),
     ],

@@ -47,6 +47,12 @@ abstract class DocumentFlowController extends Controller
     protected const PDF_BROWSER_PATHS = [
         'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
         'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        '/usr/bin/microsoft-edge',
+        '/usr/bin/microsoft-edge-stable',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
     ];
 
     /** Per-request memoization caches to avoid repeated DB/API calls */
@@ -981,7 +987,12 @@ abstract class DocumentFlowController extends Controller
 
     protected function getPdfBrowserPath(): ?string
     {
-        foreach (self::PDF_BROWSER_PATHS as $path) {
+        $configuredPath = trim((string) config('services.pdf.browser_path', ''));
+        $paths = $configuredPath !== ''
+            ? array_merge([$configuredPath], self::PDF_BROWSER_PATHS)
+            : self::PDF_BROWSER_PATHS;
+
+        foreach ($paths as $path) {
             if (is_file($path)) {
                 return $path;
             }
