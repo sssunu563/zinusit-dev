@@ -202,7 +202,8 @@ class PeminjamanController extends DocumentFlowController
 
         $process = new \Symfony\Component\Process\Process([
             $browserPath,
-            '--headless=new', '--disable-gpu', '--disable-crash-reporter',
+            '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
+            '--disable-gpu', '--disable-crash-reporter',
             '--disable-breakpad', '--no-first-run', '--no-default-browser-check',
             '--disable-features=msEdgeCloudManagement,RendererCodeIntegrity',
             '--user-data-dir=' . $profilePath,
