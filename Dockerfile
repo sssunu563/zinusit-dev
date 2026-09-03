@@ -5,7 +5,7 @@ RUN a2enmod rewrite headers deflate
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
-    git curl zip unzip \
+    git curl zip unzip chromium \
     libpng-dev libonig-dev libxml2-dev libldap2-dev libzip-dev libicu-dev \
     && pecl install redis \
     && docker-php-ext-enable redis \
