@@ -115,6 +115,27 @@ trait DocumentCheckoutTrait
                     ]);
 
                     $result = $this->snipe->checkoutAsset($resource, $assetId, $payload);
+
+                    if (data_get($document, 'document_type') === 'loan') {
+                        $borrowStatusId = (int) ($payload['status_id'] ?? 0);
+                        if ($borrowStatusId <= 0) {
+                            throw new \RuntimeException("Status Borrow untuk asset '{$item->nama}' tidak ditemukan.");
+                        }
+
+                        $statusResult = $this->snipe->updateRecord('hardware', (int) $assetId, [
+                            'status_id' => $borrowStatusId,
+                        ]);
+
+                        if (in_array(($statusResult['status'] ?? ''), ['error', 'failure'], true)) {
+                            throw new \RuntimeException("Gagal mengubah status asset '{$item->nama}' menjadi Borrow: " . json_encode($statusResult['messages'] ?? $statusResult));
+                        }
+
+                        Log::info('Snipe-IT Hardware Status Updated', [
+                            'asset_id' => $assetId,
+                            'status_id' => $borrowStatusId,
+                            'status' => 'Borrow',
+                        ]);
+                    }
                 } elseif (in_array($resource, ['accessories', 'licenses', 'components', 'consumables'])) {
                     if ($resource === 'licenses') {
                         // Logic khusus License: Cari seat kosong
