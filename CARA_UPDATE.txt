@@ -1,0 +1,329 @@
+================================================================================
+                       CARA UPDATE APLIKASI
+                            Zinus IT v2.0
+================================================================================
+
+RINGKASAN CEPAT:
+================================================================================
+1. Lokal:  npm run build + git push
+2. Server: git pull + bash deploy.sh
+3. Done!   Aplikasi ter-update
+
+WAKTU: ~17 menit
+
+
+================================================================================
+                              TAHAP 1: LOCAL
+================================================================================
+
+Step 1: Buat Perubahan
+-----------------------
+Buat perubahan kode / feature yang diinginkan.
+
+Bisa:
+  $ vim app/Http/Controllers/HomeController.php
+  $ npm run build    # Jika ada perubahan frontend
+
+Step 2: Verifikasi Lokal (Optional)
+-----------------------
+Kalau ingin test dulu sebelum push:
+
+$ npm run build        # Build assets
+$ docker compose up    # Start lokal
+$ curl http://localhost:8001/up
+# Test di browser: http://localhost:8001
+
+Jika OK, lanjut. Jika error, fix dulu.
+
+$ docker compose down  # Stop
+
+
+================================================================================
+                          TAHAP 2: GIT LOCAL
+================================================================================
+
+Step 1: Prepare Untuk Commit
+-----------------------
+$ git status          # Lihat file apa yang berubah
+
+Output contoh:
+  modified:   app/Http/Controllers/HomeController.php
+  modified:   resources/js/pages/Home.vue
+
+Step 2: Build Frontend (Penting!)
+-----------------------
+SELALU build frontend sebelum commit:
+
+$ npm run build
+$ ls public/build/manifest.json  # Verify ada
+
+JANGAN lupa ini! Kalau lupa, di server akan blank page.
+
+Step 3: Commit
+-----------------------
+$ git add -A
+$ git commit -m "Deskripsi perubahan yang jelas"
+
+Contoh commit messages:
+  - "Add new feature: Dashboard widgets"
+  - "Fix: LDAP login timeout issue"
+  - "Improve: Asset search performance"
+  - "Security: Update dependencies"
+
+Step 4: Push ke Git
+-----------------------
+$ git push -u origin main
+
+Tunggu proses push. Output:
+  To github.com:your-org/zinusit.git
+     abc1234..def5678  main -> main
+
+Selesai! Kode sekarang di repository.
+
+
+================================================================================
+                           TAHAP 3: SERVER
+================================================================================
+
+Step 1: SSH ke Server
+-----------------------
+$ ssh user@ip-server-kamu
+atau
+$ ssh -i ~/.ssh/id_key user@ip-server-kamu
+
+Step 2: Navigate ke Project
+-----------------------
+$ cd /var/www/zinusit
+
+Verifikasi lokasi:
+$ pwd
+Output: /var/www/zinusit
+
+Step 3: Pull Kode Terbaru
+-----------------------
+$ git pull
+
+Output:
+  remote: Counting objects: 12, done.
+  Unpacking objects: 100% (12/12), done.
+  updating abc1234..def5678
+  Fast-forward
+   app/Http/Controllers/HomeController.php | 10 ++++++
+   resources/js/pages/Home.vue             | 20 ++++-----
+   2 files changed, 15 insertions(+), 5 deletions(-)
+
+Kode terbaru sudah ter-pull dari Git.
+
+Step 4: Verifikasi Perubahan
+-----------------------
+$ git log -1          # Lihat commit terbaru
+
+Output:
+  commit def5678abc...
+  Author: Your Name
+  Date:   2026-09-03
+
+    Add new feature: Dashboard widgets
+
+Step 5: Build Frontend (Penting!)
+-----------------------
+$ npm run build
+
+Tunggu sampai selesai:
+$ ls public/build/manifest.json  # Harus ada!
+
+Step 6: Deploy
+-----------------------
+$ bash deploy.sh
+
+Tunggu output:
+  [✓] Frontend built
+  [✓] Docker image built
+  [✓] Containers started
+  [✓] Assets copied
+  [✓] Deploy selesai!
+
+Step 7: Verifikasi
+-----------------------
+$ docker compose ps
+
+Semua harus running/healthy:
+  NAME               STATUS           
+  zinusit-app        running (healthy)
+  zinusit-db         running (healthy)
+  zinusit-cache      running (healthy)
+  zinusit-scheduler  running
+  zinusit-queue      running
+
+Step 8: Check Logs
+-----------------------
+$ docker compose logs app | tail -50
+
+Pastikan TIDAK ada [ERROR]
+
+Verifikasi dari browser atau curl:
+$ curl http://localhost:8001/up
+
+
+================================================================================
+                          UPDATE SELESAI!
+================================================================================
+
+Aplikasi sudah ter-update ke versi terbaru!
+
+Feature/fix baru sudah live di server.
+
+
+================================================================================
+                          QUICK COMMANDS
+================================================================================
+
+Untuk Update:
+  1. git pull              # Pull kode terbaru
+  2. npm run build         # Build frontend
+  3. bash deploy.sh        # Deploy
+  4. docker compose ps     # Verify
+
+Untuk Check Status:
+  $ docker compose ps      # Lihat container
+  $ docker compose logs app | tail -20  # Lihat log
+
+Untuk Rollback (jika ada masalah):
+  $ git revert HEAD        # Batalkan commit terakhir
+  $ npm run build
+  $ bash deploy.sh
+
+
+================================================================================
+                        CHECKLIST UPDATE
+================================================================================
+
+Sebelum Update:
+  [ ] Kode sudah siap
+  [ ] Frontend sudah di-build locally
+  [ ] Code sudah tested (lokal atau staging)
+  [ ] .env sudah proper di server
+
+Saat Update (di server):
+  [ ] SSH ke server
+  [ ] cd /var/www/zinusit
+  [ ] git pull
+  [ ] npm run build
+  [ ] bash deploy.sh
+  [ ] docker compose ps
+
+Setelah Update:
+  [ ] Verify aplikasi berjalan: curl http://localhost:8001/up
+  [ ] Check logs: docker compose logs app | grep -i error
+  [ ] Browser test: http://ip-server:8001
+  [ ] Team informed
+
+
+================================================================================
+                         TROUBLESHOOTING UPDATE
+================================================================================
+
+Kalau Build Error:
+------------------------------
+$ npm install
+$ npm run build
+
+Atau clear cache:
+$ rm -rf node_modules package-lock.json
+$ npm ci
+$ npm run build
+
+Kalau Deploy Error:
+------------------------------
+$ docker compose logs app          # Lihat error detail
+$ docker compose down
+$ docker compose up -d
+$ bash deploy.sh lagi
+
+Kalau Container Crash:
+------------------------------
+$ docker compose ps                # Check status
+$ docker compose logs app          # Lihat error
+$ docker compose restart app       # Restart
+$ docker compose ps
+
+Kalau Blank Page setelah update:
+------------------------------
+Biasanya karena frontend tidak ter-build. Cek:
+
+$ ls public/build/manifest.json
+$ npm run build
+$ docker exec zinusit-app php artisan view:clear
+$ bash deploy.sh
+
+
+================================================================================
+                           AUTOMATED UPDATE
+================================================================================
+
+Jika ingin update bisa otomatis (cron job):
+Hubungi system admin untuk setup.
+
+Bisa di-cron setiap X jam untuk auto pull + deploy.
+Tapi harus teliti supaya tidak ada error.
+
+
+================================================================================
+                          WAKTU PER OPERASI
+================================================================================
+
+git pull:          <1 menit
+npm run build:     1-2 menit
+bash deploy.sh:    10 menit
+Verify:            1 menit
+TOTAL:             ~13-15 menit
+
+
+================================================================================
+                         DOKUMENTASI LENGKAP
+================================================================================
+
+Untuk lebih detail:
+  - PANDUAN_DEPLOY_INDONESIA.md         (Bahasa Indonesia)
+  - QUICK_DEPLOY_REFERENCE.md           (Perintah cepat)
+  - CARA_DEPLOY.txt                     (Panduan deploy pertama)
+  - SERVER_DEPLOYMENT_GUIDE.md          (Lengkap, English)
+  - DOCKER_DEPLOYMENT_GUIDE.md          (Docker reference)
+
+
+================================================================================
+                          BEST PRACTICES
+================================================================================
+
+DO:
+  ✓ Selalu build frontend locally dulu
+  ✓ Test di lokal sebelum push
+  ✓ Commit dengan pesan yang jelas
+  ✓ Pull dari server sebelum deploy
+  ✓ Check logs setelah deploy
+  ✓ Inform team setelah update
+  ✓ Keep .env aman di server
+
+DON'T:
+  ✗ Push ke Git tanpa build frontend
+  ✗ Deploy tanpa test dulu
+  ✗ Commit .env file
+  ✗ Force push (git push --force)
+  ✗ Ignore error logs
+  ✗ Delete database tanpa backup
+  ✗ Update saat traffic tinggi
+
+
+================================================================================
+                              UPDATE DONE!
+================================================================================
+
+Aplikasi sekarang menjalankan versi terbaru dengan update terbaru!
+
+Next:
+  ✓ Monitor performa
+  ✓ Collect user feedback
+  ✓ Monitor error logs
+  ✓ Plan next update
+
+Good job! 🚀

@@ -1,0 +1,52 @@
+node_modules
+vendor
+.git
+.env
+.env.production
+
+# public/build TIDAK di-ignore — harus sudah di-built sebelum docker build
+
+# Storage caches and logs
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/logs/*
+storage/app/stb-temp
+storage/app/inspection-temp
+storage/app/peminjaman-temp
+storage/app/*.csv
+
+# Database
+database/*.sqlite
+
+# Development and testing
+scratch
+tests
+.cache
+.kiro
+.phpunit.result.cache
+.phpunit.cache
+npm-debug.log
+auth-rekey.txt
+.vscode
+_*.php
+
+# Documentation and config
+.github
+docs
+DEPLOYMENT_CLEANUP_SUMMARY.md
+.env.*.local
+deploy.sh
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+.idea
+*.swp
+*.swo
+*~
+.env.testing
+.env.dusk.local
+docker-compose.override.yml
+.docker

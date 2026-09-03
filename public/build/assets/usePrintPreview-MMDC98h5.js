@@ -1,0 +1,1 @@
+import{o as i,Z as a}from"./app-B0liDjHh.js";function u(r,n){i(async()=>{await n(),await a();const o=Array.from(r.value?.querySelectorAll("img")??[]);await Promise.all(o.map(e=>new Promise(t=>{if(e.complete){t();return}e.addEventListener("load",()=>t(),{once:!0}),e.addEventListener("error",()=>t(),{once:!0})}))),window.setTimeout(()=>{window.print()},500)})}export{u};

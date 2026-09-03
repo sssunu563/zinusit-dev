@@ -1,0 +1,219 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: zinusit-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_DATABASE:-zinusit}
+      MYSQL_USER: ${DB_USERNAME:-zinusit}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - '${DB_PORT:-3306}:3306'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  cache:
+    image: redis:7-alpine
+    container_name: zinusit-cache
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zinusit-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    ports:
+      - '${APP_PORT:-8001}:80'
+    volumes:
+      - ./:/var/www/html
+      - zinusit-storage:/var/www/html/storage
+      # node_modules pakai volume terpisah supaya tidak ter-override oleh host Windows
+      - /var/www/html/node_modules
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8001}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-zinusit}
+      DB_USERNAME: ${DB_USERNAME:-zinusit}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: database
+    extra_hosts:
+      # Akses ke LDAP, Snipe-IT, dan layanan external lainnya dari dalam container
+      - 'host.docker.internal:host-gateway'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost/up']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zinusit-scheduler
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+      - zinusit-storage:/var/www/html/storage
+      - /var/www/html/node_modules
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-zinusit}
+      DB_USERNAME: ${DB_USERNAME:-zinusit}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: >
+      bash -c "
+        php artisan config:cache &&
+        php artisan route:cache &&
+        php artisan schedule:work
+      "
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zinusit-queue
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+      - zinusit-storage:/var/www/html/storage
+      - /var/www/html/node_modules
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-zinusit}
+      DB_USERNAME: ${DB_USERNAME:-zinusit}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: php artisan queue:work --tries=3 --timeout=90 --sleep=3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  zinusit-storage:
+    driver: local
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
+    name: zinusit-network

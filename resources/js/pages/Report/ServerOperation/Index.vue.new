@@ -1,0 +1,239 @@
+<script setup lang="ts">
+import { Head } from '@inertiajs/vue3';
+import { ref, computed, defineAsyncComponent } from 'vue';
+import AppLayout from '@/layouts/AppLayout.vue';
+import {
+    Server, Database, Thermometer, LayoutDashboard,
+    Filter, FileDown, Play, RefreshCw, Loader2,
+    CheckCircle2, XCircle,
+} from 'lucide-vue-next';
+
+defineProps<{ locations: string[] }>();
+
+const TabSummary = defineAsyncComponent(() => import('./TabSummary.vue'));
+const TabServerData = defineAsyncComponent(() => import('./TabServerData.vue'));
+const TabTemperature = defineAsyncComponent(() => import('./TabTemperature.vue'));
+
+const urlParams = new URLSearchParams(window.location.search);
+const activeTab = ref<string>(urlParams.get('tab') ?? 'summary');
+
+const tabs = [
+    { id: 'summary',               label: 'Summary',              icon: LayoutDashboard },
+    { id: 'server-data',           label: 'Server Data',          icon: Database },
+    { id: 'server-temperature',    label: 'Server Temperature',   icon: Thermometer },
+];
+
+function setTab(id: string) {
+    activeTab.value = id;
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', id);
+    window.history.replaceState({}, '', url.toString());
+}
+
+const currentComponent = computed(() => {
+    switch (activeTab.value) {
+        case 'server-data':       return TabServerData;
+        case 'server-temperature': return TabTemperature;
+        default:                  return TabSummary;
+    }
+});
+
+function formatDate(d: Date) { return d.toISOString().slice(0, 10); }
+
+const filterFrom = ref(formatDate(new Date(Date.now() - 29 * 86400000)));
+const filterTo   = ref(formatDate(new Date()));
+const fetchDate  = ref(formatDate(new Date(Date.now() - 86400000)));
+
+const openFlyout = ref<'filter' | 'export' | 'fetch' | null>(null);
+function toggleFlyout(name: 'filter' | 'export' | 'fetch') {
+    openFlyout.value = openFlyout.value === name ? null : name;
+}
+function closeFlyout() { openFlyout.value = null; }
+
+const applyTrigger = ref(0);
+function applyFilter() { applyTrigger.value++; closeFlyout(); }
+
+const fetchLoading  = ref(false);
+const fetchMessage  = ref('');
+const fetchStatus   = ref<'idle' | 'success' | 'error'>('idle');
+
+async function doFetch() {
+    if (!fetchDate.value) return;
+    fetchLoading.value = true;
+    fetchMessage.value = '';
+    fetchStatus.value  = 'idle';
+    const csrf = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '';
+
+    try {
+        const res  = await fetch('/api/server-operation/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+            body: JSON.stringify({ fetch_date: fetchDate.value }),
+        });
+        const data = await res.json();
+        fetchMessage.value = data.message ?? '';
+        fetchStatus.value  = res.ok || res.status === 206 ? 'success' : 'error';
+        if (data.errors?.length) fetchMessage.value += '\n' + data.errors.join('\n');
+        if (res.ok) { applyFilter(); }
+    } catch {
+        fetchMessage.value = 'Gagal menghubungi server.';
+        fetchStatus.value  = 'error';
+    } finally {
+        fetchLoading.value = false;
+        closeFlyout();
+    }
+}
+
+const exportLoading = ref(false);
+
+async function doExport() {
+    exportLoading.value = true;
+    const params = new URLSearchParams({
+        from: filterFrom.value,
+        to:   filterTo.value,
+    });
+    window.location.href = '/api/server-operation/export?' + params.toString();
+    setTimeout(() => { exportLoading.value = false; closeFlyout(); }, 1000);
+}
+</script>
+
+<template>
+    <Head title="Server Operation" />
+    <AppLayout :breadcrumbs="[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Report', href: '/reports' },
+        { title: 'Server Operation', href: '/server-operation' },
+    ]">
+        <div class="space-y-4 px-4 py-2 w-full min-w-0 max-w-full">
+
+            <!-- HEADER -->
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+                <div class="flex items-center gap-3">
+                    <div class="h-10 w-10 rounded-2xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <Server class="size-5 text-blue-600" />
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-black text-slate-900 tracking-tight">Server Operation</h1>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Server Monitor</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <div v-if="openFlyout" class="fixed inset-0 z-40" @click="closeFlyout"></div>
+
+                    <!-- Filter -->
+                    <div class="relative z-50">
+                        <button type="button"
+                            class="h-9 w-9 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                            :class="openFlyout==='filter' ? 'bg-slate-100 border-slate-300' : ''"
+                            title="Filter Tanggal" @click.stop="toggleFlyout('filter')">
+                            <Filter class="size-4" />
+                        </button>
+                        <div v-if="openFlyout==='filter'" class="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4" @click.stop>
+                            <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5"><Filter class="size-3" /> Rentang Tanggal</p>
+                            <div class="flex items-center gap-2">
+                                <input v-model="filterFrom" type="date" :max="filterTo" class="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20" />
+                                <span class="text-slate-300 text-xs font-bold shrink-0">-</span>
+                                <input v-model="filterTo" type="date" :min="filterFrom" :max="formatDate(new Date())" class="flex-1 h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20" />
+                            </div>
+                            <button type="button" class="w-full h-9 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-md shadow-blue-600/20" @click="applyFilter">
+                                <RefreshCw class="size-3.5" /> Apply Filter
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Export -->
+                    <div class="relative z-50">
+                        <button type="button"
+                            class="h-9 w-9 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                            :class="openFlyout==='export' ? 'bg-slate-100 border-slate-300' : ''"
+                            title="Export Excel" @click.stop="toggleFlyout('export')">
+                            <FileDown class="size-4" />
+                        </button>
+                        <div v-if="openFlyout==='export'" class="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4" @click.stop>
+                            <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5"><FileDown class="size-3" /> Export Excel</p>
+                            <p class="text-[10px] text-slate-400 font-medium">{{ filterFrom }} sampai {{ filterTo }}</p>
+                            <button type="button"
+                                :disabled="exportLoading"
+                                class="w-full h-9 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shadow-md shadow-blue-600/20"
+                                @click="doExport">
+                                <Loader2 v-if="exportLoading" class="size-3.5 animate-spin"/>
+                                <FileDown v-else class="size-3.5"/>
+                                Download Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Fetch -->
+                    <div class="relative z-50">
+                        <button type="button"
+                            class="h-9 w-9 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                            :class="openFlyout==='fetch' ? 'bg-slate-100 border-slate-300' : ''"
+                            title="Tarik Data" @click.stop="toggleFlyout('fetch')">
+                            <Play class="size-4" />
+                        </button>
+                        <div v-if="openFlyout==='fetch'" class="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 space-y-3" @click.stop>
+                            <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <Play class="size-3"/> Tarik Data
+                            </p>
+                            <input v-model="fetchDate" type="date" :max="formatDate(new Date())"
+                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20"/>
+                            <button type="button" :disabled="fetchLoading"
+                                class="w-full h-9 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                                @click="doFetch">
+                                <Loader2 v-if="fetchLoading" class="size-3 animate-spin"/>
+                                <Play v-else class="size-3"/>
+                                Fetch Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fetch result message -->
+            <div v-if="fetchMessage"
+                class="flex items-start gap-2.5 px-4 py-3 rounded-xl text-[11px] font-bold border whitespace-pre-line shadow-sm"
+                :class="fetchStatus==='success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'">
+                <CheckCircle2 v-if="fetchStatus==='success'" class="size-4 shrink-0 mt-0.5" />
+                <XCircle v-else class="size-4 shrink-0 mt-0.5" />
+                <span>{{ fetchMessage }}</span>
+            </div>
+
+            <!-- TAB NAVIGATION -->
+            <div class="flex items-center gap-1 border-b border-slate-200 bg-white rounded-t-2xl px-4 pt-3">
+                <button v-for="tab in tabs" :key="tab.id" type="button"
+                    class="flex items-center gap-2 h-10 px-4 text-[10px] font-black uppercase tracking-widest transition-all border-b-2 -mb-px rounded-t-lg"
+                    :class="activeTab === tab.id ? 'border-blue-600 text-blue-600 bg-blue-600/5' : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50'"
+                    @click="setTab(tab.id)">
+                    <component :is="tab.icon" class="size-4" />
+                    {{ tab.label }}
+                </button>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="bg-white rounded-b-2xl shadow-sm border border-t-0 border-slate-200 p-4">
+                <Suspense>
+                    <template #default>
+                        <component
+                            :is="currentComponent"
+                            :filter-from="filterFrom"
+                            :filter-to="filterTo"
+                            :apply-trigger="applyTrigger"
+                            :locations="[]"
+                        />
+                    </template>
+                    <template #fallback>
+                        <div class="space-y-3">
+                            <div class="h-32 bg-slate-200 rounded-lg animate-pulse"></div>
+                            <div class="h-32 bg-slate-200 rounded-lg animate-pulse"></div>
+                            <div class="h-32 bg-slate-200 rounded-lg animate-pulse"></div>
+                        </div>
+                    </template>
+                </Suspense>
+            </div>
+
+        </div>
+    </AppLayout>
+</template>
+
+<style scoped></style>

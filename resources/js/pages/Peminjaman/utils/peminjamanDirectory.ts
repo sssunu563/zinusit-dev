@@ -1,0 +1,16 @@
+export {
+    ensureStbAssetsLoaded as ensurePeminjamanAssetsLoaded,
+    ensureStbDirectoryLoaded as ensurePeminjamanDirectoryLoaded,
+    getStbAssetById as getPeminjamanAssetById,
+    getStbAssetLabel as getPeminjamanAssetLabel,
+    getStbAssetReferenceLabel as getPeminjamanAssetReferenceLabel,
+    getStbAssetReferenceValue as getPeminjamanAssetReferenceValue,
+    getStbDeptHeadLabel as getPeminjamanDeptHeadLabel,
+    getStbGroupParts as getPeminjamanGroupParts,
+    getStbUserEmail as getPeminjamanUserEmail,
+    getStbUserLabel as getPeminjamanUserLabel,
+    getStbUserPhone as getPeminjamanUserPhone,
+    getStbUserPosition as getPeminjamanUserPosition,
+    normalizeStbAssetCategory as normalizePeminjamanAssetCategory,
+    useStbDirectory as usePeminjamanDirectory,
+} from '@/utils/stbDirectory';

@@ -1,0 +1,234 @@
+================================================================================
+                        CARA DEPLOY KE SERVER
+                            Zinus IT v2.0
+================================================================================
+
+RINGKASAN CEPAT:
+================================================================================
+1. Lokal:  npm run build + git push
+2. Server: git clone + bash deploy.sh
+3. Done!   Aplikasi jalan
+
+================================================================================
+                              TAHAP 1: LOCAL
+================================================================================
+
+Step 1: Build Frontend
+-----------------------
+$ cd ~/projects/zinusit
+$ npm run build
+$ ls public/build/manifest.json      # Verifikasi build sukses
+
+Step 2: Commit & Push
+-----------------------
+$ git status                         # Lihat perubahan
+$ git add -A                         # Prepare semua file
+$ git commit -m "Production deploy"  # Commit
+$ git push -u origin main            # Push ke Git
+
+Selesai lokal! Kode sekarang di repository.
+
+
+================================================================================
+                           TAHAP 2: SSH KE SERVER
+================================================================================
+
+Step 1: Koneksi
+-----------------------
+$ ssh user@ip-server-kamu
+atau
+$ ssh -i ~/.ssh/id_key user@ip-server-kamu
+
+Masuk dengan password/SSH key. Harus berhasil login.
+
+Step 2: Setup (HANYA FIRST TIME)
+-----------------------
+Jika ini first time deploy ke server, install Docker:
+
+$ sudo apt-get update
+$ sudo apt-get upgrade -y
+$ curl -fsSL https://get.docker.com | sh
+$ sudo apt-get install -y docker-compose
+$ docker --version
+$ docker compose --version
+
+Tunggu sampai selesai. Jika sudah pernah install, skip step ini.
+
+
+================================================================================
+                           TAHAP 3: PERSIAPAN
+================================================================================
+
+Step 1: Buat Directory (HANYA FIRST TIME)
+-----------------------
+$ sudo mkdir -p /var/www/zinusit
+$ cd /var/www/zinusit
+$ sudo chown $USER:$USER .
+
+Step 2: Clone Repository
+-----------------------
+$ git clone https://github.com/your-org/zinusit.git .
+
+Tunggu sampai clone selesai. Harus banyak file muncul.
+
+Step 3: Setup Environment
+-----------------------
+$ cp .env.example .env
+$ nano .env
+
+Cari dan ganti:
+  APP_URL=http://domain-kamu:8001
+  DB_PASSWORD=GANTI-SAMA-PASSWORD-KUAT
+  DB_ROOT_PASSWORD=GANTI-SAMA-PASSWORD-KUAT-BERBEDA
+  LDAP_BIND_PW=GANTI-SAMA-PASSWORD-LDAP
+  SNIPEIT_TOKEN=GANTI-SAMA-TOKEN-SNIPEIT
+  PRTG_API_TOKEN=GANTI-SAMA-TOKEN-PRTG
+  ZABBIX_F1_TOKEN=GANTI-SAMA-TOKEN-ZABBIX
+
+Save: Ctrl+X, Y, Enter
+
+
+================================================================================
+                           TAHAP 4: DEPLOY!
+================================================================================
+
+Step 1: Build Frontend
+-----------------------
+$ npm ci
+$ npm run build
+$ ls public/build/manifest.json      # Harus ada
+
+Step 2: Deploy (MAGIC!)
+-----------------------
+$ bash deploy.sh
+
+Tunggu output:
+  [✓] Frontend built
+  [✓] Environment valid
+  [✓] Docker image built
+  [✓] Containers started
+  [✓] Assets copied
+  [✓] Deploy selesai!
+
+Ini proses paling penting!
+
+
+================================================================================
+                        TAHAP 5: VERIFIKASI
+================================================================================
+
+Step 1: Check Status
+-----------------------
+$ docker compose ps
+
+Output harus:
+  NAME               STATUS           
+  zinusit-app        running (healthy)
+  zinusit-db         running (healthy)
+  zinusit-cache      running (healthy)
+  zinusit-scheduler  running
+  zinusit-queue      running
+
+Step 2: Test API
+-----------------------
+$ curl http://localhost:8001/up
+
+Harus output OK/success
+
+Step 3: Buka Browser
+-----------------------
+Akses: http://ip-server:8001
+
+Harus lihat login page Zinus IT
+
+Step 4: Cek Log
+-----------------------
+$ docker compose logs app | tail -20
+
+Jangan ada [ERROR]
+
+
+================================================================================
+                           DEPLOYMENT SELESAI!
+================================================================================
+
+Jika semua OK, aplikasi sudah LIVE di server!
+
+Sekarang bisa:
+✓ Buka di browser: http://ip-server:8001
+✓ Login pakai LDAP
+✓ Mulai gunakan aplikasi
+
+
+================================================================================
+                             TROUBLESHOOTING
+================================================================================
+
+Kalau container tidak jalan:
+------------------------------
+$ docker compose logs app         # Lihat error
+$ docker compose down             # Stop
+$ docker compose up -d            # Start lagi
+$ docker compose ps               # Check status
+
+Kalau tidak bisa akses:
+------------------------------
+$ curl http://localhost:8001/up   # Test dari server
+$ sudo ufw allow 8001/tcp         # Buka firewall
+$ docker compose ps               # Check container
+
+Kalau database error:
+------------------------------
+$ docker compose logs db          # Lihat error DB
+$ docker compose restart db       # Restart database
+$ docker compose ps db            # Pastikan healthy
+
+Kalau lupa password database:
+------------------------------
+$ cat .env | grep DB_PASSWORD     # Lihat di .env file
+
+
+================================================================================
+                          WAKTU DEPLOYMENT
+================================================================================
+
+First Time Deploy (Setup + Deploy):
+  - Install Docker:     ~10 menit
+  - Clone + Setup:      ~5 menit
+  - Deploy:             ~10 menit
+  - Verify:             ~2 menit
+  TOTAL:                ~27 menit
+
+Update (Hanya Deploy):
+  - Pull + Build:       ~5 menit
+  - Deploy:             ~10 menit
+  - Verify:             ~2 menit
+  TOTAL:                ~17 menit
+
+
+================================================================================
+                         DOKUMENTASI LENGKAP
+================================================================================
+
+Untuk lebih detail:
+  - PANDUAN_DEPLOY_INDONESIA.md         (Bahasa Indonesia, detail)
+  - QUICK_DEPLOY_REFERENCE.md           (Perintah cepat)
+  - SERVER_DEPLOYMENT_GUIDE.md          (Lengkap, English)
+  - PRODUCTION_DEPLOYMENT_CHECKLIST.md  (Checklist)
+  - DOCKER_DEPLOYMENT_GUIDE.md          (Docker detail)
+
+
+================================================================================
+                            SELESAI DEPLOY!
+================================================================================
+
+Aplikasi sekarang berjalan di server production!
+
+Tugas selanjutnya:
+  ✓ Monitor logs
+  ✓ Backup database
+  ✓ Setup monitoring
+  ✓ Inform team
+  ✓ Go live!
+
+Good luck! 🚀
