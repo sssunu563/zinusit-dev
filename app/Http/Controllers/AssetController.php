@@ -275,7 +275,7 @@ class AssetController extends Controller
         $validated = $request->validate([
             'qty'           => 'required|integer|min:1',
             'po_number'     => 'nullable|string|max:100',
-            'purchase_date' => 'nullable|date',
+            'purchase_date' => 'nullable|date|before_or_equal:today',
             'notes'         => 'nullable|string|max:1000',
             'document'      => 'nullable|file|max:10240|mimes:pdf,jpg,jpeg,png,webp,doc,docx,xls,xlsx',
         ]);
