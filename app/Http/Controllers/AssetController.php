@@ -372,7 +372,7 @@ class AssetController extends Controller
                     ? \Illuminate\Support\Facades\Storage::url($h->document_path)
                     : null,
                 'created_by'    => $h->createdBy?->name ?? 'System',
-                'created_at'    => $h->created_at?->format('d M Y H:i') ?? '-',
+                'created_at'    => $h->created_at?->timezone(config('app.timezone'))->format('d M Y H:i') ?? '-',
             ]);
 
         return response()->json($rows);
