@@ -74,9 +74,17 @@ function hasMatchingSearchParams(
     currentUrl: ParsedUrl,
     targetUrl: ParsedUrl,
 ): boolean {
-    const keys = [...new Set(targetUrl.searchParams.keys())];
+    const currentKeys = [...new Set(currentUrl.searchParams.keys())];
+    const targetKeys = [...new Set(targetUrl.searchParams.keys())];
 
-    return keys.every((key) => {
+    if (
+        currentKeys.length !== targetKeys.length ||
+        targetKeys.some((key) => !currentKeys.includes(key))
+    ) {
+        return false;
+    }
+
+    return targetKeys.every((key) => {
         const currentValues = currentUrl.searchParams.getAll(key);
         const targetValues = targetUrl.searchParams.getAll(key);
 
