@@ -27,7 +27,7 @@ const isItemActive = (item: (typeof mainNavItems)[number]) =>
     );
 
 const isChildActive = (href: (typeof mainNavItems)[number]['href']) =>
-    isCurrentOrParentUrl(href);
+    isCurrentUrl(href);
 </script>
 
 <template>
