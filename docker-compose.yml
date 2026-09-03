@@ -1,38 +1,6 @@
 version: '3.8'
 
 services:
-  db:
-    image: mysql:8.0
-    container_name: zinusit-db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_DATABASE:-zinusit}
-      MYSQL_USER: ${DB_USERNAME:-zinusit}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
-    volumes:
-      - mysql-data:/var/lib/mysql
-    ports:
-      - '${DB_PORT:-3306}:3306'
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '1'
-          memory: 1G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   cache:
     image: redis:7-alpine
     container_name: zinusit-cache
@@ -43,7 +11,7 @@ services:
       - redis-data:/data
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,10 +24,10 @@ services:
           cpus: '0.5'
           memory: 256M
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   app:
     build:
@@ -68,8 +36,6 @@ services:
     container_name: zinusit-app
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
       cache:
         condition: service_healthy
     ports:
@@ -83,8 +49,8 @@ services:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
       APP_URL: ${APP_URL:-http://localhost:8001}
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:?DB_HOST must point to the external database}
+      DB_PORT: ${DB_PORT:-3306}
       DB_DATABASE: ${DB_DATABASE:-zinusit}
       DB_USERNAME: ${DB_USERNAME:-zinusit}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -111,10 +77,10 @@ services:
           cpus: '1'
           memory: 512M
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   scheduler:
     build:
@@ -132,8 +98,8 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:?DB_HOST must point to the external database}
+      DB_PORT: ${DB_PORT:-3306}
       DB_DATABASE: ${DB_DATABASE:-zinusit}
       DB_USERNAME: ${DB_USERNAME:-zinusit}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -158,10 +124,10 @@ services:
           cpus: '0.5'
           memory: 256M
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
   queue:
     build:
@@ -179,8 +145,8 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-false}
-      DB_HOST: db
-      DB_PORT: 3306
+      DB_HOST: ${DB_HOST:?DB_HOST must point to the external database}
+      DB_PORT: ${DB_PORT:-3306}
       DB_DATABASE: ${DB_DATABASE:-zinusit}
       DB_USERNAME: ${DB_USERNAME:-zinusit}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
@@ -200,15 +166,13 @@ services:
           cpus: '0.5'
           memory: 256M
     logging:
-      driver: "json-file"
+      driver: 'json-file'
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: '10m'
+        max-file: '3'
 
 volumes:
   zinusit-storage:
-    driver: local
-  mysql-data:
     driver: local
   redis-data:
     driver: local
