@@ -481,15 +481,24 @@ trait DocumentCheckoutTrait
                         ? json_encode($result['messages'])
                         : ($result['messages'] ?? 'Unknown Snipe-IT error');
 
-                    Log::error('Snipe-IT Checkin Error Response', [
-                        'doc_id'   => $document->id,
-                        'item_id'  => $item->id,
-                        'resource' => $resource,
-                        'asset_id' => $assetId,
-                        'response' => $result,
-                    ]);
+                    if (stripos($errorMsg, 'already checked in') !== false) {
+                        Log::warning('Snipe-IT Checkin already completed', [
+                            'doc_id'   => $document->id,
+                            'item_id'  => $item->id,
+                            'resource' => $resource,
+                            'asset_id' => $assetId,
+                        ]);
+                    } else {
+                        Log::error('Snipe-IT Checkin Error Response', [
+                            'doc_id'   => $document->id,
+                            'item_id'  => $item->id,
+                            'resource' => $resource,
+                            'asset_id' => $assetId,
+                            'response' => $result,
+                        ]);
 
-                    throw new \Exception("Gagal checkin '{$item->nama}': {$errorMsg}");
+                        throw new \Exception("Gagal checkin '{$item->nama}': {$errorMsg}");
+                    }
                 }
 
                 if ($resource !== 'consumables') {
