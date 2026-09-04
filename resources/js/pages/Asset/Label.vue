@@ -24,8 +24,12 @@ const props = defineProps<{
     publicUrl: string;
 }>();
 
-const displayName = computed(() =>
-    props.asset.name || props.asset.model || props.asset.asset_tag || 'Asset'
+const displayName = computed(
+    () =>
+        props.asset.name ||
+        props.asset.model ||
+        props.asset.asset_tag ||
+        'Asset',
 );
 
 const shortCategory = computed(() => {
@@ -40,9 +44,9 @@ const shortLocation = computed(() => {
 
 const statusColor = computed(() => {
     const t = props.asset.status_type ?? '';
-    if (t === 'deployed')     return '#059669';
-    if (t === 'deployable')   return '#0284c7';
-    if (t === 'archived')     return '#64748b';
+    if (t === 'deployed') return '#059669';
+    if (t === 'deployable') return '#0284c7';
+    if (t === 'archived') return '#64748b';
     if (t === 'undeployable') return '#dc2626';
     return '#d97706';
 });
@@ -77,22 +81,40 @@ onMounted(() => {
                 <!-- Right: Info -->
                 <div class="info-col">
                     <p class="asset-name">{{ displayName }}</p>
-                    <p v-if="asset.asset_tag" class="tag">{{ asset.asset_tag }}</p>
-                    <p v-if="asset.serial" class="serial">SN: {{ asset.serial }}</p>
-                    <div v-if="asset.category || asset.location" class="meta-row">
-                        <span v-if="shortCategory" class="badge cat">{{ shortCategory }}</span>
-                        <span v-if="shortLocation" class="badge loc">{{ shortLocation }}</span>
+                    <p v-if="asset.asset_tag" class="tag">
+                        {{ asset.asset_tag }}
+                    </p>
+                    <p v-if="asset.serial" class="serial">
+                        SN: {{ asset.serial }}
+                    </p>
+                    <div
+                        v-if="asset.category || asset.location"
+                        class="meta-row"
+                    >
+                        <span v-if="shortCategory" class="badge cat">{{
+                            shortCategory
+                        }}</span>
+                        <span v-if="shortLocation" class="badge loc">{{
+                            shortLocation
+                        }}</span>
                     </div>
                     <div v-if="asset.status" class="status-row">
-                        <span class="status-dot" :style="{ background: statusColor }" />
+                        <span
+                            class="status-dot"
+                            :style="{ background: statusColor }"
+                        />
                         <span class="status-label">{{ asset.status }}</span>
                     </div>
                 </div>
             </div>
 
             <div class="actions">
-                <button class="btn-print" @click="() => window.print()">🖨 Cetak Label</button>
-                <button class="btn-close" @click="() => window.close()">✕ Tutup</button>
+                <button class="btn-print" @click="() => window.print()">
+                    🖨 Cetak Label
+                </button>
+                <button class="btn-close" @click="() => window.close()">
+                    ✕ Tutup
+                </button>
             </div>
 
             <p class="hint">Cetak dengan skala 100%, tanpa margin.</p>
@@ -124,7 +146,13 @@ onMounted(() => {
 
 <style>
 /* ── Reset ── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
 
 /* ── SCREEN view ── */
 body {
@@ -137,7 +165,9 @@ body {
 }
 
 /* Hide print-label on screen */
-.print-label { display: none; }
+.print-label {
+    display: none;
+}
 
 .screen-only {
     display: flex;
@@ -152,7 +182,7 @@ body {
     background: white;
     border-radius: 20px;
     padding: 32px 36px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
     max-width: 480px;
     width: 100%;
     text-align: center;
@@ -184,7 +214,7 @@ body {
     border: 2px solid #e2e8f0;
     border-radius: 12px;
     padding: 14px 16px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
     text-align: left;
     margin-bottom: 24px;
 }
@@ -301,7 +331,9 @@ body {
     transition: opacity 0.15s;
 }
 
-.btn-print:hover { opacity: 0.85; }
+.btn-print:hover {
+    opacity: 0.85;
+}
 
 .btn-close {
     background: white;
@@ -315,7 +347,9 @@ body {
     transition: background 0.15s;
 }
 
-.btn-close:hover { background: #f8fafc; }
+.btn-close:hover {
+    background: #f8fafc;
+}
 
 .hint {
     font-size: 10px;
@@ -332,6 +366,19 @@ body {
         margin: 0;
     }
 
+    html,
+    body {
+        width: 40mm !important;
+        height: 25mm !important;
+        min-width: 40mm !important;
+        min-height: 25mm !important;
+        max-width: 40mm !important;
+        max-height: 25mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+
     /* Hide everything on screen during print */
     body {
         background: white !important;
@@ -339,7 +386,9 @@ body {
         display: block !important;
     }
 
-    .screen-only { display: none !important; }
+    .screen-only {
+        display: none !important;
+    }
 
     /* Show print label */
     .print-label {
