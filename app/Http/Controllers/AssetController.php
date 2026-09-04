@@ -1519,7 +1519,7 @@ class AssetController extends Controller
                 return '-';
             };
 
-            $history = collect($snipeHistory)->map(fn($h) => [
+            $snipeEvents = collect($snipeHistory)->map(fn($h) => [
                 'id'          => 'snipe_' . $h['id'],
                 'action_type' => strtoupper($h['action_type'] ?? '-'),
                 'user'        => $resolveSnipeActor($h),
@@ -1527,9 +1527,13 @@ class AssetController extends Controller
                 'target'      => $h['target']['name'] ?? '-',
                 'target_type' => $h['target_type'] ?? null,
                 'note'        => $resolveSnipeNote($h),
-                'date'        => !empty($h['created_at']['datetime']) ? \Carbon\Carbon::parse($h['created_at']['datetime'])->format('Y-m-d H:i:s') : '-',
+                'date'        => !empty($h['created_at']['datetime'])
+                    ? \Carbon\Carbon::parse($h['created_at']['datetime'])->format('Y-m-d H:i:s')
+                    : '-',
                 'source'      => 'snipeit',
-            ])->concat($localLogs->map(fn($log) => [
+            ]);
+
+            $localEvents = $localLogs->map(fn($log) => [
                 'id'          => 'local_' . $log->id,
                 'action_type' => strtoupper($log->action_type),
                 'user'        => $log->user?->name ?? 'System',
@@ -1537,9 +1541,40 @@ class AssetController extends Controller
                 'target'      => $this->resolveItemName($log, 'item'),
                 'target_type' => $log->item_type,
                 'note'        => $log->note,
-                'date'        => $log->created_at->format('Y-m-d H:i:s'),
+                'date'        => \Carbon\Carbon::parse($log->created_at, 'UTC')
+                    ->timezone(config('app.timezone'))
+                    ->format('Y-m-d H:i:s'),
                 'source'      => 'app',
-            ]))->concat($stbItems->map(fn($item) => [
+            ]);
+
+            // Snipe-IT and local audit logging both record create/update events.
+            // Keep the local event, which contains the application actor and note.
+            $duplicateLocalIds = $localEvents->filter(function (array $local) use ($snipeEvents) {
+                $localAction = strtolower($local['action_type']);
+                if (!in_array($localAction, ['create', 'created', 'update', 'updated'], true)) {
+                    return false;
+                }
+
+                $localDate = \Carbon\Carbon::parse($local['date']);
+
+                return $snipeEvents->contains(function (array $snipe) use ($local, $localDate) {
+                    $snipeAction = strtolower($snipe['action_type']);
+                    if (!str_contains($snipeAction, 'create') && !str_contains($snipeAction, 'update')) {
+                        return false;
+                    }
+
+                    $snipeDate = \Carbon\Carbon::parse($snipe['date']);
+                    $sameTarget = $local['target'] === '-' || $snipe['target'] === '-'
+                        || str_contains(strtolower((string) $local['target']), strtolower((string) $snipe['target']))
+                        || str_contains(strtolower((string) $local['note']), strtolower((string) $snipe['target']));
+
+                    return $sameTarget && abs($localDate->diffInSeconds($snipeDate, false)) <= 120;
+                });
+            })->pluck('id');
+
+            $history = $snipeEvents
+                ->concat($localEvents->reject(fn (array $local) => $duplicateLocalIds->contains($local['id'])))
+                ->concat($stbItems->map(fn($item) => [
                 'id'          => 'stb_' . $item->id,
                 'action_type' => strtoupper($item->stb->document_type === 'handover' ? 'MUTASI (SERAH TERIMA)' : 'MUTASI (PENGEMBALIAN)'),
                 'user'        => $item->stb->user_name ?? 'System',
