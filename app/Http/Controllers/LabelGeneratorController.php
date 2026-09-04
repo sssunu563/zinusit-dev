@@ -4,8 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Services\SnipeItService;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\Process\Process;
 
 class LabelGeneratorController extends Controller
 {
@@ -46,5 +50,81 @@ class LabelGeneratorController extends Controller
             'assets'       => $assets,
             'initialSearch' => $search,
         ]);
+    }
+
+    public function pdf(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
+    {
+        $ids = collect($request->input('ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return back()->with('error', 'Pilih minimal satu asset untuk dicetak.');
+        }
+
+        $assets = $ids->map(function (int $id) {
+            $record = $this->snipe->getHardware($id);
+            if (!$record || empty($record['id'])) return null;
+
+            $assetTag = (string) ($record['asset_tag'] ?? $record['name'] ?? $id);
+            return [
+                'name' => $record['name'] ?? $assetTag,
+                'asset_tag' => $assetTag,
+                'serial' => $record['serial'] ?? '',
+                'location' => data_get($record, 'location.name', ''),
+                'public_url' => url('a/' . ($record['serial'] ?? $assetTag)),
+            ];
+        })->filter()->values()->all();
+
+        if ($assets === []) {
+            return back()->with('error', 'Asset tidak ditemukan di Snipe-IT.');
+        }
+
+        $browserPath = $this->pdfBrowserPath();
+        if (!$browserPath) return back()->with('error', 'Browser PDF belum tersedia di server.');
+
+        $tempDirectory = storage_path('app/label-temp');
+        if (!is_dir($tempDirectory)) mkdir($tempDirectory, 0777, true);
+        $htmlPath = $tempDirectory . DIRECTORY_SEPARATOR . Str::uuid() . '.html';
+        $pdfPath = storage_path('app/public/asset-labels/asset-labels.pdf');
+        if (!is_dir(dirname($pdfPath))) mkdir(dirname($pdfPath), 0777, true);
+        file_put_contents($htmlPath, view('asset.label_pdf_batch', ['assets' => $assets])->render());
+
+        $process = new Process([
+            $browserPath, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
+            '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--allow-file-access-from-files', '--no-pdf-header-footer',
+            '--run-all-compositor-stages-before-draw', '--virtual-time-budget=12000',
+            '--print-to-pdf=' . $pdfPath, 'file:///' . str_replace('\\', '/', $htmlPath),
+        ]);
+        $process->setTimeout(60);
+        $process->run();
+        @unlink($htmlPath);
+
+        if (!$process->isSuccessful() || !is_file($pdfPath)) {
+            Log::error('Asset labels PDF generation failed', ['error' => $process->getErrorOutput()]);
+            return back()->with('error', 'PDF label gagal dibuat.');
+        }
+
+        return response()->file($pdfPath, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="asset-labels.pdf"',
+        ]);
+    }
+
+    private function pdfBrowserPath(): ?string
+    {
+        foreach (array_filter([
+            trim((string) config('services.pdf.browser_path', '')),
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            '/usr/bin/chromium', '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+        ]) as $path) {
+            if (is_file($path)) return $path;
+        }
+        return null;
     }
 }

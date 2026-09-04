@@ -24,6 +24,8 @@ const props = defineProps<{
     publicUrl: string;
 }>();
 
+const pdfUrl = `/asset/label/${encodeURIComponent(props.asset.asset_tag || props.asset.serial || String(props.asset.id))}/pdf`;
+
 const displayName = computed(
     () =>
         props.asset.name ||
@@ -109,7 +111,10 @@ onMounted(() => {
             </div>
 
             <div class="actions">
-                <button class="btn-print" @click="() => window.print()">
+                <button
+                    class="btn-print"
+                    @click="() => window.open(pdfUrl, '_blank')"
+                >
                     🖨 Cetak Label
                 </button>
                 <button class="btn-close" @click="() => window.close()">

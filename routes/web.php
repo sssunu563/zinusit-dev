@@ -168,7 +168,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('inspection-menu', 'Inspection')->name('inspection.menu');
     // Tools routes
     Route::get('label-generator', [\App\Http\Controllers\LabelGeneratorController::class, 'index'])->name('label-generator.index');
+    Route::get('label-generator/pdf', [\App\Http\Controllers\LabelGeneratorController::class, 'pdf'])->name('label-generator.pdf');
     Route::get('asset/label/{tag}', [\App\Http\Controllers\AssetController::class, 'printLabel'])->name('asset.label.print');
+    Route::get('asset/label/{tag}/pdf', [\App\Http\Controllers\AssetController::class, 'printLabelPdf'])->name('asset.label.pdf');
     Route::get('asset/item/{assetId}/stock-history', [\App\Http\Controllers\AssetController::class, 'stockHistory'])->name('asset.stock.history');
     Route::get('search', \App\Http\Controllers\SearchController::class)->name('universal-search');
 

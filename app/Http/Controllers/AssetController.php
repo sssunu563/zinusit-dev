@@ -244,6 +244,74 @@ class AssetController extends Controller
         ]);
     }
 
+    public function printLabelPdf(Request $request, string $tag): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
+    {
+        $rows = $this->snipe->getHardwareByAssetTag($tag)['rows'] ?? [];
+        if ($rows === []) {
+            return redirect()->route('asset.index')->with('error', 'Asset tidak ditemukan.');
+        }
+
+        $record = $rows[0];
+        $assetTag = (string) ($record['asset_tag'] ?? $tag);
+        $viewData = [
+            'asset' => [
+                'name' => $record['name'] ?? $assetTag,
+                'asset_tag' => $assetTag,
+                'serial' => $record['serial'] ?? '',
+                'location' => data_get($record, 'location.name', ''),
+            ],
+            'publicUrl' => url('a/' . ($record['serial'] ?? $assetTag)),
+        ];
+
+        $browserPath = $this->pdfBrowserPath();
+        if (!$browserPath) {
+            return redirect()->route('asset.label.print', ['tag' => $tag])
+                ->with('error', 'Browser PDF belum tersedia di server.');
+        }
+
+        $tempDirectory = storage_path('app/label-temp');
+        if (!is_dir($tempDirectory)) mkdir($tempDirectory, 0777, true);
+        $htmlPath = $tempDirectory . DIRECTORY_SEPARATOR . Str::uuid() . '.html';
+        $pdfPath = storage_path('app/public/asset-labels/' . Str::slug($assetTag) . '.pdf');
+        if (!is_dir(dirname($pdfPath))) mkdir(dirname($pdfPath), 0777, true);
+
+        file_put_contents($htmlPath, view('asset.label_pdf', $viewData)->render());
+        $process = new \Symfony\Component\Process\Process([
+            $browserPath, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
+            '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+            '--allow-file-access-from-files', '--no-pdf-header-footer',
+            '--run-all-compositor-stages-before-draw', '--virtual-time-budget=12000',
+            '--print-to-pdf=' . $pdfPath, 'file:///' . str_replace('\\', '/', $htmlPath),
+        ]);
+        $process->setTimeout(60);
+        $process->run();
+        @unlink($htmlPath);
+
+        if (!$process->isSuccessful() || !is_file($pdfPath)) {
+            Log::error('Asset label PDF generation failed', ['tag' => $tag, 'error' => $process->getErrorOutput()]);
+            return redirect()->route('asset.label.print', ['tag' => $tag])->with('error', 'PDF label gagal dibuat.');
+        }
+
+        return response()->file($pdfPath, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="label-' . Str::slug($assetTag) . '.pdf"',
+        ]);
+    }
+
+    private function pdfBrowserPath(): ?string
+    {
+        $configured = trim((string) config('services.pdf.browser_path', ''));
+        foreach (array_filter(array_merge([$configured], [
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            '/usr/bin/chromium', '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
+        ])) as $path) {
+            if (is_file($path)) return $path;
+        }
+        return null;
+    }
+
     public function tabData(Request $request, int $assetId): JsonResponse
     {
         $type = $this->normalizeType((string) $request->query('type', 'assets'));
