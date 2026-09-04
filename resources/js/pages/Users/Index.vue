@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { onClickOutside } from '@vueuse/core';
 import axios from 'axios';
 import {
@@ -17,7 +17,8 @@ import {
     LucideUsers as UsersIcon,
     LucideBuilding2 as Building2,
     LucideMapPin as MapPin,
-    LucideUser as User
+    LucideUser as User,
+    LucideTrash2 as Trash2,
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -79,8 +80,10 @@ const filteredUsers = computed(() => {
                 (selectedSource.value === 'linked' &&
                     Boolean(user.snipeit_user_id)) ||
                 (selectedSource.value === 'local' && !user.snipeit_user_id)) &&
-            (!selectedCompany.value || user.company_name === selectedCompany.value) &&
-            (!selectedLocation.value || user.location_name === selectedLocation.value) &&
+            (!selectedCompany.value ||
+                user.company_name === selectedCompany.value) &&
+            (!selectedLocation.value ||
+                user.location_name === selectedLocation.value) &&
             (!query ||
                 [
                     user.name,
@@ -127,7 +130,7 @@ const activeFilterCount = computed(
         [
             selectedSource.value !== 'all' ? selectedSource.value : '',
             selectedCompany.value,
-            selectedLocation.value
+            selectedLocation.value,
         ].filter(Boolean).length,
 );
 
@@ -176,9 +179,12 @@ const pageNumbers = computed(() => {
     );
 });
 
-watch([searchQuery, selectedSource, selectedCompany, selectedLocation, pageSize], () => {
-    currentPage.value = 1;
-});
+watch(
+    [searchQuery, selectedSource, selectedCompany, selectedLocation, pageSize],
+    () => {
+        currentPage.value = 1;
+    },
+);
 
 const goToPreviousPage = () => {
     currentPage.value = Math.max(1, currentPage.value - 1);
@@ -195,16 +201,31 @@ const setPage = (page: number) => {
 const downloadCsv = () => {
     const stamp = new Date().toISOString().slice(0, 10);
     const fileName = `users-${stamp}.csv`;
-    
+
     const escapeCsvValue = (val: string | number) => {
         const normalized = String(val ?? '');
-        if (normalized.includes(',') || normalized.includes('"') || normalized.includes('\n')) {
+        if (
+            normalized.includes(',') ||
+            normalized.includes('"') ||
+            normalized.includes('\n')
+        ) {
             return `"${normalized.replace(/"/g, '""')}"`;
         }
         return normalized;
     };
 
-    const header = ['Name', 'Username', 'Email', 'Phone', 'Job Title', 'Company', 'Department', 'Location', 'Source', 'Created At'];
+    const header = [
+        'Name',
+        'Username',
+        'Email',
+        'Phone',
+        'Job Title',
+        'Company',
+        'Department',
+        'Location',
+        'Source',
+        'Created At',
+    ];
     const rows = filteredUsers.value.map((user) => [
         user.name,
         user.username || '-',
@@ -217,11 +238,13 @@ const downloadCsv = () => {
         user.snipeit_user_id ? 'Terhubung' : 'Local user',
         formatDate(user.created_at),
     ]);
-    
+
     const csv = [header, ...rows]
-        .map((columns) => columns.map((column) => escapeCsvValue(column)).join(','))
+        .map((columns) =>
+            columns.map((column) => escapeCsvValue(column)).join(','),
+        )
         .join('\n');
-    
+
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -287,10 +310,10 @@ const openCreateModal = () => {
 
 const openEditModal = async (id: number) => {
     if (loadingUser.value) return;
-    
+
     loadingUser.value = true;
     modalMode.value = 'edit';
-    
+
     try {
         const response = await axios.get(`/users/${id}/edit-data`);
         selectedUser.value = response.data;
@@ -306,6 +329,16 @@ const closeModal = () => {
     isModalOpen.value = false;
     selectedUser.value = null;
 };
+
+const deleteUser = (user: UserItem) => {
+    if (
+        !user.id ||
+        !window.confirm(`Hapus user "${user.name}" dari Snipe-IT dan LLDAP?`)
+    )
+        return;
+
+    router.delete(`/users/${user.id}`, { preserveScroll: true });
+};
 </script>
 
 <template>
@@ -313,299 +346,539 @@ const closeModal = () => {
         <Head title="Direktori Identitas" />
 
         <div class="app-page-shell">
-            <div v-if="status" class="p-3 rounded-2xl border border-[#003628]/20 bg-[#003628]/5 text-[#003628] text-[10px] font-bold uppercase tracking-widest text-center mb-4">
+            <div
+                v-if="status"
+                class="mb-4 rounded-2xl border border-[#003628]/20 bg-[#003628]/5 p-3 text-center text-[10px] font-bold tracking-widest text-[#003628] uppercase"
+            >
                 {{ status }}
             </div>
 
             <!-- TABLE CARD -->
-            <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-                    
-                    <!-- Toolbar Section -->
-                    <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                        <div class="relative flex-1 max-w-xl">
-                            <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                            <input
-                                v-model="searchQuery"
-                                type="text"
-                                placeholder="Cari data identitas..."
-                                class="w-full h-12 pl-12 pr-4 rounded-2xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-4 focus:ring-[#003628]/10 transition-all outline-none shadow-sm"
-                            />
-                        </div>
-
-                        <div class="flex items-center gap-2">
-                             <!-- Export Actions -->
-                              <button
-                                @click="downloadPdf"
-                                class="size-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
-                                title="Ekspor PDF"
-                            >
-                                <Printer class="size-5" />
-                            </button>
-                            <button
-                                @click="downloadCsv"
-                                class="size-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
-                                title="Ekspor CSV"
-                            >
-                                <Download class="size-5" />
-                            </button>
-
-                            <div class="w-px h-6 bg-slate-200 mx-1" />
-
-                            <!-- Filter -->
-                            <div ref="filterPanelRef" class="relative">
-                                <button
-                                    @click="showFilters = !showFilters"
-                                    class="size-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all relative shadow-sm"
-                                >
-                                    <SlidersHorizontal class="size-5" />
-                                    <span v-if="activeFilterCount" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white">
-                                        {{ activeFilterCount }}
-                                    </span>
-                                </button>
-
-                                <Transition
-                                    enter-active-class="transition duration-200 ease-out"
-                                    enter-from-class="opacity-0 translate-y-2 scale-95"
-                                    enter-to-class="opacity-100 translate-y-0 scale-100"
-                                    leave-active-class="transition duration-150 ease-in"
-                                    leave-from-class="opacity-100 translate-y-0 scale-100"
-                                    leave-to-class="opacity-0 translate-y-2 scale-95"
-                                >
-                                    <div v-if="showFilters" class="absolute top-full right-0 z-50 mt-3 w-80 rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
-                                        <div class="flex items-center justify-between mb-8">
-                                            <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Persempit Pencarian</h3>
-                                            <button 
-                                                @click="resetFilters(); showFilters = false;"
-                                                class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5"
-                                            >
-                                                <RefreshCw class="size-3" /> Reset
-                                            </button>
-                                        </div>
-                                        <div class="space-y-4">
-                                            <div class="space-y-1.5">
-                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Perusahaan</label>
-                                                <select v-model="selectedCompany" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                                    <option value="">Semua Perusahaan</option>
-                                                    <option v-for="c in options.companies" :key="c.id" :value="c.name">{{ c.name }}</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="space-y-1.5">
-                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Lokasi</label>
-                                                <select v-model="selectedLocation" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                                    <option value="">Semua Lokasi</option>
-                                                    <option v-for="l in options.locations" :key="l.id" :value="l.name">{{ l.name }}</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="space-y-1.5">
-                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Sumber Profil</label>
-                                                <select v-model="selectedSource" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                                    <option value="all">Semua Sumber</option>
-                                                    <option value="linked">Terhubung (Sync)</option>
-                                                    <option value="local">User Lokal Saja</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Transition>
-                            </div>
-
-                            <button 
-                                @click="syncLdap"
-                                :disabled="syncingLdap"
-                                class="h-11 px-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-2.5 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all active:scale-95 disabled:opacity-50"
-                            >
-                                <DatabaseZap class="size-5 text-[#003628]" :class="{ 'animate-pulse': syncingLdap }" />
-                                 <span class="uppercase tracking-widest text-[10px]">Sinkronisasi Master</span>
-                            </button>
-
-                            <button 
-                                @click="openCreateModal"
-                                class="h-11 px-6 rounded-xl bg-[#003628] text-white flex items-center gap-2 transition-all hover:opacity-90 shadow-lg shadow-[#003628]/10 active:scale-95 ml-2"
-                            >
-                                <Plus class="size-5" />
-                                <span class="text-xs font-black uppercase tracking-widest">User Baru</span>
-                            </button>
-                        </div>
+            <div
+                class="rounded-[32px] border border-slate-200/60 bg-white p-6 shadow-xl shadow-slate-200/50 lg:p-8"
+            >
+                <!-- Toolbar Section -->
+                <div
+                    class="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-center"
+                >
+                    <div class="relative max-w-xl flex-1">
+                        <Search
+                            class="absolute top-1/2 left-4 size-4 -translate-y-1/2 text-slate-400"
+                        />
+                        <input
+                            v-model="searchQuery"
+                            type="text"
+                            placeholder="Cari data identitas..."
+                            class="h-12 w-full rounded-2xl border border-slate-200 bg-white pr-4 pl-12 text-sm text-slate-900 shadow-sm transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-4 focus:ring-[#003628]/10"
+                        />
                     </div>
 
-                    <!-- Desktop Table -->
-                    <div class="hidden md:block overflow-hidden rounded-xl border border-slate-200/50">
-                        <table class="w-full border-collapse min-w-[1100px]">
-                            <thead>
-                                <tr class="border-b border-slate-100 bg-slate-50/50">
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 w-12">#</th>
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Nama</th>
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Email</th>
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Perusahaan</th>
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Departemen</th>
-                                    <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Lokasi</th>
-                                    <th class="px-6 py-3 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Kelola</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50">
-                                <tr v-for="(item, index) in paginatedUsers" :key="item.id || `snipe-${item.snipeit_user_id}`" class="group hover:bg-slate-50/50 transition-colors">
-                                    <td class="px-6 py-4 text-[10px] font-bold font-mono text-slate-300">{{ pageStart + index }}</td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-3">
-                                            <div class="h-9 w-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-[#003628] shadow-sm group-hover:scale-105 transition-transform duration-300">
-                                                <User class="size-4.5" />
-                                            </div>
-                                            <span class="text-[13px] font-black text-slate-900 tracking-tight leading-none">{{ item.name }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="text-[10px] uppercase font-black tracking-widest text-slate-400">{{ item.email }}</span>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-2">
-                                            <Building2 class="size-3 text-slate-400" />
-                                            <span class="text-[11px] font-black text-slate-600">{{ item.company_name || 'Generic' }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">{{ item.department_name || 'Tanpa Dept' }}</span>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <div class="flex items-center gap-2 text-slate-500">
-                                            <MapPin class="size-3 text-slate-400" />
-                                            <span class="text-[11px] font-black text-slate-600">{{ item.location_name || '-' }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="px-6 py-4 text-right">
-                                        <div class="flex items-center justify-end gap-2">
-                                            <Link
-                                                v-if="item.id"
-                                                :href="`/users/${item.id}`"
-                                                class="h-8 w-8 rounded-lg border border-slate-100 bg-white flex items-center justify-center text-slate-400 hover:text-[#003628] hover:border-[#003628]/20 transition-all active:scale-90 shadow-sm"
-                                                title="Detail User"
-                                            >
-                                                <Eye class="size-4" />
-                                            </Link>
-                                            <button
-                                                v-if="item.id"
-                                                @click="openEditModal(item.id)"
-                                                class="h-8 w-8 rounded-lg border border-slate-100 bg-white flex items-center justify-center text-slate-400 hover:text-amber-600 hover:border-amber-200 transition-all active:scale-90 shadow-sm"
-                                                title="Edit user"
-                                            >
-                                                <Pencil class="size-4" />
-                                            </button>
-                                            <div v-if="!item.id" class="px-2 py-1 rounded bg-slate-100 text-[9px] font-black uppercase text-slate-400">
-                                                Belum Sinkron
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Pagination -->
-                    <div class="mt-8 flex flex-col md:flex-row items-center justify-between gap-6 border-t border-slate-100 pt-8">
-                        <div class="flex items-center gap-4">
-                            <div class="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                <span>Tampilkan</span>
-                                <select
-                                    v-model="pageSize"
-                                    class="bg-white border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-black text-slate-600 outline-none focus:border-[#003628]/50"
-                                >
-                                    <option :value="10">10</option>
-                                    <option :value="25">25</option>
-                                    <option :value="50">50</option>
-                                </select>
-                            </div>
-                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                <span class="text-slate-900">{{ pageStart }}–{{ pageEnd }}</span> DARI <span class="text-slate-900">{{ filteredUsers.length }}</span> USER
-                            </p>
-                        </div>
-
-                        <div class="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                class="h-9 w-9 flex items-center justify-center rounded-xl transition-all border border-slate-200 bg-white shadow-sm"
-                                :class="currentPage === 1 ? 'opacity-30 cursor-not-allowed text-slate-300' : 'text-slate-600 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'"
-                                @click="goToPreviousPage"
-                            >
-                                <span class="text-lg leading-none">‹</span>
-                            </button>
-
-                            <button
-                                v-for="page in pageNumbers"
-                                :key="page"
-                                type="button"
-                                class="h-9 min-w-[36px] px-2 flex items-center justify-center rounded-xl text-[11px] font-black transition-all border shadow-sm"
-                                :class="page === currentPage 
-                                    ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-[#003628]/20' 
-                                    : 'border-slate-200 bg-white text-slate-500 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'"
-                                @click="setPage(page)"
-                            >
-                                {{ page }}
-                            </button>
-
-                            <button
-                                type="button"
-                                class="h-9 w-9 flex items-center justify-center rounded-xl transition-all border border-slate-200 bg-white shadow-sm"
-                                :class="currentPage >= totalPages ? 'opacity-30 cursor-not-allowed text-slate-300' : 'text-slate-600 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'"
-                                @click="goToNextPage"
-                            >
-                                <span class="text-lg leading-none">›</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Mobile cards -->
-                    <div class="space-y-3 p-4 md:hidden bg-slate-50/30 rounded-2xl mt-8">
-                        <article
-                            v-for="item in paginatedUsers"
-                            :key="item.id || `mob-snipe-${item.snipeit_user_id}`"
-                            class="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm active:scale-[0.98] transition-all"
+                    <div class="flex items-center gap-2">
+                        <!-- Export Actions -->
+                        <button
+                            @click="downloadPdf"
+                            class="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628]"
+                            title="Ekspor PDF"
                         >
-                            <div class="flex items-start justify-between mb-3">
-                                <div class="flex items-center gap-3">
-                                    <div class="h-9 w-9 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-[#003628] shrink-0">
-                                        <User class="size-4.5" />
-                                    </div>
-                                    <div class="space-y-0.5 min-w-0">
-                                        <h3 class="text-[13px] font-bold text-slate-900 tracking-tight truncate">{{ item.name }}</h3>
-                                        <p class="text-[10px] font-medium text-slate-500 truncate">{{ item.email }}</p>
-                                    </div>
-                                </div>
+                            <Printer class="size-5" />
+                        </button>
+                        <button
+                            @click="downloadCsv"
+                            class="flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628]"
+                            title="Ekspor CSV"
+                        >
+                            <Download class="size-5" />
+                        </button>
+
+                        <div class="mx-1 h-6 w-px bg-slate-200" />
+
+                        <!-- Filter -->
+                        <div ref="filterPanelRef" class="relative">
+                            <button
+                                @click="showFilters = !showFilters"
+                                class="relative flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628]"
+                            >
+                                <SlidersHorizontal class="size-5" />
                                 <span
-                                    class="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest shrink-0 border"
-                                    :class="item.snipeit_user_id ? 'bg-[#003628]/5 text-[#003628] border-[#003628]/20' : 'bg-slate-100 text-slate-500 border-slate-200'"
+                                    v-if="activeFilterCount"
+                                    class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white"
                                 >
-                                    {{ item.snipeit_user_id ? 'Sync' : 'Lokal' }}
+                                    {{ activeFilterCount }}
                                 </span>
-                            </div>
+                            </button>
 
-                            <div class="flex items-center justify-between pt-3 border-t border-slate-50">
-                                <div class="space-y-0.5">
-                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">Organisasi</p>
-                                    <p class="text-[11px] font-bold text-slate-600 truncate max-w-[150px]">{{ item.company_name || '-' }}</p>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                     <button v-if="item.id" @click="openEditModal(item.id)" class="p-2 text-slate-400 hover:text-amber-600"><Pencil class="size-4" /></button>
-                                     <Link v-if="item.id" :href="`/users/${item.id}`" class="p-2 text-slate-400 hover:text-[#003628]"><Eye class="size-4" /></Link>
-                                </div>
-                            </div>
-                        </article>
-                    </div>
+                            <Transition
+                                enter-active-class="transition duration-200 ease-out"
+                                enter-from-class="opacity-0 translate-y-2 scale-95"
+                                enter-to-class="opacity-100 translate-y-0 scale-100"
+                                leave-active-class="transition duration-150 ease-in"
+                                leave-from-class="opacity-100 translate-y-0 scale-100"
+                                leave-to-class="opacity-0 translate-y-2 scale-95"
+                            >
+                                <div
+                                    v-if="showFilters"
+                                    class="absolute top-full right-0 z-50 mt-3 w-80 overflow-hidden rounded-[32px] border border-slate-200 bg-white/95 p-6 shadow-2xl backdrop-blur-xl"
+                                >
+                                    <div
+                                        class="mb-8 flex items-center justify-between"
+                                    >
+                                        <h3
+                                            class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                        >
+                                            Persempit Pencarian
+                                        </h3>
+                                        <button
+                                            @click="
+                                                resetFilters();
+                                                showFilters = false;
+                                            "
+                                            class="flex items-center gap-1.5 text-[10px] font-black tracking-widest text-[#003628] uppercase transition-colors hover:opacity-70"
+                                        >
+                                            <RefreshCw class="size-3" /> Reset
+                                        </button>
+                                    </div>
+                                    <div class="space-y-4">
+                                        <div class="space-y-1.5">
+                                            <label
+                                                class="ml-1 text-[9px] font-black tracking-widest text-slate-500 uppercase"
+                                                >Perusahaan</label
+                                            >
+                                            <select
+                                                v-model="selectedCompany"
+                                                class="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">
+                                                    Semua Perusahaan
+                                                </option>
+                                                <option
+                                                    v-for="c in options.companies"
+                                                    :key="c.id"
+                                                    :value="c.name"
+                                                >
+                                                    {{ c.name }}
+                                                </option>
+                                            </select>
+                                        </div>
 
-                    <!-- Empty State -->
-                    <div v-if="filteredUsers.length === 0" class="py-24 text-center">
-                        <div class="flex flex-col items-center gap-4">
-                            <div class="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 border border-slate-100 mb-2">
-                                <Search class="size-10" />
-                            </div>
-                            <div class="space-y-1">
-                                <h3 class="text-xl font-black text-slate-900 uppercase tracking-widest">Tidak Ada Data Identitas</h3>
-                                <p class="text-sm font-medium text-slate-500 max-w-xs mx-auto">Tidak dapat menemukan pengguna yang sesuai dengan pencarian Anda.</p>
-                            </div>
-                            <button @click="resetFilters" class="mt-4 h-11 px-6 rounded-xl bg-[#003628]/10 text-[#003628] text-[11px] font-black uppercase tracking-widest hover:bg-[#003628]/20 transition-all active:scale-95">Reset Pencarian</button>
+                                        <div class="space-y-1.5">
+                                            <label
+                                                class="ml-1 text-[9px] font-black tracking-widest text-slate-500 uppercase"
+                                                >Lokasi</label
+                                            >
+                                            <select
+                                                v-model="selectedLocation"
+                                                class="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">
+                                                    Semua Lokasi
+                                                </option>
+                                                <option
+                                                    v-for="l in options.locations"
+                                                    :key="l.id"
+                                                    :value="l.name"
+                                                >
+                                                    {{ l.name }}
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <div class="space-y-1.5">
+                                            <label
+                                                class="ml-1 text-[9px] font-black tracking-widest text-slate-500 uppercase"
+                                                >Sumber Profil</label
+                                            >
+                                            <select
+                                                v-model="selectedSource"
+                                                class="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="all">
+                                                    Semua Sumber
+                                                </option>
+                                                <option value="linked">
+                                                    Terhubung (Sync)
+                                                </option>
+                                                <option value="local">
+                                                    User Lokal Saja
+                                                </option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Transition>
                         </div>
+
+                        <button
+                            @click="syncLdap"
+                            :disabled="syncingLdap"
+                            class="flex h-11 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-700 transition-all hover:bg-slate-100 active:scale-95 disabled:opacity-50"
+                        >
+                            <DatabaseZap
+                                class="size-5 text-[#003628]"
+                                :class="{ 'animate-pulse': syncingLdap }"
+                            />
+                            <span class="text-[10px] tracking-widest uppercase"
+                                >Sinkronisasi Master</span
+                            >
+                        </button>
+
+                        <button
+                            @click="openCreateModal"
+                            class="ml-2 flex h-11 items-center gap-2 rounded-xl bg-[#003628] px-6 text-white shadow-lg shadow-[#003628]/10 transition-all hover:opacity-90 active:scale-95"
+                        >
+                            <Plus class="size-5" />
+                            <span
+                                class="text-xs font-black tracking-widest uppercase"
+                                >User Baru</span
+                            >
+                        </button>
                     </div>
                 </div>
+
+                <!-- Desktop Table -->
+                <div
+                    class="hidden overflow-hidden rounded-xl border border-slate-200/50 md:block"
+                >
+                    <table class="w-full min-w-[1100px] border-collapse">
+                        <thead>
+                            <tr
+                                class="border-b border-slate-100 bg-slate-50/50"
+                            >
+                                <th
+                                    class="w-12 px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    #
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Nama
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Email
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Perusahaan
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Departemen
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-left text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Lokasi
+                                </th>
+                                <th
+                                    class="px-6 py-3 text-right text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Kelola
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            <tr
+                                v-for="(item, index) in paginatedUsers"
+                                :key="
+                                    item.id || `snipe-${item.snipeit_user_id}`
+                                "
+                                class="group transition-colors hover:bg-slate-50/50"
+                            >
+                                <td
+                                    class="px-6 py-4 font-mono text-[10px] font-bold text-slate-300"
+                                >
+                                    {{ pageStart + index }}
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#003628] shadow-sm transition-transform duration-300 group-hover:scale-105"
+                                        >
+                                            <User class="size-4.5" />
+                                        </div>
+                                        <span
+                                            class="text-[13px] leading-none font-black tracking-tight text-slate-900"
+                                            >{{ item.name }}</span
+                                        >
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span
+                                        class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                        >{{ item.email }}</span
+                                    >
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-2">
+                                        <Building2
+                                            class="size-3 text-slate-400"
+                                        />
+                                        <span
+                                            class="text-[11px] font-black text-slate-600"
+                                            >{{
+                                                item.company_name || 'Generic'
+                                            }}</span
+                                        >
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span
+                                        class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                                        >{{
+                                            item.department_name || 'Tanpa Dept'
+                                        }}</span
+                                    >
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div
+                                        class="flex items-center gap-2 text-slate-500"
+                                    >
+                                        <MapPin class="size-3 text-slate-400" />
+                                        <span
+                                            class="text-[11px] font-black text-slate-600"
+                                            >{{
+                                                item.location_name || '-'
+                                            }}</span
+                                        >
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div
+                                        class="flex items-center justify-end gap-2"
+                                    >
+                                        <Link
+                                            v-if="item.id"
+                                            :href="`/users/${item.id}`"
+                                            class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 bg-white text-slate-400 shadow-sm transition-all hover:border-[#003628]/20 hover:text-[#003628] active:scale-90"
+                                            title="Detail User"
+                                        >
+                                            <Eye class="size-4" />
+                                        </Link>
+                                        <button
+                                            v-if="item.id"
+                                            @click="openEditModal(item.id)"
+                                            class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 bg-white text-slate-400 shadow-sm transition-all hover:border-amber-200 hover:text-amber-600 active:scale-90"
+                                            title="Edit user"
+                                        >
+                                            <Pencil class="size-4" />
+                                        </button>
+                                        <button
+                                            v-if="item.id"
+                                            @click="deleteUser(item)"
+                                            class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 bg-white text-slate-400 shadow-sm transition-all hover:border-rose-200 hover:text-rose-600 active:scale-90"
+                                            title="Hapus user"
+                                        >
+                                            <Trash2 class="size-4" />
+                                        </button>
+                                        <div
+                                            v-if="!item.id"
+                                            class="rounded bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-400 uppercase"
+                                        >
+                                            Belum Sinkron
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div
+                    class="mt-8 flex flex-col items-center justify-between gap-6 border-t border-slate-100 pt-8 md:flex-row"
+                >
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="flex items-center gap-2 text-[9px] font-black tracking-widest text-slate-400 uppercase"
+                        >
+                            <span>Tampilkan</span>
+                            <select
+                                v-model="pageSize"
+                                class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-black text-slate-600 outline-none focus:border-[#003628]/50"
+                            >
+                                <option :value="10">10</option>
+                                <option :value="25">25</option>
+                                <option :value="50">50</option>
+                            </select>
+                        </div>
+                        <p
+                            class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
+                        >
+                            <span class="text-slate-900"
+                                >{{ pageStart }}–{{ pageEnd }}</span
+                            >
+                            DARI
+                            <span class="text-slate-900">{{
+                                filteredUsers.length
+                            }}</span>
+                            USER
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            class="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm transition-all"
+                            :class="
+                                currentPage === 1
+                                    ? 'cursor-not-allowed text-slate-300 opacity-30'
+                                    : 'text-slate-600 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'
+                            "
+                            @click="goToPreviousPage"
+                        >
+                            <span class="text-lg leading-none">‹</span>
+                        </button>
+
+                        <button
+                            v-for="page in pageNumbers"
+                            :key="page"
+                            type="button"
+                            class="flex h-9 min-w-[36px] items-center justify-center rounded-xl border px-2 text-[11px] font-black shadow-sm transition-all"
+                            :class="
+                                page === currentPage
+                                    ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-[#003628]/20'
+                                    : 'border-slate-200 bg-white text-slate-500 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'
+                            "
+                            @click="setPage(page)"
+                        >
+                            {{ page }}
+                        </button>
+
+                        <button
+                            type="button"
+                            class="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm transition-all"
+                            :class="
+                                currentPage >= totalPages
+                                    ? 'cursor-not-allowed text-slate-300 opacity-30'
+                                    : 'text-slate-600 hover:border-[#003628]/30 hover:text-[#003628] active:scale-95'
+                            "
+                            @click="goToNextPage"
+                        >
+                            <span class="text-lg leading-none">›</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile cards -->
+                <div
+                    class="mt-8 space-y-3 rounded-2xl bg-slate-50/30 p-4 md:hidden"
+                >
+                    <article
+                        v-for="item in paginatedUsers"
+                        :key="item.id || `mob-snipe-${item.snipeit_user_id}`"
+                        class="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all active:scale-[0.98]"
+                    >
+                        <div class="mb-3 flex items-start justify-between">
+                            <div class="flex items-center gap-3">
+                                <div
+                                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[#003628]"
+                                >
+                                    <User class="size-4.5" />
+                                </div>
+                                <div class="min-w-0 space-y-0.5">
+                                    <h3
+                                        class="truncate text-[13px] font-bold tracking-tight text-slate-900"
+                                    >
+                                        {{ item.name }}
+                                    </h3>
+                                    <p
+                                        class="truncate text-[10px] font-medium text-slate-500"
+                                    >
+                                        {{ item.email }}
+                                    </p>
+                                </div>
+                            </div>
+                            <span
+                                class="shrink-0 rounded-lg border px-2 py-0.5 text-[9px] font-black tracking-widest uppercase"
+                                :class="
+                                    item.snipeit_user_id
+                                        ? 'border-[#003628]/20 bg-[#003628]/5 text-[#003628]'
+                                        : 'border-slate-200 bg-slate-100 text-slate-500'
+                                "
+                            >
+                                {{ item.snipeit_user_id ? 'Sync' : 'Lokal' }}
+                            </span>
+                        </div>
+
+                        <div
+                            class="flex items-center justify-between border-t border-slate-50 pt-3"
+                        >
+                            <div class="space-y-0.5">
+                                <p
+                                    class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
+                                >
+                                    Organisasi
+                                </p>
+                                <p
+                                    class="max-w-[150px] truncate text-[11px] font-bold text-slate-600"
+                                >
+                                    {{ item.company_name || '-' }}
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    v-if="item.id"
+                                    @click="openEditModal(item.id)"
+                                    class="p-2 text-slate-400 hover:text-amber-600"
+                                >
+                                    <Pencil class="size-4" />
+                                </button>
+                                <Link
+                                    v-if="item.id"
+                                    :href="`/users/${item.id}`"
+                                    class="p-2 text-slate-400 hover:text-[#003628]"
+                                    ><Eye class="size-4"
+                                /></Link>
+                                <button
+                                    v-if="item.id"
+                                    @click="deleteUser(item)"
+                                    class="p-2 text-slate-400 hover:text-rose-600"
+                                    title="Hapus user"
+                                >
+                                    <Trash2 class="size-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- Empty State -->
+                <div
+                    v-if="filteredUsers.length === 0"
+                    class="py-24 text-center"
+                >
+                    <div class="flex flex-col items-center gap-4">
+                        <div
+                            class="mb-2 flex h-20 w-20 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-300"
+                        >
+                            <Search class="size-10" />
+                        </div>
+                        <div class="space-y-1">
+                            <h3
+                                class="text-xl font-black tracking-widest text-slate-900 uppercase"
+                            >
+                                Tidak Ada Data Identitas
+                            </h3>
+                            <p
+                                class="mx-auto max-w-xs text-sm font-medium text-slate-500"
+                            >
+                                Tidak dapat menemukan pengguna yang sesuai
+                                dengan pencarian Anda.
+                            </p>
+                        </div>
+                        <button
+                            @click="resetFilters"
+                            class="mt-4 h-11 rounded-xl bg-[#003628]/10 px-6 text-[11px] font-black tracking-widest text-[#003628] uppercase transition-all hover:bg-[#003628]/20 active:scale-95"
+                        >
+                            Reset Pencarian
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- User Form Modal Overlay -->
@@ -617,7 +890,11 @@ const closeModal = () => {
             leave-from-class="opacity-100"
             leave-to-class="opacity-0"
         >
-            <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-slate-900/60" @click.self="closeModal">
+            <div
+                v-if="isModalOpen"
+                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+                @click.self="closeModal"
+            >
                 <Transition
                     enter-active-class="transition duration-300 ease-out"
                     enter-from-class="opacity-0 translate-y-8 scale-95"
@@ -626,28 +903,51 @@ const closeModal = () => {
                     leave-from-class="opacity-100 translate-y-0 scale-100"
                     leave-to-class="opacity-0 translate-y-8 scale-95"
                 >
-                    <div v-if="isModalOpen" class="relative w-full max-w-[940px] max-h-[90vh] overflow-y-auto rounded-[32px] border border-slate-200 bg-white shadow-2xl no-scrollbar">
-                         <UserForm
+                    <div
+                        v-if="isModalOpen"
+                        class="no-scrollbar relative max-h-[90vh] w-full max-w-[940px] overflow-y-auto rounded-[32px] border border-slate-200 bg-white shadow-2xl"
+                    >
+                        <UserForm
                             :is-modal="true"
-                            :title="modalMode === 'create' ? 'Daftarkan User Baru' : `Tata Kelola: ${selectedUser?.name}`"
-                            :submit-label="modalMode === 'create' ? 'Selesaikan Registrasi' : 'Perbarui Profil'"
-                            :submit-url="modalMode === 'create' ? '/users' : `/users/${selectedUser?.id}`"
+                            :title="
+                                modalMode === 'create'
+                                    ? 'Daftarkan User Baru'
+                                    : `Tata Kelola: ${selectedUser?.name}`
+                            "
+                            :submit-label="
+                                modalMode === 'create'
+                                    ? 'Selesaikan Registrasi'
+                                    : 'Perbarui Profil'
+                            "
+                            :submit-url="
+                                modalMode === 'create'
+                                    ? '/users'
+                                    : `/users/${selectedUser?.id}`
+                            "
                             :method="modalMode === 'create' ? 'post' : 'put'"
                             :user-id="selectedUser?.id"
                             :options="options"
                             :initial-values="selectedUser"
                             @success="closeModal"
-                         />
+                        />
                     </div>
                 </Transition>
             </div>
         </Transition>
 
         <!-- Loading Overlay -->
-        <div v-if="loadingUser" class="fixed inset-0 z-[60] flex items-center justify-center bg-white/50 backdrop-blur-sm">
-            <div class="flex flex-col items-center gap-4 p-8 rounded-[32px] bg-white border border-slate-200 shadow-2xl">
+        <div
+            v-if="loadingUser"
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-white/50 backdrop-blur-sm"
+        >
+            <div
+                class="flex flex-col items-center gap-4 rounded-[32px] border border-slate-200 bg-white p-8 shadow-2xl"
+            >
                 <Loader2 class="size-8 animate-spin text-[#003628]" />
-                <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Mengambil Data Identitas...</span>
+                <span
+                    class="text-[10px] font-black tracking-widest text-slate-500 uppercase"
+                    >Mengambil Data Identitas...</span
+                >
             </div>
         </div>
     </AppLayout>
@@ -655,10 +955,10 @@ const closeModal = () => {
 
 <style scoped>
 .no-scrollbar::-webkit-scrollbar {
-  display: none;
+    display: none;
 }
 .no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 </style>

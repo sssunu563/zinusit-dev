@@ -12,6 +12,7 @@ import {
     RefreshCw,
     Search,
     SlidersHorizontal,
+    Trash2,
 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { useRenderProfiler } from '@/composables/useRenderProfiler';
@@ -70,6 +71,7 @@ const emit = defineEmits<{
     handover: [];
     loan: [];
     'return-loan': [items: AssetItem[]];
+    delete: [asset: AssetItem];
 }>();
 
 useRenderProfiler('AssetListTableSection');
@@ -600,6 +602,14 @@ const toggleSelect = (id: number | string) => {
                                     >
                                         <Pencil class="size-4" />
                                     </Link>
+                                    <button
+                                        type="button"
+                                        class="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-100 bg-white text-slate-400 shadow-sm transition-all hover:border-rose-200 hover:text-rose-600 active:scale-90"
+                                        title="Hapus"
+                                        @click="emit('delete', asset)"
+                                    >
+                                        <Trash2 class="size-4" />
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -720,6 +730,14 @@ const toggleSelect = (id: number | string) => {
                         >
                             <Pencil class="size-4" />
                         </Link>
+                        <button
+                            type="button"
+                            class="flex h-10 items-center justify-center rounded-xl bg-rose-500/10 px-4 text-rose-600"
+                            title="Hapus"
+                            @click="emit('delete', asset)"
+                        >
+                            <Trash2 class="size-4" />
+                        </button>
                     </div>
                 </div>
             </div>

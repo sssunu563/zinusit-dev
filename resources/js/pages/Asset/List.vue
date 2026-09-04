@@ -59,6 +59,17 @@ const showHandoverModal = ref(false);
 const showReturnLoanModal = ref(false);
 const returnLoanSelectedItems = ref<AssetItem[]>([]);
 
+const deleteAsset = (asset: AssetItem) => {
+    if (!window.confirm(`Hapus asset "${asset.name}" dari Snipe-IT?`)) return;
+
+    router.delete(
+        `/asset/item/${encodeURIComponent(String(asset.id))}?type=${encodeURIComponent(activeType.value)}`,
+        {
+            preserveScroll: true,
+        },
+    );
+};
+
 const normalizeAssetStatusForStb = (value?: string | null) => {
     const normalized = String(value ?? '')
         .trim()
@@ -926,6 +937,7 @@ const createHref = computed(
                 @handover="handleHandover"
                 @loan="handleLoan"
                 @return-loan="handleReturnLoan"
+                @delete="deleteAsset"
             />
         </div>
     </AppLayout>

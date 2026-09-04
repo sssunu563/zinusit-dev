@@ -102,6 +102,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('asset/api/{assetId}', [AssetController::class, 'apiShow'])->name('api.asset.show');
     Route::get('asset/api-by-tag/{tag}', [AssetController::class, 'apiShowByTag'])->name('api.asset.show.by-tag');
     Route::get('asset/item/{assetId}', [AssetController::class, 'show'])->name('asset.show');
+    Route::delete('asset/item/{assetId}', [AssetController::class, 'destroy'])->name('asset.destroy');
     Route::post('asset/item/{assetId}/stock', [AssetController::class, 'addStock'])->name('asset.stock.add');
     Route::post('asset/item/{assetId}/document', [AssetController::class, 'uploadDocument'])->name('asset.document.upload');
     Route::get('asset/item/{assetId}/tab-data', [AssetController::class, 'tabData'])->name('asset.tab.data');

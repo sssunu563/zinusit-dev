@@ -945,7 +945,7 @@ class UserController extends Controller
 
         // Guard: block delete if user has active assignments in Snipe-IT
         if ($snipeId) {
-            $resp   = $this->snipe->request("users/{$snipeId}");
+                $resp   = $this->snipe->request("users/{$snipeId}", [], true);
             $total  = (int) ($resp['assets_count'] ?? 0)
                     + (int) ($resp['licenses_count'] ?? 0)
                     + (int) ($resp['accessories_count'] ?? 0);
@@ -955,15 +955,32 @@ class UserController extends Controller
                     ->with('error', 'User masih memiliki asset yang di-assign. Harap checkin semua asset terlebih dahulu.');
             }
 
-            $this->snipe->deleteRecord('users', $snipeId);
+            $hasDocuments = \App\Models\Stb::where('user_id', $snipeId)->exists()
+                || \App\Models\Peminjaman::where('user_id', $snipeId)->exists();
+            if ($hasDocuments) {
+                return to_route('users.show', $user)
+                    ->with('error', 'User masih tercatat dalam dokumen STB atau Peminjaman.');
+            }
+
+            $response = $this->snipe->deleteRecord('users', $snipeId);
+            if (($response['status'] ?? 'error') !== 'success') {
+                $message = $response['messages'] ?? 'API menolak penghapusan.';
+                $message = is_array($message) ? json_encode($message) : (string) $message;
+
+                return to_route('users.show', $user)
+                    ->with('error', 'User tidak dapat dihapus dari Snipe-IT: ' . $message);
+            }
         }
 
         // Remove from LLDAP
         if ($user->username) {
             try {
                 $this->ldap->deleteUser($user->username);
-            } catch (\Throwable) {
-                // LDAP removal failure is non-blocking
+            } catch (\Throwable $e) {
+                Log::warning('Failed to remove user from LLDAP', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 

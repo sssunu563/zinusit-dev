@@ -405,6 +405,42 @@ class AssetController extends Controller
             ->with('success', 'Dokumen berhasil di-upload.');
     }
 
+    public function destroy(Request $request, int $assetId): RedirectResponse
+    {
+        $type = $this->normalizeType((string) $request->query('type', 'assets'));
+        $endpoint = $type === 'laptop' ? 'hardware' : $this->endpointForType($type);
+        $record = $this->snipe->request("{$endpoint}/{$assetId}", [], true);
+
+        if (empty($record['id'])) {
+            return back()->with('error', 'Asset tidak ditemukan di Snipe-IT.');
+        }
+
+        $assigned = data_get($record, 'assigned_to.id')
+            ?? data_get($record, 'assigned_to');
+        if ($assigned !== null && $assigned !== '' && $assigned !== '-') {
+            return back()->with('error', 'Asset masih di-assign. Check-in asset terlebih dahulu.');
+        }
+
+        $referenced = 
+            \App\Models\StbItem::where('snipeit_asset_id', $assetId)->exists()
+            || \App\Models\PeminjamanItem::where('snipeit_asset_id', $assetId)->exists();
+        if ($referenced) {
+            return back()->with('error', 'Asset masih digunakan dalam dokumen STB atau Peminjaman.');
+        }
+
+        $response = $this->snipe->deleteRecord($endpoint, $assetId);
+        if (($response['status'] ?? 'error') !== 'success') {
+            return back()->with('error', 'Asset tidak dapat dihapus dari Snipe-IT: ' . $this->extractApiMessage($response));
+        }
+
+        $this->logAction('deleted', $assetId, $type, 'Asset dihapus dari Snipe-IT', [
+            'asset_type' => $type,
+            'asset_id' => $assetId,
+        ]);
+
+        return to_route('asset.index', ['type' => $type])->with('success', 'Asset berhasil dihapus.');
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $type = $this->normalizeType((string) $request->input('type', 'assets'));
