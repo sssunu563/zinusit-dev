@@ -70,14 +70,52 @@ const customLabels = ref<CustomLabel[]>([
     },
 ]);
 
-// Print / Label configuration options
+// Paper size presets [label, widthMM, heightMM]
+const paperSizeOptions = [
+    { key: 'xs', label: '40 × 25 mm', w: 40, h: 25 },
+    { key: 'sm', label: '50 × 30 mm', w: 50, h: 30 },
+    { key: 'md', label: '62 × 29 mm', w: 62, h: 29 },
+    { key: 'lg', label: '70 × 40 mm', w: 70, h: 40 },
+    { key: 'xl', label: '100 × 50 mm', w: 100, h: 50 },
+] as const;
+
+type PaperSizeKey = (typeof paperSizeOptions)[number]['key'];
+
+const selectedPaperSize = ref<PaperSizeKey>('xs');
+
+const currentPaperSize = computed(
+    () =>
+        paperSizeOptions.find((s) => s.key === selectedPaperSize.value) ??
+        paperSizeOptions[0],
+);
+
+// QR pixel size = 72% of label height (1mm ≈ 3.78px)
+const qrPxSize = computed(() =>
+    Math.round(currentPaperSize.value.h * 3.78 * 0.72),
+);
+
+// Inject dynamic @page style (used both for browser print & live preview update)
+const applyPageStyle = () => {
+    let el = document.getElementById(
+        'lg-page-style',
+    ) as HTMLStyleElement | null;
+    if (!el) {
+        el = document.createElement('style');
+        el.id = 'lg-page-style';
+        document.head.appendChild(el);
+    }
+    const { w, h } = currentPaperSize.value;
+    el.textContent = `@media print { @page { size: ${w}mm ${h}mm; margin: 0; } }`;
+};
+
+watch(selectedPaperSize, applyPageStyle, { immediate: true });
+
+// Label display options
 const labelConfig = ref({
-    size: 'standard', // 'standard' (40x25mm), 'medium' (50x30mm), 'large' (70x40mm)
     showName: true,
     showTag: true,
     showSerial: true,
     showLocation: true,
-    showStatus: true,
 });
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -164,14 +202,18 @@ const triggerPrint = () => {
         const ids = printItems.value
             .map((item) => item.id)
             .filter((id) => id > 0);
+
         if (ids.length > 0) {
-            window.open(
-                `/label-generator/pdf?ids[]=${ids.join('&ids[]=')}`,
-                '_blank',
-            );
+            const query = new URLSearchParams({
+                size: selectedPaperSize.value,
+            });
+            ids.forEach((id) => query.append('ids[]', String(id)));
+            window.open(`/label-generator/pdf?${query.toString()}`, '_blank');
             return;
         }
     }
+
+    applyPageStyle();
     window.print();
 };
 
@@ -260,23 +302,33 @@ const printSingleAsset = (asset: AssetItem) => {
                 <div
                     class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/60 bg-white p-3 text-xs shadow-xs lg:col-span-2"
                 >
-                    <div
-                        class="flex items-center gap-2 font-bold text-slate-500"
-                    >
-                        <Sliders class="size-3.5 text-[#003628]" />
-                        <span>Opsi Ukuran:</span>
-                        <select
-                            v-model="labelConfig.size"
-                            class="h-8 rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-700 outline-none"
+                    <!-- Paper size -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div
+                            class="flex items-center gap-1.5 font-bold text-slate-500"
                         >
-                            <option value="standard">
-                                Standard (40 × 25 mm)
-                            </option>
-                            <option value="medium">Medium (50 × 30 mm)</option>
-                            <option value="large">Besar (70 × 40 mm)</option>
-                        </select>
+                            <Sliders class="size-3.5 text-[#003628]" />
+                            <span>Ukuran Kertas:</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1.5">
+                            <button
+                                v-for="s in paperSizeOptions"
+                                :key="s.key"
+                                type="button"
+                                @click="selectedPaperSize = s.key"
+                                class="h-7 cursor-pointer rounded-lg border px-2.5 text-[10px] font-bold transition-all"
+                                :class="
+                                    selectedPaperSize === s.key
+                                        ? 'border-[#003628] bg-[#003628] text-white'
+                                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300'
+                                "
+                            >
+                                {{ s.label }}
+                            </button>
+                        </div>
                     </div>
 
+                    <!-- Field toggles -->
                     <div
                         class="flex items-center gap-3 text-[11px] font-bold text-slate-600"
                     >
@@ -573,16 +625,27 @@ const printSingleAsset = (asset: AssetItem) => {
         </div>
 
         <!-- PRINT VIEW ONLY (Triggered when window.print() is called) -->
-        <div class="print-sheet hidden print:block">
+        <div class="print-sheet">
             <div
                 v-for="item in printItems"
                 :key="item.id"
                 class="print-label-item"
+                :style="{
+                    width: currentPaperSize.w + 'mm',
+                    height: currentPaperSize.h + 'mm',
+                }"
             >
-                <div class="pl-qr">
+                <div
+                    class="pl-qr"
+                    :style="{
+                        width: Math.round(currentPaperSize.h * 0.72) + 'mm',
+                        height: Math.round(currentPaperSize.h * 0.72) + 'mm',
+                        flexBasis: Math.round(currentPaperSize.h * 0.72) + 'mm',
+                    }"
+                >
                     <QrcodeVue
                         :value="item.qr_url"
-                        :size="62"
+                        :size="qrPxSize"
                         level="M"
                         render-as="svg"
                         :margin="0"
@@ -592,11 +655,19 @@ const printSingleAsset = (asset: AssetItem) => {
                     <p class="pl-name">
                         {{ item.name || item.model || item.asset_tag }}
                     </p>
-                    <p class="pl-tag">{{ item.asset_tag }}</p>
-                    <p v-if="item.serial" class="pl-serial">
+                    <p v-if="labelConfig.showTag" class="pl-tag">
+                        {{ item.asset_tag }}
+                    </p>
+                    <p
+                        v-if="labelConfig.showSerial && item.serial"
+                        class="pl-serial"
+                    >
                         SN: {{ item.serial }}
                     </p>
-                    <p v-if="item.location" class="pl-loc">
+                    <p
+                        v-if="labelConfig.showLocation && item.location"
+                        class="pl-loc"
+                    >
                         {{ item.location }}
                     </p>
                 </div>
@@ -606,37 +677,67 @@ const printSingleAsset = (asset: AssetItem) => {
 </template>
 
 <style>
+/* ── Screen: ensure print-sheet is invisible ── */
+.print-sheet {
+    display: none;
+}
+
 @media print {
-    @page {
-        size: 40mm 25mm;
-        margin: 0;
+    /* @page size is injected dynamically via applyPageStyle() */
+
+    /* Hide non-print elements */
+    aside,
+    [data-sidebar='sidebar'],
+    header,
+    [data-sidebar='header'],
+    .app-page-shell {
+        display: none !important;
     }
 
-    body {
-        background: white !important;
+    /* Reset layout ancestors so print-sheet is displayed cleanly */
+    html,
+    body,
+    #app,
+    [data-sidebar='provider'],
+    [data-sidebar='inset'],
+    main {
         margin: 0 !important;
         padding: 0 !important;
+        background: white !important;
+        border: none !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        box-shadow: none !important;
     }
 
-    /* Print sheet containing multiple labels */
+    /* Show only the print sheet */
     .print-sheet {
         display: block !important;
         margin: 0 !important;
         padding: 0 !important;
+        background: white !important;
     }
 
     .print-label-item {
         display: flex !important;
-        align-items: center;
-        width: 40mm;
-        height: 25mm;
-        padding: 1.5mm;
-        background: white;
-        overflow: hidden;
-        gap: 2mm;
-        page-break-after: always;
-        page-break-inside: avoid;
-        box-sizing: border-box;
+        align-items: center !important;
+        padding: 1.5mm !important;
+        background: white !important;
+        overflow: hidden !important;
+        gap: 2mm !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+    }
+
+    .print-label-item:last-child {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
     }
 
     .pl-qr {
@@ -644,13 +745,11 @@ const printSingleAsset = (asset: AssetItem) => {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 17mm;
-        height: 17mm;
     }
 
     .pl-qr svg {
-        width: 17mm !important;
-        height: 17mm !important;
+        width: 100% !important;
+        height: 100% !important;
     }
 
     .pl-info {
@@ -698,6 +797,11 @@ const printSingleAsset = (asset: AssetItem) => {
         margin-top: 0.3mm;
         white-space: nowrap;
         overflow: hidden;
+    }
+
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 }
 </style>

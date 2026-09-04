@@ -54,6 +54,11 @@ class LabelGeneratorController extends Controller
 
     public function pdf(Request $request): \Symfony\Component\HttpFoundation\BinaryFileResponse|RedirectResponse
     {
+        $size = (string) $request->query('size', 'xs');
+        if (!in_array($size, ['xs', 'sm', 'md', 'lg', 'xl'], true)) {
+            $size = 'xs';
+        }
+
         $ids = collect($request->input('ids', []))
             ->map(fn ($id) => (int) $id)
             ->filter(fn (int $id) => $id > 0)
@@ -90,7 +95,10 @@ class LabelGeneratorController extends Controller
         $htmlPath = $tempDirectory . DIRECTORY_SEPARATOR . Str::uuid() . '.html';
         $pdfPath = storage_path('app/public/asset-labels/asset-labels.pdf');
         if (!is_dir(dirname($pdfPath))) mkdir(dirname($pdfPath), 0777, true);
-        file_put_contents($htmlPath, view('asset.label_pdf_batch', ['assets' => $assets])->render());
+        file_put_contents($htmlPath, view('asset.label_pdf_batch', [
+            'assets' => $assets,
+            'size' => $size,
+        ])->render());
 
         $process = new Process([
             $browserPath, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
