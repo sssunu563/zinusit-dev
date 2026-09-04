@@ -17,17 +17,12 @@
         $qrMm = round($h * 0.72);
     @endphp
     <style>
-        @php
-            $pageMargin = 5;
-            $columns = max(1, floor((210 - ($pageMargin * 2)) / $w));
-            $rows = max(1, floor((297 - ($pageMargin * 2)) / $h));
-        @endphp
-        @page { size: A4 portrait; margin: 0; }
+        @page { size: {{ $w }}mm {{ $h }}mm; margin: 0; }
         * { box-sizing: border-box; }
-        html, body { width: 210mm; min-height: 297mm; margin: 0; padding: 0; }
+        html, body { width: {{ $w }}mm; height: {{ $h }}mm; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; }
-        .sheet { display: grid; grid-template-columns: repeat({{ $columns }}, {{ $w }}mm); grid-auto-rows: {{ $h }}mm; align-content: start; width: 210mm; min-height: 297mm; padding: {{ $pageMargin }}mm; }
-        .label { display: flex; align-items: center; gap: 2mm; width: {{ $w }}mm; height: {{ $h }}mm; padding: 1.5mm; overflow: hidden; page-break-inside: avoid; }
+        .sheet { display: block; width: {{ $w }}mm; }
+        .label { display: flex; align-items: center; gap: 2mm; width: {{ $w }}mm; height: {{ $h }}mm; padding: 1.5mm; overflow: hidden; page-break-after: always; page-break-inside: avoid; }
         .qr { width: {{ $qrMm }}mm; height: {{ $qrMm }}mm; flex: 0 0 {{ $qrMm }}mm; }
         .qr canvas { width: {{ $qrMm }}mm; height: {{ $qrMm }}mm; }
         .info { min-width: 0; overflow: hidden; }
