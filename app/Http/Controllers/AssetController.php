@@ -1549,21 +1549,21 @@ class AssetController extends Controller
 
             // Snipe-IT and local audit logging both record create/update events.
             // Keep the local event, which contains the application actor and note.
-            $duplicateLocalIds = $localEvents->filter(function (array $local) use ($snipeEvents) {
-                $localAction = strtolower($local['action_type']);
-                if (!in_array($localAction, ['create', 'created', 'update', 'updated'], true)) {
+            $duplicateSnipeIds = $snipeEvents->filter(function (array $snipe) use ($localEvents) {
+                $snipeAction = strtolower($snipe['action_type']);
+                if (!str_contains($snipeAction, 'create') && !str_contains($snipeAction, 'update')) {
                     return false;
                 }
 
-                $localDate = \Carbon\Carbon::parse($local['date']);
+                $snipeDate = \Carbon\Carbon::parse($snipe['date']);
 
-                return $snipeEvents->contains(function (array $snipe) use ($local, $localDate) {
-                    $snipeAction = strtolower($snipe['action_type']);
-                    if (!str_contains($snipeAction, 'create') && !str_contains($snipeAction, 'update')) {
+                return $localEvents->contains(function (array $local) use ($snipe, $snipeDate) {
+                    $localAction = strtolower($local['action_type']);
+                    if (!in_array($localAction, ['create', 'created', 'update', 'updated'], true)) {
                         return false;
                     }
 
-                    $snipeDate = \Carbon\Carbon::parse($snipe['date']);
+                    $localDate = \Carbon\Carbon::parse($local['date']);
                     $sameTarget = $local['target'] === '-' || $snipe['target'] === '-'
                         || str_contains(strtolower((string) $local['target']), strtolower((string) $snipe['target']))
                         || str_contains(strtolower((string) $local['note']), strtolower((string) $snipe['target']));
@@ -1572,8 +1572,8 @@ class AssetController extends Controller
                 });
             })->pluck('id');
 
-            $history = $snipeEvents
-                ->concat($localEvents->reject(fn (array $local) => $duplicateLocalIds->contains($local['id'])))
+            $history = $localEvents
+                ->concat($snipeEvents->reject(fn (array $snipe) => $duplicateSnipeIds->contains($snipe['id'])))
                 ->concat($stbItems->map(fn($item) => [
                 'id'          => 'stb_' . $item->id,
                 'action_type' => strtoupper($item->stb->document_type === 'handover' ? 'MUTASI (SERAH TERIMA)' : 'MUTASI (PENGEMBALIAN)'),
