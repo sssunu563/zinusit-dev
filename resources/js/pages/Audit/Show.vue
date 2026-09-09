@@ -265,7 +265,7 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="session.status === 'Open'" class="flex items-center gap-3">
-                    <a :href="route('audit.export', session.id)" target="_blank" class="h-12 px-6 rounded-2xl border border-slate-200 bg-white flex items-center gap-2 text-slate-600 hover:text-[#003628] transition-all text-xs font-black uppercase tracking-widest shadow-sm">
+                    <a :href="`/audit/${session.id}/export`" target="_blank" class="h-12 px-6 rounded-2xl border border-slate-200 bg-white flex items-center gap-2 text-slate-600 hover:text-[#003628] transition-all text-xs font-black uppercase tracking-widest shadow-sm">
                         <Download class="w-4 h-4" /> Export Report
                     </a>
                     <Button @click="completeSession" variant="outline" class="h-12 rounded-2xl border-slate-200 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 text-xs font-black uppercase tracking-widest px-8 transition-all">
@@ -273,7 +273,7 @@ onUnmounted(() => {
                     </Button>
                 </div>
                 <div v-else class="flex items-center gap-3">
-                    <a :href="route('audit.export', session.id)" target="_blank" class="h-12 px-6 rounded-2xl bg-[#003628] flex items-center gap-2 text-white hover:brightness-110 transition-all text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20">
+                    <a :href="`/audit/${session.id}/export`" target="_blank" class="h-12 px-6 rounded-2xl bg-[#003628] flex items-center gap-2 text-white hover:brightness-110 transition-all text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20">
                         <Download class="w-4 h-4" /> Download Final Report
                     </a>
                 </div>

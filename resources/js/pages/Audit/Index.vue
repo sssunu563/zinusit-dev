@@ -358,14 +358,14 @@ const formatDate = (date: string) => {
                                         class="max-w-[80px] truncate text-sm font-black text-slate-700"
                                     >
                                         {{
-                                            session.creator?.name.split(' ')[0]
+                                            session.creator?.name?.split(' ')[0] || 'Admin'
                                         }}
                                     </p>
                                 </div>
                             </div>
 
                             <Link
-                                :href="route('audit.show', session.id)"
+                                :href="`/audit/${session.id}`"
                                 class="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-[#003628] shadow-sm transition-all hover:bg-[#003628] hover:text-white"
                             >
                                 <ArrowRight class="h-6 w-6" />

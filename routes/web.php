@@ -195,10 +195,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('vendors/{vendor}', [\App\Http\Controllers\VendorController::class, 'update'])->name('vendors.update');
     Route::delete('vendors/{vendor}', [\App\Http\Controllers\VendorController::class, 'destroy'])->name('vendors.destroy');
     
+    // Stock Opname (Audit) routes
+    Route::get('audit', [\App\Http\Controllers\AuditController::class, 'index'])->name('audit.index');
+    Route::post('audit', [\App\Http\Controllers\AuditController::class, 'store'])->name('audit.store');
+    Route::get('audit/{session}', [\App\Http\Controllers\AuditController::class, 'show'])->name('audit.show');
+    Route::post('audit/{session}/scan', [\App\Http\Controllers\AuditController::class, 'scan'])->name('audit.scan');
+    Route::post('audit/{session}/verify', [\App\Http\Controllers\AuditController::class, 'verify'])->name('audit.verify');
+    Route::post('audit/{session}/sync-item/{item}', [\App\Http\Controllers\AuditController::class, 'syncItem'])->name('audit.sync-item');
+    Route::post('audit/{session}/complete', [\App\Http\Controllers\AuditController::class, 'complete'])->name('audit.complete');
+    Route::get('audit/{session}/export', [\App\Http\Controllers\AuditController::class, 'export'])->name('audit.export');
+
     // Knowledge Base routes
     Route::get('kb', [\App\Http\Controllers\KnowledgeBaseController::class, 'index'])->name('kb.index');
-    Route::get('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'show'])->name('kb.show');
+    Route::get('kb/create', [\App\Http\Controllers\KnowledgeBaseController::class, 'create'])->name('kb.create');
     Route::post('kb', [\App\Http\Controllers\KnowledgeBaseController::class, 'store'])->name('kb.store');
+    Route::get('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'show'])->name('kb.show');
+    Route::get('kb/{article:slug}/edit', [\App\Http\Controllers\KnowledgeBaseController::class, 'edit'])->name('kb.edit');
+    Route::put('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'update'])->name('kb.update');
+    Route::delete('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'destroy'])->name('kb.destroy');
 
     // Procurement routes
     Route::get('procurement', [\App\Http\Controllers\ProcurementController::class, 'index'])->name('procurement.index');
