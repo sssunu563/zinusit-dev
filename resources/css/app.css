@@ -1249,9 +1249,11 @@
     }
     .shared-signature-time {
         font-size: 8px !important;
-        color: #94a3b8 !important;
+        color: #475569 !important;
         margin-top: 4px !important;
         text-align: center !important;
+        display: block !important;
+        visibility: visible !important;
     }
 
     .shared-agreement-box {
@@ -1536,6 +1538,11 @@
         font-size: 8px;
         color: #94a3b8;
         margin-top: 3px;
+    }
+    .insp-doc .insp-confirm .sig-date {
+        font-size: 8px;
+        color: #64748b;
+        margin-top: 2px;
     }
     .insp-doc .insp-confirm .sig-actions {
         margin-top: 5px;
@@ -2037,6 +2044,14 @@
             font-size: 11px !important;
             border-bottom: 1.5px solid #003628 !important;
             padding: 0 10px !important;
+        }
+        .shared-signature-time {
+            display: block !important;
+            visibility: visible !important;
+            font-size: 9px !important;
+            color: #475569 !important;
+            margin-top: 4px !important;
+            text-align: center !important;
         }
 
         .shared-photo-box {

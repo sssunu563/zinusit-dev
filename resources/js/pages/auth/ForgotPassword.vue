@@ -31,9 +31,16 @@ defineProps<{
         </div>
 
         <div class="space-y-8">
-            <Form v-bind="email.form()" v-slot="{ errors, processing }" class="space-y-6">
+            <Form
+                v-bind="email.form()"
+                v-slot="{ errors, processing }"
+                class="space-y-6"
+            >
                 <div class="space-y-3">
-                    <Label for="email" class="text-[10px] font-black tracking-widest text-slate-400 uppercase ml-1">
+                    <Label
+                        for="email"
+                        class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                    >
                         Recovery Enterprise Email
                     </Label>
                     <Input
@@ -43,27 +50,39 @@ defineProps<{
                         autocomplete="off"
                         autofocus
                         placeholder="name@company.com"
-                        class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:border-primary/50 focus:bg-white transition-all outline-none"
+                        class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-300 focus:border-primary/50 focus:bg-white"
                     />
                     <InputError :message="errors.email" />
                 </div>
 
                 <Button
-                    class="h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:bg-primary-dark hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
+                    class="hover:bg-primary-dark h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
                     :disabled="processing"
                     data-test="email-password-reset-link-button"
                 >
                     <Spinner v-if="processing" class="mr-2 size-4" />
-                    {{ processing ? 'Transmitting Link...' : 'Send Recovery Link' }}
+                    {{
+                        processing
+                            ? 'Transmitting Link...'
+                            : 'Send Recovery Link'
+                    }}
                 </Button>
             </Form>
 
             <div class="text-center text-[13px] text-slate-400">
-                Facing issues? Contact 
-                <TextLink :href="login()" class="font-black text-primary hover:text-primary-dark transition-colors">Infrastructure Support</TextLink>
+                Facing issues? Contact
+                <TextLink
+                    :href="login()"
+                    class="hover:text-primary-dark font-black text-primary transition-colors"
+                    >Dukungan Infrastruktur</TextLink
+                >
                 <br />
                 <div class="mt-4">
-                    <TextLink :href="login()" class="text-slate-400 font-bold hover:text-slate-600 transition-all">Back to Login</TextLink>
+                    <TextLink
+                        :href="login()"
+                        class="font-bold text-slate-400 transition-all hover:text-slate-600"
+                        >Kembali ke Masuk</TextLink
+                    >
                 </div>
             </div>
         </div>

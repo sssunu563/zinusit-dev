@@ -7,6 +7,7 @@ import {
     LucideClipboardList as LoanIcon,
     LucideSearchCheck as InspectionIcon,
     LucideBriefcase as TicketIcon,
+    LucidePenTool as PenToolIcon,
 } from 'lucide-vue-next';
 import { computed, reactive, watch, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -37,6 +38,7 @@ interface StatsSummary {
     peminjaman: number;
     inspection: number;
     ticket: number;
+    signature: number;
 }
 
 const props = defineProps<{
@@ -221,7 +223,7 @@ const openDetail = (log: FormLogItem) => {
             </header>
 
             <!-- Stats Overview Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3.5 mb-6">
                 <button
                     type="button"
                     @click="filterForm.filter_form = ''"
@@ -277,7 +279,7 @@ const openDetail = (log: FormLogItem) => {
                 <button
                     type="button"
                     @click="filterForm.filter_form = 'ticket'"
-                    class="p-4 rounded-2xl border transition-all text-left group col-span-2 sm:col-span-1"
+                    class="p-4 rounded-2xl border transition-all text-left group"
                     :class="filterForm.filter_form === 'ticket' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
                 >
                     <div class="flex items-center justify-between mb-2">
@@ -285,6 +287,19 @@ const openDetail = (log: FormLogItem) => {
                         <TicketIcon class="size-4" :class="filterForm.filter_form === 'ticket' ? 'text-emerald-200' : 'text-slate-400'" />
                     </div>
                     <p class="text-xl font-black tabular-nums">{{ stats.ticket }}</p>
+                </button>
+
+                <button
+                    type="button"
+                    @click="filterForm.filter_form = 'signature'"
+                    class="p-4 rounded-2xl border transition-all text-left group"
+                    :class="filterForm.filter_form === 'signature' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
+                >
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_form === 'signature' ? 'text-emerald-300' : 'text-slate-400'">Tanda Tangan</span>
+                        <PenToolIcon class="size-4" :class="filterForm.filter_form === 'signature' ? 'text-emerald-200' : 'text-slate-400'" />
+                    </div>
+                    <p class="text-xl font-black tabular-nums">{{ stats.signature }}</p>
                 </button>
             </div>
 

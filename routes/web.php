@@ -61,10 +61,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::middleware('password.change')->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
+        Route::get('notification-settings', [\App\Http\Controllers\NotificationSettingsController::class, 'index'])->name('notification-settings.index');
+        Route::put('notification-settings', [\App\Http\Controllers\NotificationSettingsController::class, 'update'])->name('notification-settings.update');
+        Route::post('notification-settings/test-local', [\App\Http\Controllers\NotificationSettingsController::class, 'testLocal'])->name('notification-settings.test-local');
+        Route::post('notification-settings/test-webhook', [\App\Http\Controllers\NotificationSettingsController::class, 'testWebhook'])->name('notification-settings.test-webhook');
     Route::get('users', [UserController::class, 'index'])->name('users.index');
+    Route::get('users/ldap', [UserController::class, 'ldapIndex'])->name('users.ldap.index');
+    Route::post('users/ldap', [UserController::class, 'ldapStore'])->name('users.ldap.store');
+    Route::put('users/ldap/{username}', [UserController::class, 'ldapUpdate'])->name('users.ldap.update');
+    Route::delete('users/ldap/{username}', [UserController::class, 'ldapDestroy'])->name('users.ldap.destroy');
     Route::get('users/create', [UserController::class, 'create'])->name('users.create');
     Route::post('users', [UserController::class, 'store'])->name('users.store');
-    Route::post('users/sync-ldap', [UserController::class, 'syncLdap'])->name('users.sync-ldap');
     Route::post('users/sync', [UserController::class, 'sync'])->name('users.sync');
     Route::get('users/{user}', [UserController::class, 'show'])->name('users.show');
     Route::get('users/{user}/edit', [UserController::class, 'edit'])->name('users.edit');
@@ -101,6 +108,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('asset/create', [AssetController::class, 'create'])->name('asset.create');
     Route::get('asset/api/{assetId}', [AssetController::class, 'apiShow'])->name('api.asset.show');
     Route::get('asset/api-by-tag/{tag}', [AssetController::class, 'apiShowByTag'])->name('api.asset.show.by-tag');
+    Route::get('asset/file-proxy', [AssetController::class, 'proxyFile'])->name('asset.file.proxy');
     Route::get('asset/item/{assetId}', [AssetController::class, 'show'])->name('asset.show');
     Route::delete('asset/item/{assetId}', [AssetController::class, 'destroy'])->name('asset.destroy');
     Route::post('asset/item/{assetId}/stock', [AssetController::class, 'addStock'])->name('asset.stock.add');

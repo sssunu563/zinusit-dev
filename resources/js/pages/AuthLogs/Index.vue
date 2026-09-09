@@ -12,7 +12,9 @@ import {
 import { computed, reactive, ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLogsTable from '@/pages/AuthLogs/Partials/AuthLogsTable.vue';
-import AuthLogDetailSheet, { type AuthLogItem } from '@/pages/AuthLogs/Partials/AuthLogDetailSheet.vue';
+import AuthLogDetailSheet, {
+    type AuthLogItem,
+} from '@/pages/AuthLogs/Partials/AuthLogDetailSheet.vue';
 import type { BreadcrumbItem } from '@/types';
 
 interface PaginationLink {
@@ -53,7 +55,7 @@ const props = defineProps<Props>();
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Auth Logs', href: '/auth-logs' },
+    { title: 'Log Autentikasi', href: '/auth-logs' },
 ];
 
 const filterForm = reactive({
@@ -136,7 +138,9 @@ const exportUrl = computed(() => {
     if (filterForm.to_date) params.set('to_date', filterForm.to_date);
 
     const queryString = params.toString();
-    return queryString ? `/auth-logs/export?${queryString}` : '/auth-logs/export';
+    return queryString
+        ? `/auth-logs/export?${queryString}`
+        : '/auth-logs/export';
 });
 
 const toInputDate = (date: Date) => date.toISOString().slice(0, 10);
@@ -181,7 +185,9 @@ const isPresetActive = (preset: keyof typeof datePresets) =>
     filterForm.from_date === datePresets[preset].from &&
     filterForm.to_date === datePresets[preset].to;
 
-const setCardFilter = (mode: 'all' | 'success' | 'failed' | 'logout' | 'sync') => {
+const setCardFilter = (
+    mode: 'all' | 'success' | 'failed' | 'logout' | 'sync',
+) => {
     switch (mode) {
         case 'all':
             filterForm.event = '';
@@ -206,12 +212,18 @@ const setCardFilter = (mode: 'all' | 'success' | 'failed' | 'logout' | 'sync') =
     }
 };
 
-const isCardActive = (mode: 'all' | 'success' | 'failed' | 'logout' | 'sync') => {
+const isCardActive = (
+    mode: 'all' | 'success' | 'failed' | 'logout' | 'sync',
+) => {
     switch (mode) {
         case 'all':
             return filterForm.event === '' && filterForm.status === '';
         case 'success':
-            return (filterForm.event === 'login' || filterForm.event === '') && (filterForm.status === 'success' || filterForm.status === 'matched');
+            return (
+                (filterForm.event === 'login' || filterForm.event === '') &&
+                (filterForm.status === 'success' ||
+                    filterForm.status === 'matched')
+            );
         case 'failed':
             return filterForm.status === 'failed';
         case 'logout':
@@ -223,119 +235,221 @@ const isCardActive = (mode: 'all' | 'success' | 'failed' | 'logout' | 'sync') =>
 </script>
 
 <template>
-    <Head title="Auth Logs" />
+    <Head title="Log Autentikasi" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="app-page-shell">
             <!-- Header Section -->
-            <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <header
+                class="mb-6 flex flex-col justify-between gap-6 md:flex-row md:items-center"
+            >
                 <div class="space-y-1">
-                    <div class="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#003628] uppercase mb-2">
+                    <div
+                        class="mb-2 flex items-center gap-2 text-[10px] font-black tracking-widest text-[#003628] uppercase"
+                    >
                         <ShieldCheck class="size-3" />
                         Akses Identitas &amp; Keamanan
                     </div>
-                    <h1 class="text-3xl font-black tracking-tight text-slate-900 lg:text-4xl">
-                        Log <span class="text-[#003628] italic">Autentikasi</span>
+                    <h1
+                        class="text-3xl font-black tracking-tight text-slate-900 lg:text-4xl"
+                    >
+                        Log
+                        <span class="text-[#003628] italic">Autentikasi</span>
                     </h1>
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <div class="h-12 w-12 rounded-2xl border border-slate-200 bg-white shadow-xs flex items-center justify-center">
+                    <div
+                        class="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-xs"
+                    >
                         <HistoryIcon class="size-5 text-[#003628]" />
                     </div>
                 </div>
             </header>
 
             <!-- Stats Overview Cards -->
-            <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
+            <div
+                v-if="stats"
+                class="mb-6 grid grid-cols-2 gap-3.5 sm:grid-cols-2 md:grid-cols-5"
+            >
                 <!-- Semua Log -->
                 <button
                     type="button"
                     @click="setCardFilter('all')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('all')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
+                    class="group cursor-pointer rounded-2xl border p-4 text-left transition-all"
+                    :class="
+                        isCardActive('all')
+                            ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-emerald-950/20'
+                            : 'border-slate-200/70 bg-white text-slate-800 shadow-xs hover:border-slate-300'
+                    "
                 >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('all') ? 'text-emerald-300' : 'text-slate-400'">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span
+                            class="text-[9px] font-black tracking-widest uppercase"
+                            :class="
+                                isCardActive('all')
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                            "
+                        >
                             Semua Log
                         </span>
-                        <ShieldCheck class="size-4" :class="isCardActive('all') ? 'text-emerald-200' : 'text-slate-400'" />
+                        <ShieldCheck
+                            class="size-4"
+                            :class="
+                                isCardActive('all')
+                                    ? 'text-emerald-200'
+                                    : 'text-slate-400'
+                            "
+                        />
                     </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.total }}</p>
+                    <p class="text-xl font-black tabular-nums">
+                        {{ stats.total }}
+                    </p>
                 </button>
 
                 <!-- Login Berhasil -->
                 <button
                     type="button"
                     @click="setCardFilter('success')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('success')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
+                    class="group cursor-pointer rounded-2xl border p-4 text-left transition-all"
+                    :class="
+                        isCardActive('success')
+                            ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-emerald-950/20'
+                            : 'border-slate-200/70 bg-white text-slate-800 shadow-xs hover:border-slate-300'
+                    "
                 >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('success') ? 'text-emerald-300' : 'text-slate-400'">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span
+                            class="text-[9px] font-black tracking-widest uppercase"
+                            :class="
+                                isCardActive('success')
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                            "
+                        >
                             Login Berhasil
                         </span>
-                        <CheckCircle class="size-4" :class="isCardActive('success') ? 'text-emerald-200' : 'text-emerald-500'" />
+                        <CheckCircle
+                            class="size-4"
+                            :class="
+                                isCardActive('success')
+                                    ? 'text-emerald-200'
+                                    : 'text-emerald-500'
+                            "
+                        />
                     </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.success }}</p>
+                    <p class="text-xl font-black tabular-nums">
+                        {{ stats.success }}
+                    </p>
                 </button>
 
                 <!-- Login Gagal -->
                 <button
                     type="button"
                     @click="setCardFilter('failed')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('failed')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
+                    class="group cursor-pointer rounded-2xl border p-4 text-left transition-all"
+                    :class="
+                        isCardActive('failed')
+                            ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-emerald-950/20'
+                            : 'border-slate-200/70 bg-white text-slate-800 shadow-xs hover:border-slate-300'
+                    "
                 >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('failed') ? 'text-emerald-300' : 'text-slate-400'">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span
+                            class="text-[9px] font-black tracking-widest uppercase"
+                            :class="
+                                isCardActive('failed')
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                            "
+                        >
                             Login Gagal
                         </span>
-                        <XCircle class="size-4" :class="isCardActive('failed') ? 'text-emerald-200' : 'text-red-500'" />
+                        <XCircle
+                            class="size-4"
+                            :class="
+                                isCardActive('failed')
+                                    ? 'text-emerald-200'
+                                    : 'text-red-500'
+                            "
+                        />
                     </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.failed }}</p>
+                    <p class="text-xl font-black tabular-nums">
+                        {{ stats.failed }}
+                    </p>
                 </button>
 
                 <!-- Logout -->
                 <button
                     type="button"
                     @click="setCardFilter('logout')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('logout')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
+                    class="group cursor-pointer rounded-2xl border p-4 text-left transition-all"
+                    :class="
+                        isCardActive('logout')
+                            ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-emerald-950/20'
+                            : 'border-slate-200/70 bg-white text-slate-800 shadow-xs hover:border-slate-300'
+                    "
                 >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('logout') ? 'text-emerald-300' : 'text-slate-400'">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span
+                            class="text-[9px] font-black tracking-widest uppercase"
+                            :class="
+                                isCardActive('logout')
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                            "
+                        >
                             Sesi Logout
                         </span>
-                        <LogOut class="size-4" :class="isCardActive('logout') ? 'text-emerald-200' : 'text-slate-400'" />
+                        <LogOut
+                            class="size-4"
+                            :class="
+                                isCardActive('logout')
+                                    ? 'text-emerald-200'
+                                    : 'text-slate-400'
+                            "
+                        />
                     </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.logout }}</p>
+                    <p class="text-xl font-black tabular-nums">
+                        {{ stats.logout }}
+                    </p>
                 </button>
 
                 <!-- User Sync -->
                 <button
                     type="button"
                     @click="setCardFilter('sync')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer col-span-2 sm:col-span-1"
-                    :class="isCardActive('sync')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
+                    class="group col-span-2 cursor-pointer rounded-2xl border p-4 text-left transition-all sm:col-span-1"
+                    :class="
+                        isCardActive('sync')
+                            ? 'border-[#003628] bg-[#003628] text-white shadow-lg shadow-emerald-950/20'
+                            : 'border-slate-200/70 bg-white text-slate-800 shadow-xs hover:border-slate-300'
+                    "
                 >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('sync') ? 'text-emerald-300' : 'text-slate-400'">
+                    <div class="mb-2 flex items-center justify-between">
+                        <span
+                            class="text-[9px] font-black tracking-widest uppercase"
+                            :class="
+                                isCardActive('sync')
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400'
+                            "
+                        >
                             Sinkronisasi
                         </span>
-                        <RefreshCw class="size-4" :class="isCardActive('sync') ? 'text-emerald-200' : 'text-slate-400'" />
+                        <RefreshCw
+                            class="size-4"
+                            :class="
+                                isCardActive('sync')
+                                    ? 'text-emerald-200'
+                                    : 'text-slate-400'
+                            "
+                        />
                     </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.sync }}</p>
+                    <p class="text-xl font-black tabular-nums">
+                        {{ stats.sync }}
+                    </p>
                 </button>
             </div>
 
@@ -360,7 +474,11 @@ const isCardActive = (mode: 'all' | 'success' | 'failed' | 'logout' | 'sync') =>
             v-if="selectedLog"
             v-model:open="sheetOpen"
             :log="selectedLog"
-            @update:open="(val) => { if (!val) selectedLog = null; }"
+            @update:open="
+                (val) => {
+                    if (!val) selectedLog = null;
+                }
+            "
         />
     </AppLayout>
 </template>

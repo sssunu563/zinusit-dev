@@ -103,4 +103,36 @@ class FormLogTest extends TestCase
         $this->assertStringContainsString('ZGI-2609-0001', $csv);
         $this->assertStringContainsString('SIGN', $csv);
     }
+
+    public function test_authenticated_users_can_filter_form_logs_by_signature(): void
+    {
+        $user = User::factory()->create();
+
+        ActionLog::create([
+            'user_id' => $user->id,
+            'action_type' => 'sign',
+            'item_type' => Stb::class,
+            'item_id' => 1,
+            'note' => 'Tanda tangan it_approved ditambahkan pada HANDOVER #1',
+            'log_meta' => ['role' => 'it_approved', 'doc_no' => 'ZGI-2609-0001'],
+        ]);
+
+        ActionLog::create([
+            'user_id' => $user->id,
+            'action_type' => 'created',
+            'item_type' => \App\Models\Inspection::class,
+            'item_id' => 2,
+            'note' => 'Inspection IR-ZGI-2609-00002 created',
+            'log_meta' => ['report_id' => 'IR-ZGI-2609-00002'],
+        ]);
+
+        $response = $this->actingAs($user)->get('/form-logs?filter_form=signature');
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('FormLogs/Index')
+            ->has('logs.data', 1)
+            ->where('logs.data.0.action_type', 'sign')
+            ->where('stats.signature', 1));
+    }
 }

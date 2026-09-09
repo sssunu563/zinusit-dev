@@ -24,6 +24,8 @@ const props = withDefaults(defineProps<Props>(), {
     shareSignUrls: () => ({}),
 });
 
+const printDocument = () => window.print();
+
 const isCancelled = computed(() => false);
 const isCompleted = computed(() => !!props.inspection.completed_at);
 const docId = computed(() => props.inspection.report_id);
@@ -64,7 +66,7 @@ const approvalCardSource = computed(() => [
             props.inspection.it_signature,
             null,
         ).path,
-        signedAt: null,
+        signedAt: props.inspection.it_signature ? props.inspection.signature_date : null,
         badge: createApprovalBadge(props.inspection.it_signature),
     },
     {
@@ -75,7 +77,7 @@ const approvalCardSource = computed(() => [
             props.inspection.checked_signature,
             null,
         ).path,
-        signedAt: null,
+        signedAt: props.inspection.checked_signature ? props.inspection.signature_date : null,
         badge: createApprovalBadge(props.inspection.checked_signature),
     },
     {
@@ -86,7 +88,7 @@ const approvalCardSource = computed(() => [
             props.inspection.user_signature,
             null,
         ).path,
-        signedAt: null,
+        signedAt: props.inspection.user_signature ? props.inspection.signature_date : null,
         badge: createApprovalBadge(props.inspection.user_signature),
     },
     {
@@ -97,7 +99,7 @@ const approvalCardSource = computed(() => [
             props.inspection.leader_signature,
             null,
         ).path,
-        signedAt: null,
+        signedAt: props.inspection.leader_signature ? props.inspection.signature_date : null,
         badge: createApprovalBadge(props.inspection.leader_signature),
     },
 ]);
@@ -113,13 +115,13 @@ const { activeApprovalCard, activeClearCard } =
 <template>
     <Head :title="`Inspection: ${props.inspection.report_id}`" />
 
-    <div class="min-h-screen bg-[#f4f6f5] px-4 py-6">
+    <div class="min-h-screen bg-[#f4f6f5] px-4 py-6 print:bg-white print:p-0">
         <div
-            class="mx-auto max-w-[210mm] overflow-hidden rounded-2xl bg-white shadow-sm"
+            class="mx-auto max-w-[210mm] overflow-hidden rounded-2xl bg-white shadow-sm print:max-w-none print:rounded-none print:shadow-none"
         >
             <!-- Header bar -->
             <div
-                class="flex items-center justify-between border-b border-slate-100 px-6 py-4"
+                class="flex items-center justify-between border-b border-slate-100 px-6 py-4 print:hidden"
             >
                 <div>
                     <h2 class="text-base font-black text-slate-900">
@@ -136,7 +138,7 @@ const { activeApprovalCard, activeClearCard } =
                         type="button"
                         class="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900 active:scale-95"
                         title="Print"
-                        @click="() => window.print()"
+                        @click="printDocument"
                     >
                         <PrinterIcon class="size-4" />
                     </button>
@@ -149,10 +151,10 @@ const { activeApprovalCard, activeClearCard } =
                 </div>
             </div>
 
-            <AppSignatureLinkHelpPanel class="mx-6 mt-4" />
+            <AppSignatureLinkHelpPanel class="mx-6 mt-4 print:hidden" />
 
             <!-- Document -->
-            <div class="p-6">
+            <div class="p-6 print:p-0">
                 <InspectionDocument
                     :inspection="props.inspection"
                     :is-completed="isCompleted"

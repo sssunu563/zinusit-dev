@@ -5,11 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\AuthLog;
 use App\Models\AssetStockHistory;
 use App\Models\Inspection;
+use App\Models\Peminjaman;
 use App\Models\Stb;
 use App\Models\Ticket;
 use App\Services\SnipeItService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -22,10 +24,26 @@ class DashboardController extends Controller
     {
     }
 
-    public function __invoke(): Response
+    public function __invoke(Request $request): Response
     {
         $now = CarbonImmutable::now();
-        $windowStart = $now->subMonths(5)->startOfMonth();
+
+        // Resolve date range from request or fall back to default 6-month window
+        $defaultFrom = $now->subMonths(5)->startOfMonth();
+        $defaultTo   = $now->endOfDay();
+
+        $rawFrom = $request->input('date_from');
+        $rawTo   = $request->input('date_to');
+
+        $windowStart = $rawFrom ? CarbonImmutable::parse($rawFrom)->startOfDay() : $defaultFrom;
+        $windowEnd   = $rawTo   ? CarbonImmutable::parse($rawTo)->endOfDay()     : $defaultTo;
+
+        // Safeguard: ensure from <= to
+        if ($windowStart->gt($windowEnd)) {
+            [$windowStart, $windowEnd] = [$windowEnd, $windowStart];
+        }
+
+        $isFiltered = $rawFrom !== null || $rawTo !== null;
 
         // Implement Caching for Snipe-IT Data (15 minutes)
         $cacheTtl = 900;
@@ -82,6 +100,7 @@ class DashboardController extends Controller
 
         $stockHistoryRows = AssetStockHistory::query()
             ->where('asset_type', 'consumable')
+            ->whereBetween('purchase_date', [$windowStart->toDateString(), $windowEnd->toDateString()])
             ->latest('purchase_date')
             ->latest('id')
             ->limit(6)
@@ -89,9 +108,10 @@ class DashboardController extends Controller
 
         $stockTrendRows = AssetStockHistory::query()
             ->where('asset_type', 'consumable')
-            ->where('purchase_date', '>=', $windowStart->toDateString())
+            ->whereBetween('purchase_date', [$windowStart->toDateString(), $windowEnd->toDateString()])
             ->orderBy('purchase_date')
             ->get(['purchase_date', 'qty']);
+
         $restockLeaders = AssetStockHistory::query()
             ->select([
                 'asset_id',
@@ -100,75 +120,77 @@ class DashboardController extends Controller
                 DB::raw('MAX(purchase_date) as latest_purchase_date'),
             ])
             ->where('asset_type', 'consumable')
+            ->whereBetween('purchase_date', [$windowStart->toDateString(), $windowEnd->toDateString()])
             ->groupBy('asset_id')
             ->orderByDesc('total_qty')
             ->orderByDesc('total_transactions')
             ->limit(5)
             ->get();
 
-        // PERF: Aggregate all Stb counts in a single DB query instead of 8+ separate count() calls
         $stbStats = DB::table('stbs')
             ->selectRaw("
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND it_approved_signed_at IS NOT NULL THEN 1 END) as approved_documents,
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND it_approved_signed_at IS NULL THEN 1 END) as pending_approval_documents,
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND (is_completed = 1 OR completed_at IS NOT NULL) THEN 1 END) as completed_stb,
-                COUNT(CASE WHEN document_type = 'loan'     AND cancelled_at IS NULL AND (is_completed = 1 OR completed_at IS NOT NULL) THEN 1 END) as completed_loan,
-                COUNT(cancelled_at) as cancelled_documents,
-                COUNT(CASE WHEN document_type = 'handover' THEN 1 END) as total_stb,
-                COUNT(CASE WHEN document_type = 'loan'     THEN 1 END) as total_peminjaman,
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND is_completed = 0 AND (completed_at IS NULL OR is_completed IS NULL) THEN 1 END) as pending_stb,
-                COUNT(CASE WHEN document_type = 'loan'     AND cancelled_at IS NULL AND is_completed = 0 AND (completed_at IS NULL OR is_completed IS NULL) THEN 1 END) as pending_peminjaman,
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND it_approved_signed_at IS NULL THEN 1 END) as module_stb_pending,
-                COUNT(CASE WHEN document_type = 'handover' AND cancelled_at IS NULL AND it_approved_signed_at IS NOT NULL THEN 1 END) as module_stb_approved,
-                COUNT(CASE WHEN document_type = 'loan'     AND cancelled_at IS NULL AND it_approved_signed_at IS NULL THEN 1 END) as module_loan_pending,
-                COUNT(CASE WHEN document_type = 'loan'     AND cancelled_at IS NULL AND it_approved_signed_at IS NOT NULL THEN 1 END) as module_loan_approved
+                COUNT(id) as total,
+                COUNT(CASE WHEN cancelled_at IS NULL AND (is_completed = 0 OR is_completed IS NULL) THEN 1 END) as waiting_approval,
+                COUNT(CASE WHEN cancelled_at IS NULL AND is_completed = 1 AND movement_type = 'out' THEN 1 END) as stb_out_complete,
+                COUNT(CASE WHEN cancelled_at IS NULL AND is_completed = 1 AND movement_type = 'return' THEN 1 END) as stb_in_complete
             ")->first();
 
-        $completedDocuments        = ($stbStats->completed_stb ?? 0) + ($stbStats->completed_loan ?? 0);
-        $cancelledDocuments        = $stbStats->cancelled_documents ?? 0;
-        $approvedDocuments         = $stbStats->approved_documents ?? 0;
-        $pendingApprovalDocuments  = $stbStats->pending_approval_documents ?? 0;
-        $totalStb                  = $stbStats->total_stb ?? 0;
-        $totalPeminjaman           = $stbStats->total_peminjaman ?? 0;
-        $pendingStb                = $stbStats->pending_stb ?? 0;
-        $pendingPeminjaman         = $stbStats->pending_peminjaman ?? 0;
+        $peminjamanStats = DB::table('peminjamans')
+            ->selectRaw("
+                COUNT(id) as total,
+                COUNT(CASE WHEN cancelled_at IS NULL AND (is_completed = 0 OR is_completed IS NULL) THEN 1 END) as waiting_approval,
+                COUNT(CASE WHEN cancelled_at IS NULL AND is_completed = 1 AND movement_type = 'out' AND returned_at IS NULL THEN 1 END) as active_loan,
+                COUNT(CASE WHEN cancelled_at IS NULL AND ((movement_type = 'return' AND is_completed = 1) OR returned_at IS NOT NULL) THEN 1 END) as return_complete
+            ")->first();
 
-        $totalInspections = Inspection::count();
-        $totalTickets     = Ticket::count();
-        $pendingTickets   = Ticket::whereIn('status', ['Open', 'In Progress'])->count();
+        $inspectionStats = DB::table('inspections')
+            ->selectRaw("
+                COUNT(id) as total,
+                COUNT(CASE WHEN completed_at IS NULL THEN 1 END) as waiting_approval,
+                COUNT(CASE WHEN completed_at IS NOT NULL AND (inspection_scope = 'unit' OR inspection_scope IS NULL OR inspection_scope = '') THEN 1 END) as inspection_asset,
+                COUNT(CASE WHEN completed_at IS NOT NULL AND (inspection_scope = 'internal_component' OR inspection_scope = 'external_component') THEN 1 END) as inspection_component
+            ")->first();
+
+        $totalStb          = (int) ($stbStats->total ?? 0);
+        $totalPeminjaman   = (int) ($peminjamanStats->total ?? 0);
+        $totalInspections  = (int) ($inspectionStats->total ?? 0);
+        $totalTickets      = Ticket::count();
+        $pendingTickets    = Ticket::whereIn('status', ['Open', 'In Progress'])->count();
+
+        $pendingApprovalDocuments = (int) ($stbStats->waiting_approval ?? 0)
+            + (int) ($peminjamanStats->waiting_approval ?? 0)
+            + (int) ($inspectionStats->waiting_approval ?? 0);
 
         $stbTrend = $this->buildMonthlyTrend(
             Stb::query()
-                ->where('document_type', 'handover')
-                ->where('created_at', '>=', $windowStart)
+                ->whereBetween('created_at', [$windowStart, $windowEnd])
                 ->pluck('created_at'),
             $windowStart,
-            $now,
+            $windowEnd,
         );
 
         $peminjamanTrend = $this->buildMonthlyTrend(
-            Stb::query()
-                ->where('document_type', 'loan')
-                ->where('created_at', '>=', $windowStart)
+            Peminjaman::query()
+                ->whereBetween('created_at', [$windowStart, $windowEnd])
                 ->pluck('created_at'),
             $windowStart,
-            $now,
+            $windowEnd,
         );
 
         $inspectionTrend = $this->buildMonthlyTrend(
             Inspection::query()
-                ->where('created_at', '>=', $windowStart)
+                ->whereBetween('created_at', [$windowStart, $windowEnd])
                 ->pluck('created_at'),
             $windowStart,
-            $now,
+            $windowEnd,
         );
 
         $ticketTrend = $this->buildMonthlyTrend(
             Ticket::query()
-                ->where('created_at', '>=', $windowStart)
+                ->whereBetween('created_at', [$windowStart, $windowEnd])
                 ->pluck('created_at'),
             $windowStart,
-            $now,
+            $windowEnd,
         );
 
         $trend = $stbTrend->map(function (array $item, string $monthKey) use ($inspectionTrend, $peminjamanTrend, $ticketTrend): array {
@@ -181,7 +203,7 @@ class DashboardController extends Controller
             ];
         })->values();
 
-        $stockTrend = $this->buildMonthlyQuantityTrend($stockTrendRows, $windowStart, $now)->values();
+        $stockTrend = $this->buildMonthlyQuantityTrend($stockTrendRows, $windowStart, $windowEnd)->values();
 
         return Inertia::render('Dashboard', [
             'summary' => [
@@ -227,32 +249,98 @@ class DashboardController extends Controller
             ],
             'approvals' => [
                 'pending' => $pendingApprovalDocuments,
-                'approved' => $approvedDocuments,
-                'finalized' => $completedDocuments,
-                'cancelled' => $cancelledDocuments,
+                'approved' => (int) ($stbStats->stb_out_complete ?? 0) + (int) ($peminjamanStats->active_loan ?? 0),
+                'finalized' => (int) ($stbStats->stb_in_complete ?? 0) + (int) ($peminjamanStats->return_complete ?? 0),
+                'cancelled' => 0,
             ],
             'moduleApprovals' => [
                 [
-                    'label'     => 'STB',
-                    'total'     => $totalStb,
-                    'pending'   => $stbStats->module_stb_pending   ?? 0,
-                    'approved'  => $stbStats->module_stb_approved  ?? 0,
-                    'finalized' => $stbStats->completed_stb        ?? 0,
-                    'href'      => route('stb.index', ['tab' => 'pending']),
+                    'key'         => 'stb',
+                    'label'       => 'STB',
+                    'title'       => 'DOKUMEN STB',
+                    'total'       => $totalStb,
+                    'href'        => route('stb.index', ['tab' => 'pending']),
+                    'stages'      => [
+                        [
+                            'label'    => 'Menunggu',
+                            'sublabel' => 'Perlu Ditindaklanjuti',
+                            'count'    => (int) ($stbStats->waiting_approval ?? 0),
+                            'tone'     => 'amber',
+                        ],
+                        [
+                            'label'    => 'Penyerahan Selesai',
+                            'sublabel' => 'Penyerahan Selesai',
+                            'count'    => (int) ($stbStats->stb_out_complete ?? 0),
+                            'tone'     => 'sky',
+                        ],
+                        [
+                            'label'    => 'Pengembalian Selesai',
+                            'sublabel' => 'Pengembalian Selesai',
+                            'count'    => (int) ($stbStats->stb_in_complete ?? 0),
+                            'tone'     => 'emerald',
+                        ],
+                    ],
                 ],
                 [
-                    'label'     => 'Peminjaman',
-                    'total'     => $totalPeminjaman,
-                    'pending'   => $stbStats->module_loan_pending  ?? 0,
-                    'approved'  => $stbStats->module_loan_approved ?? 0,
-                    'finalized' => $stbStats->completed_loan       ?? 0,
-                    'href'      => route('peminjaman.index', ['tab' => 'pending']),
+                    'key'         => 'peminjaman',
+                    'label'       => 'Peminjaman',
+                    'title'       => 'DOKUMEN PEMINJAMAN',
+                    'total'       => $totalPeminjaman,
+                    'href'        => route('peminjaman.index', ['tab' => 'pending']),
+                    'stages'      => [
+                        [
+                            'label'    => 'Menunggu',
+                            'sublabel' => 'Perlu Ditindaklanjuti',
+                            'count'    => (int) ($peminjamanStats->waiting_approval ?? 0),
+                            'tone'     => 'amber',
+                        ],
+                        [
+                            'label'    => 'Sedang Dipinjam',
+                            'sublabel' => 'Belum Dikembalikan',
+                            'count'    => (int) ($peminjamanStats->active_loan ?? 0),
+                            'tone'     => 'sky',
+                        ],
+                        [
+                            'label'    => 'Sudah Dikembalikan',
+                            'sublabel' => 'Sudah Dikembalikan',
+                            'count'    => (int) ($peminjamanStats->return_complete ?? 0),
+                            'tone'     => 'emerald',
+                        ],
+                    ],
+                ],
+                [
+                    'key'         => 'inspection',
+                    'label'       => 'Inspeksi',
+                    'title'       => 'DOKUMEN INSPEKSI',
+                    'total'       => $totalInspections,
+                    'href'        => route('inspection.index'),
+                    'stages'      => [
+                        [
+                            'label'    => 'Menunggu',
+                            'sublabel' => 'Menunggu Review',
+                            'count'    => (int) ($inspectionStats->waiting_approval ?? 0),
+                            'tone'     => 'amber',
+                        ],
+                        [
+                            'label'    => 'Inspeksi Aset',
+                            'sublabel' => 'Perangkat',
+                            'count'    => (int) ($inspectionStats->inspection_asset ?? 0),
+                            'tone'     => 'sky',
+                        ],
+                        [
+                            'label'    => 'Inspeksi Komponen',
+                            'sublabel' => 'Komponen Internal',
+                            'count'    => (int) ($inspectionStats->inspection_component ?? 0),
+                            'tone'     => 'purple',
+                        ],
+                    ],
                 ],
             ],
             'queues' => [
-                'pendingStb' => $pendingStb,
-                'pendingPeminjaman' => $pendingPeminjaman,
-                'approvedNotFinal' => max($approvedDocuments - $completedDocuments, 0),
+                'pendingStb' => (int) ($stbStats->waiting_approval ?? 0),
+                'pendingPeminjaman' => (int) ($peminjamanStats->waiting_approval ?? 0),
+                'pendingInspection' => (int) ($inspectionStats->waiting_approval ?? 0),
+                'approvedNotFinal' => (int) ($peminjamanStats->active_loan ?? 0),
             ],
             'assetBreakdown' => [
                 [
@@ -372,6 +460,7 @@ class DashboardController extends Controller
             'stockTrend' => $stockTrend,
             'trend' => $trend,
             'recentTickets' => Ticket::query()
+                ->whereBetween('created_at', [$windowStart, $windowEnd])
                 ->latest()
                 ->limit(5)
                 ->get()
@@ -386,26 +475,54 @@ class DashboardController extends Controller
                 ]),
             'recentActivities' => collect()
                 ->merge(
-                    Stb::query()->latest()->limit(5)->get()->map(fn (Stb $stb) => [
-                        'type' => 'document',
-                        'label' => $stb->document_type === 'handover' ? 'Serah Terima' : 'Peminjaman',
-                        'title' => $stb->department . ' - ' . $stb->receiver_name,
-                        'time' => $stb->created_at->diffForHumans(),
-                        'tone' => $stb->document_type === 'handover' ? 'emerald' : 'sky',
-                        'href' => route($stb->document_type === 'handover' ? 'stb.show' : 'peminjaman.show', $stb->id),
-                    ])
+                    Stb::query()
+                        ->whereBetween('created_at', [$windowStart, $windowEnd])
+                        ->latest()
+                        ->limit(5)
+                        ->get()
+                        ->map(fn (Stb $stb) => [
+                            'type' => 'document',
+                            'label' => $stb->movement_type === 'return' ? 'STB In (Kembali)' : 'STB Out (Penyerahan)',
+                            'title' => ($stb->user_name ?? $stb->department ?? 'User') . ' - ' . ($stb->location_name ?? 'STB'),
+                            'time' => $stb->created_at->diffForHumans(),
+                            'timestamp' => $stb->created_at->timestamp,
+                            'tone' => $stb->movement_type === 'return' ? 'sky' : 'emerald',
+                            'href' => route('stb.show', $stb->id),
+                        ])
                 )
                 ->merge(
-                    Inspection::query()->latest()->limit(5)->get()->map(fn (Inspection $insp) => [
-                        'type' => 'inspection',
-                        'label' => 'Inspection',
-                        'title' => $insp->location . ' - ' . $insp->inspector_name,
-                        'time' => $insp->created_at->diffForHumans(),
-                        'tone' => 'purple',
-                        'href' => route('inspection.show', $insp->id),
-                    ])
+                    Peminjaman::query()
+                        ->whereBetween('created_at', [$windowStart, $windowEnd])
+                        ->latest()
+                        ->limit(5)
+                        ->get()
+                        ->map(fn (Peminjaman $p) => [
+                            'type' => 'peminjaman',
+                            'label' => $p->movement_type === 'return' || $p->returned_at ? 'Pengembalian Pinjaman' : 'Peminjaman Aset',
+                            'title' => ($p->user_name ?? $p->user_dept ?? 'User') . ' - ' . ($p->location_name ?? 'Peminjaman'),
+                            'time' => $p->created_at->diffForHumans(),
+                            'timestamp' => $p->created_at->timestamp,
+                            'tone' => 'sky',
+                            'href' => route('peminjaman.show', $p->id),
+                        ])
                 )
-                ->sortByDesc('time')
+                ->merge(
+                    Inspection::query()
+                        ->whereBetween('created_at', [$windowStart, $windowEnd])
+                        ->latest()
+                        ->limit(5)
+                        ->get()
+                        ->map(fn (Inspection $insp) => [
+                            'type' => 'inspection',
+                            'label' => $insp->inspection_scope === 'internal_component' ? 'Inspeksi Komponen' : 'Inspeksi Aset',
+                            'title' => ($insp->device_name ?? $insp->location ?? 'Aset') . ' - ' . ($insp->user ?? 'Inspeksi'),
+                            'time' => $insp->created_at->diffForHumans(),
+                            'timestamp' => $insp->created_at->timestamp,
+                            'tone' => 'purple',
+                            'href' => route('inspection.show', $insp->id),
+                        ])
+                )
+                ->sortByDesc('timestamp')
                 ->values()
                 ->take(6),
             'expiringWarranties' => $hardware
@@ -424,7 +541,58 @@ class DashboardController extends Controller
                 ])
                 ->values()
                 ->all(),
+            'expiringLicenses' => $licenses
+                ->filter(function (array $license): bool {
+                    $expiresAt = $license['expiration_date']
+                        ?? data_get($license, 'expiration_date.date')
+                        ?? data_get($license, 'expiration_date.formatted');
+
+                    if (empty($expiresAt)) {
+                        return false;
+                    }
+
+                    try {
+                        $expiry = CarbonImmutable::parse($expiresAt);
+                    } catch (\Throwable) {
+                        return false;
+                    }
+
+                    return $expiry->isFuture() && $expiry->diffInDays($now) <= 60;
+                })
+                ->sortBy(function (array $license) use ($now): int {
+                    $expiresAt = $license['expiration_date']
+                        ?? data_get($license, 'expiration_date.date')
+                        ?? data_get($license, 'expiration_date.formatted');
+
+                    return CarbonImmutable::parse($expiresAt)->diffInDays($now);
+                })
+                ->map(function (array $license) use ($now): array {
+                    $expiresAt = $license['expiration_date']
+                        ?? data_get($license, 'expiration_date.date')
+                        ?? data_get($license, 'expiration_date.formatted');
+                    $expiry = CarbonImmutable::parse($expiresAt);
+
+                    return [
+                        'id' => (int) ($license['id'] ?? 0),
+                        'name' => (string) ($license['name'] ?? $license['product_name'] ?? 'Lisensi'),
+                        'tag' => (string) ($license['product_key'] ?? $license['serial'] ?? ''),
+                        'expiry' => $expiry->format('d M Y'),
+                        'daysLeft' => $expiry->diffInDays($now),
+                        'href' => route('asset.show', ['assetId' => $license['id'], 'type' => 'license']),
+                    ];
+                })
+                ->values()
+                ->all(),
             'generatedAt' => $now->format('d M Y H:i'),
+            'dateFilter' => [
+                'from'        => $windowStart->format('Y-m-d'),
+                'to'          => $windowEnd->format('Y-m-d'),
+                'fromLabel'   => $windowStart->translatedFormat('d M Y'),
+                'toLabel'     => $windowEnd->translatedFormat('d M Y'),
+                'isActive'    => $isFiltered,
+                'defaultFrom' => $defaultFrom->format('Y-m-d'),
+                'defaultTo'   => $defaultTo->format('Y-m-d'),
+            ],
         ]);
     }
 
@@ -456,18 +624,22 @@ class DashboardController extends Controller
         ];
     }
 
-    private function buildMonthlyTrend(Collection $timestamps, CarbonImmutable $windowStart, CarbonImmutable $now): Collection
+    private function buildMonthlyTrend(Collection $timestamps, CarbonImmutable $windowStart, CarbonImmutable $windowEnd): Collection
     {
-        $months = collect(range(5, 0))->mapWithKeys(function (int $offset) use ($now): array {
-            $date = $now->subMonths($offset)->startOfMonth();
+        $months = collect();
+        $cursor = $windowStart->startOfMonth();
+        $endMonth = $windowEnd->startOfMonth();
+        $maxMonths = 24;
+        $count = 0;
 
-            return [
-                $date->format('Y-m') => [
-                    'label' => $date->translatedFormat('M'),
-                    'count' => 0,
-                ],
-            ];
-        });
+        while ($cursor->lte($endMonth) && $count < $maxMonths) {
+            $months->put($cursor->format('Y-m'), [
+                'label' => $cursor->translatedFormat('M \'y'),
+                'count' => 0,
+            ]);
+            $cursor = $cursor->addMonth();
+            $count++;
+        }
 
         foreach ($timestamps as $timestamp) {
             if ($timestamp === null) {
@@ -476,7 +648,7 @@ class DashboardController extends Controller
 
             $date = CarbonImmutable::parse($timestamp);
 
-            if ($date->lt($windowStart)) {
+            if ($date->lt($windowStart) || $date->gt($windowEnd)) {
                 continue;
             }
 
@@ -494,19 +666,23 @@ class DashboardController extends Controller
         return $months;
     }
 
-    private function buildMonthlyQuantityTrend(Collection $rows, CarbonImmutable $windowStart, CarbonImmutable $now): Collection
+    private function buildMonthlyQuantityTrend(Collection $rows, CarbonImmutable $windowStart, CarbonImmutable $windowEnd): Collection
     {
-        $months = collect(range(5, 0))->mapWithKeys(function (int $offset) use ($now): array {
-            $date = $now->subMonths($offset)->startOfMonth();
+        $months = collect();
+        $cursor = $windowStart->startOfMonth();
+        $endMonth = $windowEnd->startOfMonth();
+        $maxMonths = 24;
+        $count = 0;
 
-            return [
-                $date->format('Y-m') => [
-                    'label' => $date->translatedFormat('M'),
-                    'qty' => 0,
-                    'transactions' => 0,
-                ],
-            ];
-        });
+        while ($cursor->lte($endMonth) && $count < $maxMonths) {
+            $months->put($cursor->format('Y-m'), [
+                'label' => $cursor->translatedFormat('M \'y'),
+                'qty' => 0,
+                'transactions' => 0,
+            ]);
+            $cursor = $cursor->addMonth();
+            $count++;
+        }
 
         foreach ($rows as $row) {
             $purchaseDate = data_get($row, 'purchase_date');
@@ -517,7 +693,7 @@ class DashboardController extends Controller
 
             $date = CarbonImmutable::parse($purchaseDate);
 
-            if ($date->lt($windowStart)) {
+            if ($date->lt($windowStart) || $date->gt($windowEnd)) {
                 continue;
             }
 

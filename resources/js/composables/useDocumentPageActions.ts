@@ -1,7 +1,7 @@
 import { router } from '@inertiajs/vue3';
 import axios from 'axios';
-import { ref, toValue  } from 'vue';
-import type {MaybeRefOrGetter} from 'vue';
+import { ref, toValue } from 'vue';
+import type { MaybeRefOrGetter } from 'vue';
 
 interface UseDocumentPageActionsOptions {
     shareUrl: MaybeRefOrGetter<string | null | undefined>;
@@ -21,14 +21,9 @@ export function useDocumentPageActions(options: UseDocumentPageActionsOptions) {
     const completeProcessing = ref(false);
 
     const printDocument = () => {
-        const link = document.createElement('a');
-        link.href =
+        const url =
             toValue(options.completedPdfUrl) || toValue(options.printUrl);
-        link.target = '_blank';
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     const copyShareLink = async () => {

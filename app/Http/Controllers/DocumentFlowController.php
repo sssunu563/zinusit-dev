@@ -318,11 +318,23 @@ abstract class DocumentFlowController extends Controller
             $groupParts = $stb->location_name ? null : $this->buildGroupParts($stb->group_id);
             $company = $stb->user_company ?: ($groupParts['company'] ?? '-');
             $docNo = $this->formatDocId($stb, $company);
-            $documentName = $this->formatStbDocumentName($stb);
+
+            // Resolve the proper document label based on model type
+            $isPeminjaman = $stb instanceof \App\Models\Peminjaman;
+            if ($isPeminjaman) {
+                $movementLabel = match ($stb->movement_type ?? 'out') {
+                    'return' => 'Pengembalian',
+                    default  => 'Peminjaman',
+                };
+                $documentName = $movementLabel . ' #' . $docNo;
+            } else {
+                $documentName = $this->formatStbDocumentName($stb);
+            }
+
             $remark = trim((string) ($stb->remark ?? ''));
             $remarkSuffix = $remark !== '' ? " | Catatan: {$remark}" : '';
-            
-            // 1. Log for the User involved in STB
+
+            // 1. Log for the User involved in STB / Peminjaman
             $localUser = null;
             if ($stb->user_id) {
                 $localUser = User::where('snipeit_user_id', $stb->user_id)->first();
@@ -331,23 +343,37 @@ abstract class DocumentFlowController extends Controller
             if ($localUser) {
                 ActionLog::create([
                     'user_id'     => $actorId,
-                    'action_type' => 'stb_complete',
+                    'action_type' => $isPeminjaman ? 'completed' : 'stb_complete',
                     'item_type'   => get_class($stb),
-
                     'item_id'     => $stb->id,
                     'target_type' => User::class,
                     'target_id'   => $localUser->id,
                     'note'        => "{$documentName} selesai | Doc ID: {$docNo}{$remarkSuffix}",
                     'log_meta'    => [
-                        'doc_no' => $docNo,
+                        'doc_no'        => $docNo,
                         'document_name' => $documentName,
                         'movement_type' => $this->resolveMovementType($stb),
-                        'pdf_path' => $stb->completed_pdf_path,
+                        'pdf_path'      => $stb->completed_pdf_path,
+                    ]
+                ]);
+            } else {
+                // Even if no linked local user, still write the completion log for the document
+                ActionLog::create([
+                    'user_id'     => $actorId,
+                    'action_type' => $isPeminjaman ? 'completed' : 'stb_complete',
+                    'item_type'   => get_class($stb),
+                    'item_id'     => $stb->id,
+                    'note'        => "{$documentName} selesai | Doc ID: {$docNo}{$remarkSuffix}",
+                    'log_meta'    => [
+                        'doc_no'        => $docNo,
+                        'document_name' => $documentName,
+                        'movement_type' => $this->resolveMovementType($stb),
+                        'pdf_path'      => $stb->completed_pdf_path,
                     ]
                 ]);
             }
 
-            // 2. Log for each Item in the STB to show up in Asset history
+            // 2. Log for each Item in the STB / Peminjaman to show up in Asset history
             foreach ($stb->items as $item) {
                 if ($item->snipeit_asset_id) {
                     $resource = match ($item->kategori ?: 'hardware') {
@@ -361,19 +387,18 @@ abstract class DocumentFlowController extends Controller
 
                     ActionLog::create([
                         'user_id'      => $actorId,
-                        'action_type'  => 'stb_complete',
+                        'action_type'  => $isPeminjaman ? 'completed' : 'stb_complete',
                         'item_type'    => get_class($stb),
-
                         'item_id'      => $stb->id,
                         'snipeit_id'   => $item->snipeit_asset_id,
                         'snipeit_type' => $resource,
                         'note'         => "Aset disertakan dalam {$documentName} | Doc ID: {$docNo} | Serial: " . ($item->serial_no ?: '-') . $remarkSuffix,
                         'log_meta'     => [
-                            'doc_no'    => $docNo,
+                            'doc_no'        => $docNo,
                             'document_name' => $documentName,
                             'movement_type' => $this->resolveMovementType($stb),
-                            'item_name' => $item->nama,
-                            'pdf_path'  => $stb->completed_pdf_path,
+                            'item_name'     => $item->nama,
+                            'pdf_path'      => $stb->completed_pdf_path,
                         ]
                     ]);
                 }

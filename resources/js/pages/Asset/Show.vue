@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import {
     FileText,
     Eye,
@@ -31,14 +31,32 @@ import {
     Tag,
     ClipboardList,
     Wallet,
+    Download,
+    ExternalLink,
+    Pencil,
+    RotateCcw,
+    PlusCircle,
+    Trash2,
+    Folder,
+    SearchCheck,
+    Briefcase,
+    Share2,
+    ChevronDown,
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AddStockModal from '@/pages/Asset/Partials/AddStockModal.vue';
 import AssetDetailSummary from '@/pages/Asset/Partials/AssetDetailSummary.vue';
 import UploadDocumentModal from '@/pages/Asset/Partials/UploadDocumentModal.vue';
 import AppPdfViewerModal from '@/components/AppPdfViewerModal.vue';
 import AppPagination from '@/components/AppPagination.vue';
+import AssetActivityDetailSheet, {
+    type ActivityDetailItem,
+} from '@/pages/Asset/Partials/AssetActivityDetailSheet.vue';
+import AssetInfoSection from '@/pages/Asset/Partials/AssetInfoSection.vue';
+import AssetActivityHistoryTable from '@/pages/Asset/Partials/AssetActivityHistoryTable.vue';
+import AssetDocumentsTable from '@/pages/Asset/Partials/AssetDocumentsTable.vue';
+import AssetMaintenancesTable from '@/pages/Asset/Partials/AssetMaintenancesTable.vue';
 import type { BreadcrumbItem } from '@/types';
 
 interface CustomField {
@@ -61,6 +79,8 @@ interface AssetDetail {
     company?: string;
     supplier?: string;
     status?: string;
+    status_name?: string;
+    state_name?: string;
     status_type?: string;
     qty?: number;
     remaining_qty?: number;
@@ -107,14 +127,28 @@ interface CheckoutRecord {
 }
 
 interface ActivityRecord {
-    id: number;
+    id: string | number;
     action_type: string;
+    action_label?: string | null;
     user: string;
-    user_image: string;
+    user_id?: number | null;
+    user_image?: string;
     target: string;
-    target_type: string;
+    target_type?: string;
     note: string;
     date: string;
+    file_status?: 'success' | 'failed' | null;
+    file_name?: string;
+    file_url?: string | null;
+    doc_no?: string | null;
+    doc_url?: string | null;
+    pdf_url?: string | null;
+    form_type?: string | null;
+    form_name?: string | null;
+    role?: string | null;
+    quantity?: number | string | null;
+    changed?: string | null;
+    log_meta?: Record<string, any> | null;
 }
 
 interface AssetFile {
@@ -124,6 +158,10 @@ interface AssetFile {
     created_by: string;
     date: string;
     notes: string;
+    doc_no?: string | null;
+    doc_url?: string | null;
+    form_type?: string | null;
+    form_name?: string | null;
 }
 
 interface Props {
@@ -159,8 +197,45 @@ const showDocModal = ref(false);
 const pdfViewerOpen = ref(false);
 const pdfViewerUrl = ref<string | null>(null);
 const openPdfViewer = (url: string) => {
-    pdfViewerUrl.value = url;
+    const separator = url.includes('?') ? '&' : '?';
+    pdfViewerUrl.value = `${url}${separator}preview=1`;
     pdfViewerOpen.value = true;
+};
+
+// Activity Log & File Detail Sheet State
+const activitySheetOpen = ref(false);
+const selectedActivityItem = ref<ActivityDetailItem | null>(null);
+const openActivityDetail = (item: ActivityDetailItem) => {
+    selectedActivityItem.value = item;
+    activitySheetOpen.value = true;
+};
+
+const getFormIcon = (formType?: string | null) => {
+    switch ((formType || '').toLowerCase()) {
+        case 'stb':
+            return Folder;
+        case 'peminjaman':
+            return ClipboardList;
+        case 'inspection':
+            return SearchCheck;
+        case 'ticket':
+        case 'helpdesk':
+            return Briefcase;
+        default:
+            return FileText;
+    }
+};
+
+const getActionIcon = (actionType?: string | null) => {
+    const a = (actionType || '').toLowerCase();
+    if (a.includes('update') || a.includes('edit')) return Pencil;
+    if (a.includes('upload') || a.includes('download')) return Download;
+    if (a.includes('check')) return RotateCcw;
+    if (a.includes('create') || a.includes('add')) return PlusCircle;
+    if (a.includes('delete') || a.includes('destroy')) return Trash2;
+    if (a.includes('stb') || a.includes('mutasi')) return Folder;
+    if (a.includes('inspection')) return SearchCheck;
+    return Activity;
 };
 
 // History pagination (client-side)
@@ -173,6 +248,33 @@ const paginatedActivityHistory = computed(() => {
 const activityTotalPages = computed(() =>
     Math.ceil(props.activityHistory.length / activityPerPage),
 );
+
+const formatChangedParts = (changed: string | null | undefined) => {
+    if (!changed) return [];
+
+    return changed.split(/\s+\|\|\s+/).map((part) => {
+        const arrowIndex = part.indexOf(' -> ');
+        if (arrowIndex === -1) {
+            return { text: part, oldValue: null, newValue: null };
+        }
+
+        const beforeArrow = part.slice(0, arrowIndex);
+        const labelSeparator = beforeArrow.indexOf(': ');
+
+        return {
+            label:
+                labelSeparator === -1
+                    ? ''
+                    : beforeArrow.slice(0, labelSeparator),
+            oldValue:
+                labelSeparator === -1
+                    ? beforeArrow
+                    : beforeArrow.slice(labelSeparator + 2),
+            newValue: part.slice(arrowIndex + 4),
+            text: null,
+        };
+    });
+};
 
 // Checkout pagination (client-side)
 const checkoutPage = ref(1);
@@ -219,6 +321,15 @@ async function loadTab(tab: string) {
         tabLoading.value[tab] = false;
     }
 }
+
+onMounted(() => {
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    if (urlTab) {
+        loadTab(urlTab);
+    } else if (activeTab.value === 'maintenances') {
+        loadTab('maintenances');
+    }
+});
 
 // Helper function to get paginated tab data
 const getPaginatedTabData = (tab: string) => {
@@ -284,6 +395,94 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
 // Actions
 const showActions = ref(false);
+
+const normalizeAssetStatusForAction = (value?: string | null) => {
+    const normalized = String(value ?? '')
+        .trim()
+        .toLowerCase();
+
+    if (normalized.includes('active')) return 'active';
+    if (
+        normalized.includes('stock') ||
+        normalized.includes('ready to deploy') ||
+        normalized.includes('available') ||
+        normalized.includes('deployable')
+    ) {
+        return 'stock';
+    }
+    if (
+        normalized.includes('borrow') ||
+        normalized.includes('on loan') ||
+        normalized.includes('checked out')
+    ) {
+        return 'borrowed';
+    }
+
+    return 'unsupported';
+};
+
+const hardwareActionStatus = computed(() =>
+    normalizeAssetStatusForAction(
+        props.asset.status_name ||
+            props.asset.state_name ||
+            props.asset.status_type ||
+            props.asset.status,
+    ),
+);
+const canGenerateStb = computed(
+    () =>
+        ['assets', 'laptop'].includes(props.assetType) &&
+        ['active', 'stock', 'borrowed'].includes(hardwareActionStatus.value),
+);
+const canGenerateLoan = computed(
+    () =>
+        ['assets', 'laptop'].includes(props.assetType) &&
+        hardwareActionStatus.value === 'stock',
+);
+const canGenerateInspection = computed(
+    () =>
+        ['assets', 'laptop'].includes(props.assetType) &&
+        hardwareActionStatus.value === 'active',
+);
+const generateStbLabel = computed(() =>
+    ['active', 'borrowed'].includes(hardwareActionStatus.value)
+        ? 'Generate STB IN'
+        : 'Generate STB OUT',
+);
+
+const handleGenerateStb = () => {
+    if (!canGenerateStb.value) return;
+    showActions.value = false;
+
+    const params = new URLSearchParams({
+        documentType: 'handover',
+        movementType: ['active', 'borrowed'].includes(
+            hardwareActionStatus.value,
+        )
+            ? 'return'
+            : 'out',
+    });
+    params.append('selectedAssetIds[]', String(props.asset.id));
+    router.visit(`/stb/create?${params.toString()}`);
+};
+
+const handleGenerateLoan = () => {
+    if (!canGenerateLoan.value) return;
+    showActions.value = false;
+
+    const params = new URLSearchParams({ movementType: 'out' });
+    params.append('selectedAssetIds[]', String(props.asset.id));
+    router.visit(`/peminjaman/create?${params.toString()}`);
+};
+
+const handleGenerateInspection = () => {
+    if (!canGenerateInspection.value) return;
+    showActions.value = false;
+
+    router.visit(
+        `/inspection/create?from_asset=${encodeURIComponent(String(props.asset.id))}`,
+    );
+};
 
 function goBack() {
     window.location.href = `/asset?type=${encodeURIComponent(props.assetType)}`;
@@ -359,12 +558,67 @@ function editAsset() {
                             >
                                 <Edit class="size-3.5" /> Edit Detail
                             </button>
+                            <div
+                                v-if="
+                                    canGenerateStb ||
+                                    canGenerateLoan ||
+                                    canGenerateInspection
+                                "
+                                class="relative"
+                            >
+                                <button
+                                    type="button"
+                                    class="flex h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-[11px] font-black tracking-widest text-emerald-700 uppercase transition-all hover:bg-emerald-100"
+                                    aria-haspopup="menu"
+                                    :aria-expanded="showActions"
+                                    @click="showActions = !showActions"
+                                >
+                                    <Share2 class="size-3.5" /> Generate
+                                    <ChevronDown class="size-3.5" />
+                                </button>
+                                <div
+                                    v-if="showActions"
+                                    class="absolute top-11 right-0 z-30 min-w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                                    role="menu"
+                                >
+                                    <button
+                                        v-if="canGenerateStb"
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                                        role="menuitem"
+                                        @click="handleGenerateStb"
+                                    >
+                                        <Share2 class="size-3.5" />
+                                        {{ generateStbLabel }}
+                                    </button>
+                                    <button
+                                        v-if="canGenerateLoan"
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-700"
+                                        role="menuitem"
+                                        @click="handleGenerateLoan"
+                                    >
+                                        <ClipboardList class="size-3.5" />
+                                        Buat Peminjaman
+                                    </button>
+                                    <button
+                                        v-if="canGenerateInspection"
+                                        type="button"
+                                        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-bold text-slate-700 hover:bg-sky-50 hover:text-sky-700"
+                                        role="menuitem"
+                                        @click="handleGenerateInspection"
+                                    >
+                                        <SearchCheck class="size-3.5" />
+                                        Pemeriksaan (Inspection)
+                                    </button>
+                                </div>
+                            </div>
                             <button
                                 type="button"
                                 class="flex h-9 items-center gap-2 rounded-xl bg-[#003628] px-5 text-[11px] font-black tracking-widest text-white uppercase shadow-lg shadow-[#003628]/20 transition-all hover:opacity-90 active:scale-95"
                                 @click="showDocModal = true"
                             >
-                                <Upload class="size-3.5" /> Upload File
+                                <Upload class="size-3.5" /> Upload Dokumen
                             </button>
                         </div>
                     </div>
@@ -409,12 +663,14 @@ function editAsset() {
                                 <p
                                     class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
                                 >
-                                    Assigned To
+                                    Ditugaskan Kepada
                                 </p>
                                 <p
                                     class="truncate text-[11px] font-black text-slate-900"
                                 >
-                                    {{ asset.assigned_to || 'Unassigned' }}
+                                    {{
+                                        asset.assigned_to || 'Belum Ditugaskan'
+                                    }}
                                 </p>
                             </div>
                         </div>
@@ -431,7 +687,7 @@ function editAsset() {
                                 <p
                                     class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
                                 >
-                                    Location
+                                    Lokasi
                                 </p>
                                 <p
                                     class="truncate text-[11px] font-black text-slate-900"
@@ -453,7 +709,7 @@ function editAsset() {
                                 <p
                                     class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
                                 >
-                                    Purchased
+                                    Tanggal Pembelian
                                 </p>
                                 <p
                                     class="truncate text-[11px] font-black text-slate-900"
@@ -482,7 +738,7 @@ function editAsset() {
                                 <p
                                     class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
                                 >
-                                    Warranty
+                                    Garansi
                                 </p>
                                 <p
                                     class="truncate text-[11px] font-black"
@@ -498,8 +754,8 @@ function editAsset() {
                                         asset.warranty_expires
                                             ? new Date(asset.warranty_expires) <
                                               new Date()
-                                                ? 'Expired'
-                                                : 'Active'
+                                                ? 'Kedaluwarsa'
+                                                : 'Berlaku'
                                             : '-'
                                     }}
                                 </p>
@@ -518,7 +774,7 @@ function editAsset() {
                                 <p
                                     class="text-[9px] font-black tracking-widest text-slate-400 uppercase"
                                 >
-                                    Last Audit
+                                    Audit Terakhir
                                 </p>
                                 <p
                                     class="truncate text-[11px] font-black text-slate-900"
@@ -541,22 +797,22 @@ function editAsset() {
                                     v-for="t in [
                                         {
                                             key: 'info',
-                                            label: 'Info',
+                                            label: 'Informasi',
                                             icon: Info,
                                         },
                                         {
                                             key: 'history',
-                                            label: 'Activity Log',
+                                            label: 'Riwayat Aktivitas',
                                             icon: History,
                                         },
                                         {
                                             key: 'maintenances',
-                                            label: 'Maintenances',
+                                            label: 'Pemeliharaan',
                                             icon: Wrench,
                                         },
                                         {
                                             key: 'files',
-                                            label: 'Files',
+                                            label: 'Dokumen',
                                             icon: FileText,
                                         },
                                     ]"
@@ -643,7 +899,7 @@ function editAsset() {
                                                 : 'text-slate-300 group-hover:text-slate-500'
                                         "
                                     />
-                                    Files
+                                    Dokumen
                                     <span
                                         class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums"
                                         :class="
@@ -673,7 +929,7 @@ function editAsset() {
                                                 : 'text-slate-300 group-hover:text-slate-500'
                                         "
                                     />
-                                    History
+                                    Riwayat
                                     <span
                                         class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-black tabular-nums"
                                         :class="
@@ -706,7 +962,7 @@ function editAsset() {
                                         </div>
                                         <span
                                             class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                            >Total Stock</span
+                                            >Total Stok</span
                                         >
                                     </div>
                                     <p
@@ -726,7 +982,7 @@ function editAsset() {
                                         </div>
                                         <span
                                             class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                            >Deployed</span
+                                            >Sedang Digunakan</span
                                         >
                                     </div>
                                     <p
@@ -751,7 +1007,7 @@ function editAsset() {
                                         </div>
                                         <span
                                             class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                            >Available</span
+                                            >Tersedia</span
                                         >
                                     </div>
                                     <p
@@ -781,7 +1037,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Category</span
+                                                >Kategori</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -794,7 +1050,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Manufacturer</span
+                                                >Produsen / Merek</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -807,7 +1063,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Location</span
+                                                >Lokasi</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -820,7 +1076,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Company</span
+                                                >Perusahaan</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -835,7 +1091,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Purchase Cost</span
+                                                >Harga Pembelian</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-[#003628]"
@@ -848,7 +1104,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Purchase Date</span
+                                                >Tanggal Pembelian</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -861,7 +1117,7 @@ function editAsset() {
                                         >
                                             <span
                                                 class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Order Number</span
+                                                >Nomor Pesanan</span
                                             >
                                             <span
                                                 class="text-[12px] font-black text-slate-700"
@@ -977,7 +1233,9 @@ function editAsset() {
                                         :total-pages="checkoutTotalPages"
                                         :items-per-page="checkoutPerPage"
                                         :total-items="checkoutRecords.length"
-                                        @update:current-page="(page) => (checkoutPage = page)"
+                                        @update:current-page="
+                                            (page) => (checkoutPage = page)
+                                        "
                                     />
                                 </div>
                                 <div
@@ -995,636 +1253,82 @@ function editAsset() {
                                 </div>
                             </div>
                         </div>
-
-                        <!-- Maintenances Tab (Hardware Only) -->
-                        <div
-                            v-if="
-                                activeTab === 'maintenances' &&
-                                assetType === 'assets'
-                            "
-                            class="space-y-6"
-                        >
-                            <h3
-                                class="flex items-center gap-2 text-[11px] font-black tracking-widest text-[#003628] uppercase"
-                            >
-                                <Wrench class="size-4" /> Service Records
-                                <span
-                                    class="ml-1 rounded-full bg-[#003628]/10 px-2 py-0.5 text-[10px] text-[#003628] tabular-nums"
-                                >
-                                    {{ (tabData['maintenances'] ?? []).length }}
-                                </span>
-                            </h3>
-
-                            <div
-                                class="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm"
-                            >
-                                <div class="overflow-x-auto">
-                                    <table
-                                        class="w-full border-collapse text-left"
-                                    >
-                                        <thead>
-                                            <tr
-                                                class="border-b border-slate-100 bg-slate-50/50"
-                                            >
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Provider / Title
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Type
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Schedule
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Cost
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-right text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Notes
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-50">
-                                            <tr
-                                                v-for="row in getPaginatedTabData('maintenances')"
-                                                :key="row.id"
-                                                class="group transition-colors hover:bg-slate-50/50"
-                                            >
-                                                <td class="px-6 py-4">
-                                                    <p
-                                                        class="text-[13px] font-black text-slate-900"
-                                                    >
-                                                        {{ row.name || '-' }}
-                                                    </p>
-                                                    <p
-                                                        class="text-[10px] font-bold tracking-tighter text-slate-400 uppercase"
-                                                    >
-                                                        {{
-                                                            row.supplier ||
-                                                            'N/A'
-                                                        }}
-                                                    </p>
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <span
-                                                        class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] font-black tracking-widest text-slate-500 uppercase"
-                                                        >{{
-                                                            row.type || '-'
-                                                        }}</span
-                                                    >
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <div class="flex flex-col">
-                                                        <span
-                                                            class="text-[11px] font-black text-slate-700 tabular-nums"
-                                                            >{{
-                                                                row.start_date ||
-                                                                '-'
-                                                            }}</span
-                                                        >
-                                                        <span
-                                                            v-if="
-                                                                row.completion_date
-                                                            "
-                                                            class="text-[9px] font-bold tracking-tighter text-slate-400 uppercase"
-                                                            >Done:
-                                                            {{
-                                                                row.completion_date
-                                                            }}</span
-                                                        >
-                                                    </div>
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <span
-                                                        class="text-[12px] font-black text-[#003628]"
-                                                        >{{
-                                                            row.cost || '-'
-                                                        }}</span
-                                                    >
-                                                </td>
-                                                <td
-                                                    class="px-6 py-4 text-right"
-                                                >
-                                                    <span
-                                                        class="ml-auto block max-w-[150px] truncate text-[11px] text-slate-500 italic"
-                                                        >{{
-                                                            row.notes || '-'
-                                                        }}</span
-                                                    >
-                                                </td>
-                                            </tr>
-                                            <tr
-                                                v-if="
-                                                    !(
-                                                        tabData[
-                                                            'maintenances'
-                                                        ] ?? []
-                                                    ).length
-                                                "
-                                            >
-                                                <td
-                                                    colspan="5"
-                                                    class="px-6 py-20 text-center"
-                                                >
-                                                    <div
-                                                        class="flex flex-col items-center gap-3"
-                                                    >
-                                                        <div
-                                                            class="flex size-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-300"
-                                                        >
-                                                            <Wrench
-                                                                class="size-6"
-                                                            />
-                                                        </div>
-                                                        <p
-                                                            class="text-[11px] font-black tracking-widest text-slate-400 uppercase"
-                                                        >
-                                                            No maintenance
-                                                            records found
-                                                        </p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <!-- Maintenances Pagination -->
-                                <AppPagination
-                                    v-if="getTabDataTotalPages('maintenances') > 1"
-                                    :current-page="tabDataPages['maintenances'] ?? 1"
-                                    :total-pages="getTabDataTotalPages('maintenances')"
-                                    :items-per-page="tabDataPerPage"
-                                    :total-items="(tabData['maintenances'] ?? []).length"
-                                    @update:current-page="(page) => (tabDataPages['maintenances'] = page)"
+                        <!-- HARDWARE TABS: INFO | ACTIVITY LOG | MAINTENANCES | FILES -->
+                        <template v-if="assetType === 'assets'">
+                            <!-- 1. Info Tab -->
+                            <div v-if="activeTab === 'info'">
+                                <AssetInfoSection
+                                    :asset="asset"
+                                    :asset-type="assetType"
+                                    :asset-type-label="assetTypeLabel"
                                 />
                             </div>
-                        </div>
 
-                        <!-- Files Tab (Standardized for both Hardware & Others) -->
-                        <div
-                            v-if="
-                                activeTab === 'files' ||
-                                activeTab === 'documents' ||
-                                activeTab === 'additional_files'
-                            "
-                            class="space-y-6"
-                        >
-                            <div class="flex items-center justify-between">
-                                <h3
-                                    class="flex items-center gap-2 text-[11px] font-black tracking-widest text-[#003628] uppercase"
-                                >
-                                    <FileText class="size-4" /> Attached
-                                    Documents
-                                    <span
-                                        class="ml-1 rounded-full bg-[#003628]/10 px-2 py-0.5 text-[10px] text-[#003628] tabular-nums"
-                                    >
-                                        {{ assetFiles.length }}
-                                    </span>
-                                </h3>
-                                <button
-                                    v-if="
-                                        isStockType && activeTab === 'documents'
+                            <!-- 2. Activity Log Tab -->
+                            <div v-else-if="activeTab === 'history'">
+                                <AssetActivityHistoryTable
+                                    :history="activityHistory"
+                                    @open-pdf="openPdfViewer"
+                                    @open-detail="openActivityDetail"
+                                />
+                            </div>
+
+                            <!-- 3. Maintenances Tab -->
+                            <div v-else-if="activeTab === 'maintenances'">
+                                <AssetMaintenancesTable
+                                    :maintenances="
+                                        tabData['maintenances'] ?? []
                                     "
-                                    type="button"
-                                    class="flex h-8 items-center gap-2 rounded-xl bg-[#003628] px-4 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-[#003628]/20 transition-all hover:opacity-90 active:scale-95"
-                                    @click="showStockModal = true"
-                                >
-                                    <LucidePlus class="size-3.5" /> Tambah Stock
-                                </button>
-                            </div>
-
-                            <div
-                                class="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm"
-                            >
-                                <div class="overflow-x-auto">
-                                    <table
-                                        class="w-full border-collapse text-left"
-                                    >
-                                        <thead>
-                                            <tr
-                                                class="border-b border-slate-100 bg-slate-50/50"
-                                            >
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    File Description
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Notes
-                                                </th>
-                                                <th
-                                                    class="px-6 py-4 text-right text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >
-                                                    Action
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-50">
-                                            <tr
-                                                v-for="file in paginatedFiles"
-                                                :key="file.id"
-                                                class="group transition-colors hover:bg-slate-50/50"
-                                            >
-                                                <td class="px-6 py-4">
-                                                    <div
-                                                        class="flex items-center gap-3"
-                                                    >
-                                                        <div
-                                                            class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500 shadow-sm transition-all group-hover:bg-blue-600 group-hover:text-white"
-                                                        >
-                                                            <FileText
-                                                                class="size-5"
-                                                            />
-                                                        </div>
-                                                        <div class="min-w-0">
-                                                            <p
-                                                                class="truncate text-[13px] font-black text-slate-900"
-                                                            >
-                                                                {{
-                                                                    file.filename
-                                                                }}
-                                                            </p>
-                                                            <p
-                                                                class="text-[10px] font-bold tracking-tighter text-slate-400 uppercase"
-                                                            >
-                                                                {{ file.date }}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td class="px-6 py-4">
-                                                    <p
-                                                        class="max-w-[300px] truncate text-[11px] text-slate-500 italic"
-                                                    >
-                                                        {{ file.notes || '-' }}
-                                                    </p>
-                                                </td>
-                                                <td
-                                                    class="px-6 py-4 text-right"
-                                                >
-                                                    <button
-                                                        v-if="
-                                                            file.download_url &&
-                                                            /\.pdf$/i.test(
-                                                                file.filename,
-                                                            )
-                                                        "
-                                                        type="button"
-                                                        class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 shadow-sm transition-all hover:border-[#003628]/20 hover:bg-slate-50 hover:text-[#003628]"
-                                                        title="Lihat PDF"
-                                                        @click="
-                                                            openPdfViewer(
-                                                                file.download_url,
-                                                            )
-                                                        "
-                                                    >
-                                                        <Eye class="size-4" />
-                                                    </button>
-                                                    <a
-                                                        v-else-if="
-                                                            file.download_url
-                                                        "
-                                                        :href="
-                                                            file.download_url
-                                                        "
-                                                        target="_blank"
-                                                        class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 shadow-sm transition-all hover:border-[#003628]/20 hover:bg-slate-50 hover:text-[#003628]"
-                                                    >
-                                                        <Eye class="size-4" />
-                                                    </a>
-                                                    <span
-                                                        v-else
-                                                        class="text-slate-300"
-                                                        >-</span
-                                                    >
-                                                </td>
-                                            </tr>
-                                            <tr v-if="!paginatedFiles.length && filesPage === 1">
-                                                <td
-                                                    colspan="3"
-                                                    class="px-6 py-20 text-center"
-                                                >
-                                                    <div
-                                                        class="flex flex-col items-center gap-3"
-                                                    >
-                                                        <div
-                                                            class="flex size-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-300"
-                                                        >
-                                                            <FileText
-                                                                class="size-6"
-                                                            />
-                                                        </div>
-                                                        <p
-                                                            class="text-[11px] font-black tracking-widest text-slate-400 uppercase"
-                                                        >
-                                                            No documents
-                                                            attached
-                                                        </p>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <!-- Files Pagination -->
-                                <AppPagination
-                                    v-if="filesTotalPages > 1"
-                                    :current-page="filesPage"
-                                    :total-pages="filesTotalPages"
-                                    :items-per-page="filesPerPage"
-                                    :total-items="assetFiles.length"
-                                    @update:current-page="(page) => (filesPage = page)"
+                                    :loading="
+                                        Boolean(tabLoading['maintenances'])
+                                    "
                                 />
                             </div>
-                        </div>
 
-                        <!-- History Tab (Activity Timeline) -->
-                        <div v-if="activeTab === 'history'" class="space-y-8">
-                            <h3
-                                class="flex items-center gap-2 text-[11px] font-black tracking-widest text-[#003628] uppercase"
-                            >
-                                <History class="size-4" /> Audit Trail
-                                <span
-                                    class="ml-1 rounded-full bg-[#003628]/10 px-2 py-0.5 text-[10px] text-[#003628] tabular-nums"
-                                >
-                                    {{ activityHistory.length }}
-                                </span>
-                            </h3>
-
+                            <!-- 4. Files Tab -->
                             <div
-                                v-if="!activityHistory.length"
-                                class="rounded-[32px] border-2 border-dashed border-slate-100 py-24 text-center"
+                                v-else-if="
+                                    activeTab === 'files' ||
+                                    activeTab === 'documents' ||
+                                    activeTab === 'additional_files'
+                                "
                             >
-                                <History
-                                    class="mx-auto mb-4 size-16 text-slate-100"
-                                />
-                                <p
-                                    class="text-sm font-black tracking-widest text-slate-300 uppercase"
-                                >
-                                    No activity history recorded
-                                </p>
-                            </div>
-
-                            <div v-else class="relative space-y-6">
-                                <!-- Timeline items container -->
-                                <div class="relative pl-10">
-                                    <!-- Timeline Line -->
-                                    <div
-                                        class="absolute top-4 bottom-0 left-[19px] w-0.5 bg-slate-100"
-                                    ></div>
-
-                                    <div class="space-y-8">
-                                        <div
-                                            v-for="rec in paginatedActivityHistory"
-                                            :key="rec.id"
-                                            class="relative"
-                                        >
-                                            <!-- Icon wrapper -->
-                                            <div
-                                                class="absolute top-0 -left-[31px] flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-sm ring-4 ring-white transition-all hover:scale-110"
-                                                :class="{
-                                                    'text-emerald-600':
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes(
-                                                                'checkout',
-                                                            ),
-                                                    'text-amber-600':
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes(
-                                                                'checkin',
-                                                            ),
-                                                    'text-blue-600':
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes('update'),
-                                                    'text-violet-600':
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes(
-                                                                'create',
-                                                            ) ||
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes('add'),
-                                                    'text-rose-600':
-                                                        rec.action_type
-                                                            ?.toLowerCase()
-                                                            .includes('delete'),
-                                                    'text-slate-400': true,
-                                                }"
-                                            >
-                                                <div
-                                                    class="absolute inset-0 rounded-2xl opacity-10"
-                                                    :class="{
-                                                        'bg-emerald-500':
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'checkout',
-                                                                ),
-                                                        'bg-amber-500':
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'checkin',
-                                                                ),
-                                                        'bg-blue-500':
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'update',
-                                                                ),
-                                                        'bg-violet-500':
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'create',
-                                                                ) ||
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'add',
-                                                                ),
-                                                        'bg-rose-500':
-                                                            rec.action_type
-                                                                ?.toLowerCase()
-                                                                .includes(
-                                                                    'delete',
-                                                                ),
-                                                        'bg-slate-500': true,
-                                                    }"
-                                                ></div>
-                                                <Activity class="size-5" />
-                                            </div>
-
-                                            <div
-                                                class="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-slate-300 hover:shadow-md"
-                                            >
-                                                <div
-                                                    class="mb-4 flex flex-wrap items-center justify-between gap-3"
-                                                >
-                                                    <div
-                                                        class="flex items-center gap-2"
-                                                    >
-                                                        <span
-                                                            class="rounded-lg bg-slate-50 px-2 py-0.5 text-[9px] font-black tracking-widest text-slate-500 uppercase"
-                                                        >
-                                                            {{
-                                                                rec.action_type ||
-                                                                'Action'
-                                                            }}
-                                                        </span>
-                                                        <ArrowRight
-                                                            class="size-3 text-slate-300"
-                                                        />
-                                                        <span
-                                                            class="text-[12px] font-black text-slate-700"
-                                                            >{{
-                                                                rec.target ||
-                                                                '-'
-                                                            }}</span
-                                                        >
-                                                    </div>
-                                                    <span
-                                                        class="text-[10px] font-black text-slate-400 uppercase tabular-nums"
-                                                        >{{ rec.date }}</span
-                                                    >
-                                                </div>
-
-                                                <div
-                                                    class="flex items-center justify-between gap-4"
-                                                >
-                                                    <div
-                                                        class="flex items-center gap-3"
-                                                    >
-                                                        <div
-                                                            class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 ring-2 ring-white"
-                                                        >
-                                                            <img
-                                                                v-if="
-                                                                    rec.user_image
-                                                                "
-                                                                :src="
-                                                                    rec.user_image
-                                                                "
-                                                                class="size-full rounded-full object-cover"
-                                                            />
-                                                            <User
-                                                                v-else
-                                                                class="size-4 text-slate-400"
-                                                            />
-                                                        </div>
-                                                        <span
-                                                            class="text-[12px] font-bold text-slate-600"
-                                                            >{{
-                                                                rec.user ||
-                                                                'System'
-                                                            }}</span
-                                                        >
-                                                    </div>
-                                                    <div
-                                                        v-if="rec.note"
-                                                        class="max-w-[60%] rounded-xl bg-slate-50/80 px-4 py-2"
-                                                    >
-                                                        <p
-                                                            class="text-[11px] leading-relaxed text-slate-500 italic"
-                                                        >
-                                                            "{{ rec.note }}"
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Pagination -->
-                                <AppPagination
-                                    v-if="activityTotalPages > 1"
-                                    :current-page="activityPage"
-                                    :total-pages="activityTotalPages"
-                                    :items-per-page="activityPerPage"
-                                    :total-items="activityHistory.length"
-                                    @update:current-page="(page) => (activityPage = page)"
+                                <AssetDocumentsTable
+                                    :files="assetFiles"
+                                    @upload-document="showDocModal = true"
+                                    @open-pdf="openPdfViewer"
+                                    @open-detail="openActivityDetail"
                                 />
                             </div>
-                        </div>
+                        </template>
 
-                        <!-- Custom Fields -->
-                        <div
-                            v-if="
-                                activeTab === 'info' &&
-                                asset.custom_fields &&
-                                asset.custom_fields.length
-                            "
-                            class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
-                        >
+                        <!-- NON-HARDWARE FALLBACK TABS (if accessed via Show.vue) -->
+                        <template v-else>
+                            <!-- Files Tab -->
                             <div
-                                class="flex items-center gap-2 border-b border-slate-100 bg-slate-50/50 px-5 py-3"
+                                v-if="
+                                    activeTab === 'files' ||
+                                    activeTab === 'documents' ||
+                                    activeTab === 'additional_files'
+                                "
                             >
-                                <ClipboardList class="size-4 text-[#003628]" />
-                                <p
-                                    class="text-[10px] font-black tracking-widest text-slate-500 uppercase"
-                                >
-                                    Custom Fields
-                                </p>
+                                <AssetDocumentsTable
+                                    :files="assetFiles"
+                                    @upload-document="showDocModal = true"
+                                    @open-pdf="openPdfViewer"
+                                    @open-detail="openActivityDetail"
+                                />
                             </div>
-                            <div class="divide-y divide-slate-100">
-                                <div
-                                    v-for="cf in asset.custom_fields"
-                                    :key="cf.name"
-                                    class="flex items-center justify-between px-5 py-3"
-                                >
-                                    <span
-                                        class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                        >{{ cf.name }}</span
-                                    >
-                                    <span
-                                        class="text-[13px] font-bold text-slate-900"
-                                        >{{ cf.value || '-' }}</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
 
-                        <!-- Notes -->
-                        <div
-                            v-if="asset.notes"
-                            class="rounded-2xl border border-amber-200 bg-amber-50 p-5"
-                        >
-                            <div class="flex items-start gap-3">
-                                <div
-                                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100"
-                                >
-                                    <FileText class="size-4 text-amber-600" />
-                                </div>
-                                <div>
-                                    <p
-                                        class="mb-1 text-[10px] font-black tracking-widest text-amber-700 uppercase"
-                                    >
-                                        Notes
-                                    </p>
-                                    <p
-                                        class="text-[13px] leading-relaxed font-medium text-amber-900"
-                                    >
-                                        {{ asset.notes }}
-                                    </p>
-                                </div>
+                            <!-- History Tab -->
+                            <div v-else-if="activeTab === 'history'">
+                                <AssetActivityHistoryTable
+                                    :history="activityHistory"
+                                    @open-pdf="openPdfViewer"
+                                    @open-detail="openActivityDetail"
+                                />
                             </div>
-                        </div>
+                        </template>
                     </div>
 
                     <!-- Lazy-loaded tab panels (hardware only) -->
@@ -2128,5 +1832,18 @@ function editAsset() {
         :url="pdfViewerUrl"
         :title="asset.name"
         @close="pdfViewerOpen = false"
+    />
+
+    <!-- Asset Activity & Document Detail Sheet -->
+    <AssetActivityDetailSheet
+        v-if="selectedActivityItem"
+        v-model:open="activitySheetOpen"
+        :item="selectedActivityItem"
+        @open-pdf="openPdfViewer"
+        @update:open="
+            (val) => {
+                if (!val) selectedActivityItem = null;
+            }
+        "
     />
 </template>

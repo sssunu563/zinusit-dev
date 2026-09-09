@@ -4,49 +4,60 @@
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Label — {{ $asset['name'] ?? $asset['asset_tag'] ?? 'Asset' }}</title>
+    @php
+        // Size presets (mm) — can be passed via ?size=xs|sm|md|lg|xl
+        $sizes = [
+            'xs' => ['w' => 40,  'h' => 25],
+            'sm' => ['w' => 50,  'h' => 30],
+            'md' => ['w' => 62,  'h' => 29],
+            'lg' => ['w' => 70,  'h' => 40],
+            'xl' => ['w' => 100, 'h' => 50],
+        ];
+        $sizeKey = request('size', 'xs');
+        $sz = $sizes[$sizeKey] ?? $sizes['xs'];
+        $w = $sz['w']; $h = $sz['h'];
+        $qrMm = round($h * 0.72);
+    @endphp
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         html, body {
-            width: 40mm;
-            height: 30mm;
+            width: {{ $w }}mm;
+            height: {{ $h }}mm;
             background: white;
             font-family: 'Arial', sans-serif;
         }
 
         .label {
-            width: 40mm;
-            height: 30mm;
+            width: {{ $w }}mm;
+            height: {{ $h }}mm;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 1mm;
+            gap: 2mm;
+            padding: 1.5mm;
             background: white;
-            color: black;
             overflow: hidden;
         }
 
         .qr-wrap {
+            flex-shrink: 0;
+            width: {{ $qrMm }}mm;
+            height: {{ $qrMm }}mm;
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-shrink: 0;
         }
 
-        .qr-wrap canvas,
-        .qr-wrap img {
-            display: block;
-        }
+        .qr-wrap canvas { display: block; }
 
         .info {
-            width: 100%;
-            text-align: center;
-            margin-top: 0.8mm;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .name {
-            font-size: 7pt;
+            font-size: 5.5pt;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: -0.03em;
@@ -54,40 +65,37 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            width: 100%;
-        }
-
-        .meta {
-            display: flex;
-            justify-content: center;
-            gap: 1.5mm;
-            margin-top: 0.4mm;
-            flex-wrap: nowrap;
-            overflow: hidden;
         }
 
         .tag {
             font-size: 6pt;
             font-weight: 700;
+            font-family: 'Courier New', monospace;
+            margin-top: 0.5mm;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .serial {
-            font-size: 5.5pt;
-            font-weight: 600;
-            font-style: italic;
-            opacity: 0.55;
+        .serial, .meta {
+            font-size: 4.5pt;
+            color: #333;
+            margin-top: 0.3mm;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
+
+        .serial { font-style: italic; font-family: 'Courier New', monospace; }
 
         @media print {
             @page {
                 margin: 0;
-                size: 40mm 30mm;
+                size: {{ $w }}mm {{ $h }}mm;
             }
             html, body {
-                width: 40mm;
-                height: 30mm;
+                width: {{ $w }}mm;
+                height: {{ $h }}mm;
             }
         }
     </style>
@@ -101,28 +109,28 @@
         @if(!empty($asset['name']))
             <p class="name">{{ $asset['name'] }}</p>
         @endif
-        <div class="meta">
-            @if(!empty($asset['asset_tag']))
-                <span class="tag">{{ $asset['asset_tag'] }}</span>
-            @endif
-            @if(!empty($asset['serial']))
-                <span class="serial">{{ $asset['serial'] }}</span>
-            @endif
-        </div>
+        @if(!empty($asset['asset_tag']))
+            <p class="tag">{{ $asset['asset_tag'] }}</p>
+        @endif
+        @if(!empty($asset['serial']))
+            <p class="serial">SN: {{ $asset['serial'] }}</p>
+        @endif
+        @if(!empty($asset['location'] ?? ''))
+            <p class="meta">{{ $asset['location'] ?? '' }}</p>
+        @endif
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
 <script>
-    var url = {{ Js::from($publicUrl) }};
+    var url  = {{ Js::from($publicUrl) }};
+    var qrPx = Math.round({{ $qrMm }} * 3.78);
     QRCode.toCanvas(document.getElementById('qr-canvas'), url, {
-        width: 76,
+        width: qrPx,
         margin: 0,
         color: { dark: '#000000', light: '#ffffff' }
     }, function (err) {
-        if (!err) {
-            window.print();
-        }
+        if (!err) { window.print(); }
     });
 </script>
 </body>

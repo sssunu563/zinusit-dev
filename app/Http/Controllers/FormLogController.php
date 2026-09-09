@@ -62,6 +62,7 @@ class FormLogController extends Controller
                 'pdf_url' => $this->resolvePdfUrl($log),
                 'role' => $log->log_meta['role'] ?? null,
                 'target_name' => $this->resolveTargetName($log),
+                'changed' => $this->resolveChangedFields($log),
             ]);
 
         // Fetch dynamic filter options for form logs
@@ -83,6 +84,7 @@ class FormLogController extends Controller
             ['key' => 'inspection', 'label' => 'Inspection'],
             ['key' => 'ticket', 'label' => 'Workspace / Tiket'],
             ['key' => 'audit', 'label' => 'Stock Opname'],
+            ['key' => 'signature', 'label' => 'Tanda Tangan'],
         ];
 
         // Stats summary
@@ -100,6 +102,7 @@ class FormLogController extends Controller
             'ticket' => ActionLog::where(function ($q) {
                 $q->where('item_type', Ticket::class)->orWhere('item_type', 'like', '%Ticket%');
             })->count(),
+            'signature' => ActionLog::whereIn('item_type', $this->formTypes)->whereIn('action_type', ['sign', 'sign_cleared'])->count(),
         ];
 
         return Inertia::render('FormLogs/Index', [
@@ -125,10 +128,10 @@ class FormLogController extends Controller
             $query->chunk(200, function ($logs) use ($handle) {
                 foreach ($logs as $log) {
                     $metaStr = '';
-                    if (!empty($log->log_meta)) {
+                    if (! empty($log->log_meta)) {
                         $metaStr = collect($log->log_meta)
                             ->filter(fn ($v) => $v !== null && $v !== '')
-                            ->map(fn ($v, $k) => $k . ': ' . (is_scalar($v) ? (string)$v : json_encode($v)))
+                            ->map(fn ($v, $k) => $k.': '.(is_scalar($v) ? (string) $v : json_encode($v)))
                             ->implode(' | ');
                     }
 
@@ -146,7 +149,7 @@ class FormLogController extends Controller
             });
 
             fclose($handle);
-        }, 'form_logs_' . date('Y_m_d_His') . '.csv', [
+        }, 'form_logs_'.date('Y_m_d_His').'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
@@ -161,31 +164,35 @@ class FormLogController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function (Builder $q) use ($search) {
                 $q->where('action_type', 'like', "%{$search}%")
-                  ->orWhere('note', 'like', "%{$search}%")
-                  ->orWhere('item_id', 'like', "%{$search}%")
-                  ->orWhere('log_meta', 'like', "%{$search}%")
-                  ->orWhereHas('user', function ($uq) use ($search) {
-                      $uq->where('name', 'like', "%{$search}%")
-                         ->orWhere('username', 'like', "%{$search}%");
-                  });
+                    ->orWhere('note', 'like', "%{$search}%")
+                    ->orWhere('item_id', 'like', "%{$search}%")
+                    ->orWhere('log_meta', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($uq) use ($search) {
+                        $uq->where('name', 'like', "%{$search}%")
+                            ->orWhere('username', 'like', "%{$search}%");
+                    });
             });
         }
 
         // 1. Filter by Form Type
         if ($form = $request->input('filter_form')) {
-            $matchedClasses = match (strtolower($form)) {
-                'stb' => [Stb::class, 'App\\Models\\Stb', 'Stb'],
-                'peminjaman' => [Peminjaman::class, 'App\\Models\\Peminjaman', 'Peminjaman'],
-                'inspection' => [Inspection::class, 'App\\Models\\Inspection', 'Inspection'],
-                'ticket', 'helpdesk' => [Ticket::class, 'App\\Models\\Ticket', 'Ticket'],
-                'audit' => [AuditSession::class, 'App\\Models\\AuditSession', 'AuditSession'],
-                default => null,
-            };
-
-            if ($matchedClasses) {
-                $query->whereIn('item_type', $matchedClasses);
+            if (strtolower($form) === 'signature') {
+                $query->whereIn('action_type', ['sign', 'sign_cleared']);
             } else {
-                $query->where('item_type', 'like', "%{$form}%");
+                $matchedClasses = match (strtolower($form)) {
+                    'stb' => [Stb::class, 'App\\Models\\Stb', 'Stb'],
+                    'peminjaman' => [Peminjaman::class, 'App\\Models\\Peminjaman', 'Peminjaman'],
+                    'inspection' => [Inspection::class, 'App\\Models\\Inspection', 'Inspection'],
+                    'ticket', 'helpdesk' => [Ticket::class, 'App\\Models\\Ticket', 'Ticket'],
+                    'audit' => [AuditSession::class, 'App\\Models\\AuditSession', 'AuditSession'],
+                    default => null,
+                };
+
+                if ($matchedClasses) {
+                    $query->whereIn('item_type', $matchedClasses);
+                } else {
+                    $query->where('item_type', 'like', "%{$form}%");
+                }
             }
         }
 
@@ -194,7 +201,7 @@ class FormLogController extends Controller
             $query->where(function (Builder $q) use ($admin) {
                 $q->whereHas('user', function ($uq) use ($admin) {
                     $uq->where('name', 'like', "%{$admin}%")
-                       ->orWhere('username', 'like', "%{$admin}%");
+                        ->orWhere('username', 'like', "%{$admin}%");
                 });
 
                 if (stripos('System', $admin) !== false) {
@@ -222,6 +229,7 @@ class FormLogController extends Controller
     private function resolveFormTypeKey(string $itemType): string
     {
         $base = class_basename($itemType);
+
         return match ($base) {
             'Stb' => 'stb',
             'Peminjaman' => 'peminjaman',
@@ -234,7 +242,8 @@ class FormLogController extends Controller
 
     private function resolveFormName($log): string
     {
-        $type = $this->resolveFormTypeKey((string)$log->item_type);
+        $type = $this->resolveFormTypeKey((string) $log->item_type);
+
         return match ($type) {
             'stb' => 'Dokumen STB',
             'peminjaman' => 'Peminjaman',
@@ -249,20 +258,20 @@ class FormLogController extends Controller
     {
         $meta = $log->log_meta ?? [];
 
-        if (!empty($meta['doc_no'])) {
+        if (! empty($meta['doc_no'])) {
             return $meta['doc_no'];
         }
 
-        if (!empty($meta['report_id'])) {
+        if (! empty($meta['report_id'])) {
             return $meta['report_id'];
         }
 
         if ($log->item) {
             $item = $log->item;
-            if ($item instanceof Inspection && !empty($item->report_id)) {
+            if ($item instanceof Inspection && ! empty($item->report_id)) {
                 return $item->report_id;
             }
-            if ($item instanceof Stb && !empty($item->batch_no)) {
+            if ($item instanceof Stb && ! empty($item->batch_no)) {
                 return $item->batch_no;
             }
             if ($item instanceof Ticket) {
@@ -275,13 +284,14 @@ class FormLogController extends Controller
 
     private function resolveDocUrl($log): ?string
     {
-        if (!$log->item_id) {
+        if (! $log->item_id) {
             return null;
         }
 
-        $type = $this->resolveFormTypeKey((string)$log->item_type);
+        $type = $this->resolveFormTypeKey((string) $log->item_type);
+
         return match ($type) {
-            'stb' => "/stb/{$log->item_id}/show",
+            'stb' => "/stb/{$log->item_id}",
             'peminjaman' => "/peminjaman/{$log->item_id}",
             'inspection' => "/inspection/{$log->item_id}",
             'ticket' => "/helpdesk/{$log->item_id}",
@@ -294,14 +304,14 @@ class FormLogController extends Controller
     {
         $meta = $log->log_meta ?? [];
 
-        if (!empty($meta['pdf_path'])) {
-            return '/storage/' . ltrim($meta['pdf_path'], '/');
+        if (! empty($meta['pdf_path'])) {
+            return '/storage/'.ltrim($meta['pdf_path'], '/');
         }
 
         if ($log->item) {
             $item = $log->item;
-            if (!empty($item->completed_pdf_path)) {
-                return '/storage/' . ltrim($item->completed_pdf_path, '/');
+            if (! empty($item->completed_pdf_path)) {
+                return '/storage/'.ltrim($item->completed_pdf_path, '/');
             }
         }
 
@@ -310,12 +320,12 @@ class FormLogController extends Controller
 
     private function resolveTargetName($log): ?string
     {
-        if ($log->target && !empty($log->target->name)) {
+        if ($log->target && ! empty($log->target->name)) {
             return $log->target->name;
         }
 
         $meta = $log->log_meta ?? [];
-        if (!empty($meta['user'])) {
+        if (! empty($meta['user'])) {
             return is_string($meta['user']) ? $meta['user'] : null;
         }
 
@@ -335,5 +345,60 @@ class FormLogController extends Controller
             'sync_failed' => 'Gagal Sinkronisasi',
             default => ucfirst(str_replace('_', ' ', $action)),
         };
+    }
+
+    private function resolveChangedFields($log): ?string
+    {
+        $meta = $log->log_meta ?? [];
+        $changed = [];
+
+        // 1. Array of string changes in changed_fields
+        if (!empty($meta['changed_fields'])) {
+            $cf = $meta['changed_fields'];
+            if (is_array($cf)) {
+                foreach ($cf as $item) {
+                    if (is_string($item) && trim($item) !== '') {
+                        $changed[] = trim($item);
+                    } elseif (is_array($item)) {
+                        $field = $item['field'] ?? $item['name'] ?? 'Field';
+                        $old = $item['old'] ?? $item['from'] ?? '-';
+                        $new = $item['new'] ?? $item['to'] ?? '-';
+                        $changed[] = "{$field}: {$old} -> {$new}";
+                    }
+                }
+            } elseif (is_string($cf) && trim($cf) !== '') {
+                $changed[] = trim($cf);
+            }
+        }
+
+        // 2. Old vs New (from Loggable trait)
+        if (!empty($meta['old']) && !empty($meta['new']) && is_array($meta['old']) && is_array($meta['new'])) {
+            $keys = array_unique(array_merge(array_keys($meta['old']), array_keys($meta['new'])));
+            foreach ($keys as $key) {
+                if (in_array($key, ['id', 'created_at', 'updated_at', 'remember_token', 'password'])) continue;
+                $oldVal = $meta['old'][$key] ?? null;
+                $newVal = $meta['new'][$key] ?? null;
+                if ($oldVal != $newVal) {
+                    $label = ucwords(str_replace('_', ' ', $key));
+                    $oldStr = is_array($oldVal) ? json_encode($oldVal) : ($oldVal !== null ? (string)$oldVal : '-');
+                    $newStr = is_array($newVal) ? json_encode($newVal) : ($newVal !== null ? (string)$newVal : '-');
+                    $changed[] = "{$label}: {$oldStr} -> {$newStr}";
+                }
+            }
+        }
+
+        // 3. Note regex fallback
+        if (empty($changed) && !empty($log->note)) {
+            $note = $log->note;
+            if (str_contains($note, ' -> ') || str_contains($note, 'diubah')) {
+                if (preg_match('/(?:Field diubah|diubah):\s*(.+)$/i', $note, $m)) {
+                    $changed[] = $m[1];
+                } elseif (str_contains($note, ' -> ')) {
+                    $changed[] = $note;
+                }
+            }
+        }
+
+        return !empty($changed) ? implode(' || ', array_unique($changed)) : null;
     }
 }

@@ -1172,6 +1172,15 @@ class PeminjamanController extends DocumentFlowController
                 // Generate docId for photo storage
                 $docId = $this->formatDocId($peminjaman, null);
                 
+                $oldData = [
+                    'user_name' => $peminjaman->user_name,
+                    'location_name' => $peminjaman->location_name,
+                    'use_date' => $peminjaman->use_date ? \Carbon\Carbon::parse($peminjaman->use_date)->format('Y-m-d') : null,
+                    'expected_return_date' => $peminjaman->expected_return_date ? \Carbon\Carbon::parse($peminjaman->expected_return_date)->format('Y-m-d') : null,
+                    'remark' => $peminjaman->remark,
+                    'items_count' => $peminjaman->items()->count(),
+                ];
+
                 $photoPath = $peminjaman->photo;
 
                 if ($request->hasFile('photo')) {
@@ -1230,6 +1239,53 @@ class PeminjamanController extends DocumentFlowController
                     'items_count' => $peminjaman->items()->count(),
                 ]);
             });
+
+            // Log update to ActionLog with detected changes
+            try {
+                $docId = $this->formatDocId($peminjaman, null);
+                $changedFields = [];
+                if (($oldData['user_name'] ?? '') !== ($peminjaman->user_name ?? '')) {
+                    $changedFields[] = sprintf('Penerima / User: %s -> %s', $oldData['user_name'] ?: '-', $peminjaman->user_name ?: '-');
+                }
+                if (($oldData['location_name'] ?? '') !== ($peminjaman->location_name ?? '')) {
+                    $changedFields[] = sprintf('Lokasi: %s -> %s', $oldData['location_name'] ?: '-', $peminjaman->location_name ?: '-');
+                }
+                $newUseDate = $peminjaman->use_date ? \Carbon\Carbon::parse($peminjaman->use_date)->format('Y-m-d') : null;
+                if ($oldData['use_date'] !== $newUseDate) {
+                    $changedFields[] = sprintf('Tanggal Pakai: %s -> %s', $oldData['use_date'] ?: '-', $newUseDate ?: '-');
+                }
+                $newReturnDate = $peminjaman->expected_return_date ? \Carbon\Carbon::parse($peminjaman->expected_return_date)->format('Y-m-d') : null;
+                if ($oldData['expected_return_date'] !== $newReturnDate) {
+                    $changedFields[] = sprintf('Estimasi Kembali: %s -> %s', $oldData['expected_return_date'] ?: '-', $newReturnDate ?: '-');
+                }
+                if (($oldData['remark'] ?? '') !== ($peminjaman->remark ?? '')) {
+                    $changedFields[] = sprintf('Catatan: %s -> %s', $oldData['remark'] ?: '-', $peminjaman->remark ?: '-');
+                }
+                $newItemsCount = $peminjaman->items()->count();
+                if ($oldData['items_count'] !== $newItemsCount) {
+                    $changedFields[] = sprintf('Jumlah Item: %d item -> %d item', $oldData['items_count'], $newItemsCount);
+                }
+
+                ActionLog::create([
+                    'user_id'     => auth()->id(),
+                    'action_type' => 'updated',
+                    'item_type'   => Peminjaman::class,
+                    'item_id'     => $peminjaman->id,
+                    'note'        => "Peminjaman #{$docId} diperbarui oleh " . (auth()->user()->name ?? 'Admin'),
+                    'log_meta'    => [
+                        'doc_no'        => $docId,
+                        'document_type' => 'loan',
+                        'movement_type' => $peminjaman->movement_type,
+                        'user_id'       => $peminjaman->user_id,
+                        'user_name'     => $peminjaman->user_name,
+                        'group_id'      => $peminjaman->group_id,
+                        'items_count'   => $newItemsCount,
+                        'changed_fields' => $changedFields,
+                    ],
+                ]);
+            } catch (\Throwable $logEx) {
+                \Log::warning('Failed to write peminjaman update log', ['error' => $logEx->getMessage()]);
+            }
 
             return redirect()->route('peminjaman.show', $peminjaman)->with('success', 'Dokumen peminjaman berhasil diperbarui.');
         } catch (\Throwable $e) {

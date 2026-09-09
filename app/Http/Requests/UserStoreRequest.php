@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Str;
 
 class UserStoreRequest extends FormRequest
 {
@@ -17,6 +18,9 @@ class UserStoreRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $username = trim((string) $this->input('username', ''));
+        $password = (string) $this->input('password', '');
+        $password = $password !== '' ? $password : Str::random(32);
+
         $this->merge([
             'first_name'   => trim((string) $this->input('first_name', '')),
             'last_name'    => trim((string) $this->input('last_name', '')),
@@ -31,6 +35,8 @@ class UserStoreRequest extends FormRequest
             'vip'                  => (bool) $this->input('vip', false),
             'remote'               => (bool) $this->input('remote', false),
             'auto_assign_licenses' => (bool) $this->input('auto_assign_licenses', true),
+            'password'             => $password,
+            'password_confirmation' => $password,
         ]);
     }
 

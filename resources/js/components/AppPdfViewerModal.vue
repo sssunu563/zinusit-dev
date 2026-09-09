@@ -56,11 +56,14 @@ const emit = defineEmits<{
                         </button>
                     </div>
                 </header>
-                <iframe
-                    :src="url"
-                    :title="title || 'PDF Viewer'"
-                    class="min-h-0 w-full flex-1 bg-slate-100"
-                />
+                <div class="min-h-0 w-full flex-1 bg-slate-100">
+                    <embed
+                        :src="url"
+                        :title="title || 'PDF Viewer'"
+                        type="application/pdf"
+                        class="h-full w-full"
+                    />
+                </div>
             </section>
         </div>
     </Teleport>

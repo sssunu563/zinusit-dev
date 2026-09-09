@@ -150,6 +150,8 @@ const formData = ref({
     date: toDateStr(props.initialData?.date),
     report_id: props.initialData?.report_id || '',
     report_type: props.initialData?.report_type || '',
+    inspection_scope: props.initialData?.inspection_scope || 'unit',
+    component_name: props.initialData?.component_name || '',
     // User fields
     user_id: props.initialData?.user_id || (null as number | null),
     user: props.initialData?.user || '',
@@ -179,8 +181,10 @@ const formData = ref({
     photo: null as File | null,
 });
 
-// Asset is locked when coming from asset detail page OR when editing an existing record with an asset
-const assetLocked = computed(() => !!props.initialData?.snipeit_asset_id);
+// Existing inspections keep their original asset; new forms may change category and asset.
+const assetLocked = computed(
+    () => !!props.initialData?.id && !!props.initialData?.snipeit_asset_id,
+);
 
 // Auto-generate report ID when company or date changes
 watch(
@@ -205,6 +209,10 @@ const normalizeInteger = (v: any) => {
 
 const selectedUserId = computed(() => normalizeInteger(formData.value.user_id));
 
+const isHardwareInspection = computed(
+    () => formData.value.report_type === 'Inspection Hardware',
+);
+
 const inspectionAssetCategory = computed(() => {
     switch (formData.value.report_type) {
         case 'Inspection Hardware':
@@ -222,10 +230,42 @@ const filterInspectionAssets = (assets: any[]) => {
     const category = inspectionAssetCategory.value;
     if (!category) return assets;
 
-    return assets.filter(
-        (asset) => String(asset.asset_type || '').toLowerCase() === category,
-    );
+    return assets.filter((asset) => {
+        const assetType = String(asset.asset_type || '').toLowerCase();
+        if (category === 'assets') {
+            return (
+                assetType === 'asset' ||
+                assetType === 'assets' ||
+                assetType.includes('hardware')
+            );
+        }
+        if (category === 'component') {
+            return (
+                assetType === 'component' ||
+                assetType === 'components' ||
+                assetType.includes('component')
+            );
+        }
+        return (
+            assetType === 'accessory' ||
+            assetType === 'accessories' ||
+            assetType.includes('accessor')
+        );
+    });
 };
+
+const inspectionAssetLabel = computed(() => {
+    switch (inspectionAssetCategory.value) {
+        case 'assets':
+            return 'hardware';
+        case 'component':
+            return 'component';
+        case 'accessories':
+            return 'accessory';
+        default:
+            return 'asset';
+    }
+});
 
 // Flag to skip auto-fill when resolving IDs for existing records
 const _skipUserWatch = ref(false);
@@ -353,6 +393,10 @@ const selectUserAsset = (asset: any) => {
 watch(
     () => formData.value.report_type,
     async () => {
+        if (!isHardwareInspection.value) {
+            formData.value.inspection_scope = 'unit';
+            formData.value.component_name = '';
+        }
         if (selectedUserId.value) {
             await refreshUserAssets(selectedUserId.value, true);
         }
@@ -531,6 +575,11 @@ const handleSubmit = () => {
     if (!formData.value.issue_description)
         errs.issue_description = 'Issue description wajib diisi';
     if (!formData.value.solution) errs.solution = 'Solution wajib diisi';
+    if (
+        formData.value.inspection_scope === 'internal_component' &&
+        !String(formData.value.component_name || '').trim()
+    )
+        errs.component_name = 'Nama component wajib diisi';
     if (Object.keys(errs).length) {
         formErrors.value = errs;
         return;
@@ -822,8 +871,8 @@ const handleSubmit = () => {
                         >
                             <span
                                 class="text-[10px] font-black tracking-widest text-emerald-600 uppercase"
-                                >? Asset sudah terpilih dari halaman detail
-                                asset</span
+                                >Asset sudah dipilih dari halaman detail asset.
+                                Asset tidak dapat diganti dari form ini.</span
                             >
                         </div>
 
@@ -1129,8 +1178,9 @@ const handleSubmit = () => {
                                     <Wrench class="size-5" />
                                 </div>
                                 <p class="text-[11px] font-bold text-slate-400">
-                                    User ini tidak memiliki asset yang terdaftar
-                                    di Snipe-IT
+                                    User ini tidak memiliki
+                                    {{ inspectionAssetLabel }}
+                                    yang ter-assign di Snipe-IT
                                 </p>
                             </div>
                         </template>
@@ -1228,6 +1278,81 @@ const handleSubmit = () => {
                                     />
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Choose the inspection target only after the parent asset is known. -->
+                        <div
+                            v-if="
+                                isHardwareInspection &&
+                                formData.snipeit_asset_id
+                            "
+                            class="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4"
+                        >
+                            <label
+                                class="text-[11px] font-black tracking-widest text-slate-400 uppercase"
+                            >
+                                Inspection Target
+                            </label>
+                            <div class="grid gap-3 md:grid-cols-2">
+                                <label
+                                    class="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
+                                >
+                                    <input
+                                        v-model="formData.inspection_scope"
+                                        type="radio"
+                                        value="unit"
+                                        class="mt-0.5 accent-[#003628]"
+                                    />
+                                    <span>
+                                        <span
+                                            class="block text-xs font-bold text-slate-800"
+                                            >Unit / Laptop</span
+                                        >
+                                        <span
+                                            class="block text-[10px] text-slate-400"
+                                            >Check-in dan ubah status asset ke
+                                            Broken.</span
+                                        >
+                                    </span>
+                                </label>
+                                <label
+                                    class="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3"
+                                >
+                                    <input
+                                        v-model="formData.inspection_scope"
+                                        type="radio"
+                                        value="internal_component"
+                                        class="mt-0.5 accent-[#003628]"
+                                    />
+                                    <span>
+                                        <span
+                                            class="block text-xs font-bold text-slate-800"
+                                            >Component internal</span
+                                        >
+                                        <span
+                                            class="block text-[10px] text-slate-400"
+                                            >Catat maintenance tanpa mengubah
+                                            status laptop.</span
+                                        >
+                                    </span>
+                                </label>
+                            </div>
+                            <input
+                                v-if="
+                                    formData.inspection_scope ===
+                                    'internal_component'
+                                "
+                                v-model="formData.component_name"
+                                type="text"
+                                placeholder="Nama component, contoh: SSD"
+                                class="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-bold text-slate-900 shadow-sm outline-none focus:border-[#003628]"
+                            />
+                            <p
+                                v-if="formErrors.component_name"
+                                class="text-[10px] font-bold text-rose-500"
+                            >
+                                {{ formErrors.component_name }}
+                            </p>
                         </div>
                     </div>
                 </div>

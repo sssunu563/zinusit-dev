@@ -2,17 +2,9 @@
 import { Link, useForm } from '@inertiajs/vue3';
 import {
     LucideChevronDown as ChevronDown,
-    LucideChevronUp as ChevronUp,
-    LucideUser as User,
-    LucideMail as Mail,
-    LucideShieldCheck as Shield,
-    LucideSmartphone as Smartphone,
     LucideInfo as Info,
     LucideSave as Save,
     LucideX as X,
-    LucideBuilding2 as Building2,
-    LucideMapPin as MapPin,
-    LucideBriefcase as Briefcase,
     LucideCheckCircle2 as CheckCircle,
 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
@@ -62,7 +54,7 @@ type Props = {
 };
 
 const props = defineProps<Props>();
-const emit = defineEmits(['success']);
+const emit = defineEmits(['success', 'close']);
 
 const form = useForm({ ...props.initialValues });
 
@@ -95,19 +87,40 @@ const submit = () => {
 </script>
 
 <template>
-    <div
-        class="relative overflow-hidden rounded-[32px] border border-[#003628]/10 bg-white shadow-xl shadow-[#003628]/10"
-    >
-        <!-- Decorative background -->
-        <div
-            class="pointer-events-none absolute top-0 right-0 -mt-24 -mr-24 h-96 w-96 rounded-full bg-[#FFF2CC]/50 blur-[120px]"
-        />
-
-        <div class="relative z-10 p-8 md:p-12">
+    <div class="relative overflow-hidden bg-white">
+        <div class="relative z-10 p-6 md:p-8">
+            <div
+                class="mb-8 flex items-start justify-between border-b border-slate-100 pb-5"
+            >
+                <div>
+                    <p
+                        class="mb-1 text-[10px] font-black tracking-[0.18em] text-[#003628] uppercase"
+                    >
+                        User details
+                    </p>
+                    <h2
+                        class="text-2xl font-black tracking-tight text-slate-900"
+                    >
+                        {{ props.title }}
+                    </h2>
+                    <p class="mt-1 text-xs font-medium text-slate-400">
+                        Kelola identitas dan struktur organisasi user Snipe-IT.
+                    </p>
+                </div>
+                <button
+                    v-if="isModal"
+                    type="button"
+                    class="flex size-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    title="Tutup"
+                    @click="emit('close')"
+                >
+                    <X class="size-4" />
+                </button>
+            </div>
             <form @submit.prevent="submit">
                 <!-- 1. PERSONAL IDENTITY -->
-                <div class="mb-12">
-                    <div class="mb-8 flex items-center gap-3">
+                <div class="mb-9">
+                    <div class="mb-5 flex items-center gap-3">
                         <div class="h-6 w-1 rounded-full bg-primary" />
                         <h3
                             class="text-[10px] font-black tracking-[0.2em] text-primary uppercase"
@@ -116,7 +129,7 @@ const submit = () => {
                         </h3>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-8 md:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
                         <div class="space-y-2">
                             <label
                                 class="ml-1 text-[10px] font-black tracking-widest text-[#003628]/60 uppercase"
@@ -127,7 +140,7 @@ const submit = () => {
                                 <input
                                     v-model="form.first_name"
                                     type="text"
-                                    class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                     placeholder="Contoh: Budi"
                                 />
                                 <div
@@ -150,7 +163,7 @@ const submit = () => {
                             <input
                                 v-model="form.last_name"
                                 type="text"
-                                class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                class="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 placeholder="Contoh: Santoso"
                             />
                         </div>
@@ -165,7 +178,7 @@ const submit = () => {
                                 <input
                                     v-model="form.email"
                                     type="email"
-                                    class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                     placeholder="budi.santoso@zinus.com"
                                 />
                                 <div
@@ -179,51 +192,11 @@ const submit = () => {
                                 {{ form.errors.email }}
                             </p>
                         </div>
-
-                        <div class="space-y-2">
-                            <label
-                                class="ml-1 text-[10px] font-black tracking-widest text-[#003628]/60 uppercase"
-                                >LDAP Username</label
-                            >
-                            <input
-                                v-model="form.username"
-                                type="text"
-                                class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
-                                placeholder="ID login domain"
-                            />
-                        </div>
-
-                        <div
-                            v-if="!hidePassword && method === 'post'"
-                            class="space-y-2"
-                        >
-                            <label
-                                class="ml-1 text-[10px] font-black tracking-widest text-[#003628]/60 uppercase"
-                                >Kata Sandi Awal
-                                <span class="text-red-500">*</span></label
-                            >
-                            <div class="group relative">
-                                <input
-                                    v-model="form.password"
-                                    type="password"
-                                    class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
-                                />
-                                <div
-                                    class="absolute top-0 right-0 bottom-0 w-1 rounded-r-xl bg-[#003628]/20 transition-colors group-focus-within:bg-[#003628]"
-                                />
-                            </div>
-                            <p
-                                v-if="form.errors.password"
-                                class="letter-spacing-[0.05em] mt-1 ml-1 text-[10px] font-black text-red-500 uppercase"
-                            >
-                                {{ form.errors.password }}
-                            </p>
-                        </div>
                     </div>
                 </div>
 
                 <!-- 2. ADMINISTRATIVE & GOVERNANCE -->
-                <div class="mb-12">
+                <div class="mb-9">
                     <div class="mb-8 flex items-center gap-3">
                         <div class="h-6 w-1 rounded-full bg-primary" />
                         <h3
@@ -234,7 +207,7 @@ const submit = () => {
                     </div>
 
                     <div
-                        class="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3"
+                        class="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3"
                     >
                         <div class="space-y-2">
                             <label
@@ -244,7 +217,7 @@ const submit = () => {
                             <input
                                 v-model="form.employee_num"
                                 type="text"
-                                class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                class="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 placeholder="EMP-001"
                             />
                         </div>
@@ -257,7 +230,7 @@ const submit = () => {
                             <input
                                 v-model="form.jobtitle"
                                 type="text"
-                                class="h-11 w-full rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                class="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 placeholder="Contoh: Senior Specialist"
                             />
                         </div>
@@ -270,7 +243,7 @@ const submit = () => {
                             <div class="relative">
                                 <select
                                     v-model="form.company_id"
-                                    class="h-11 w-full appearance-none rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 >
                                     <option value="">Pilih Perusahaan</option>
                                     <option
@@ -295,7 +268,7 @@ const submit = () => {
                             <div class="relative">
                                 <select
                                     v-model="form.department_id"
-                                    class="h-11 w-full appearance-none rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 >
                                     <option value="">Pilih Departemen</option>
                                     <option
@@ -320,7 +293,7 @@ const submit = () => {
                             <div class="relative">
                                 <select
                                     v-model="form.location_id"
-                                    class="h-11 w-full appearance-none rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 >
                                     <option value="">Pilih Lokasi</option>
                                     <option
@@ -345,7 +318,7 @@ const submit = () => {
                             <div class="relative">
                                 <select
                                     v-model="form.manager_id"
-                                    class="h-11 w-full appearance-none rounded-xl border border-[#003628]/10 bg-[#FFF2CC]/30 px-4 text-[13px] font-bold text-[#003628] transition-all outline-none focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                                    class="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-800 transition-all outline-none focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                                 >
                                     <option value="">Pilih Manajer</option>
                                     <option
@@ -364,74 +337,7 @@ const submit = () => {
                     </div>
                 </div>
 
-                <!-- 3. ADDITIONAL SETTINGS -->
-                <div class="mb-12">
-                    <div class="mb-8 flex items-center gap-3">
-                        <div class="h-6 w-1 rounded-full bg-[#003628]" />
-                        <h3
-                            class="text-[10px] font-black tracking-[0.2em] text-[#003628] uppercase"
-                        >
-                            Pengaturan Tambahan
-                        </h3>
-                    </div>
-
-                    <div
-                        class="mb-8 flex flex-wrap items-center gap-6 rounded-[28px] border border-dashed border-[#003628]/10 bg-[#FFF2CC]/30 p-6"
-                    >
-                        <label
-                            class="group flex cursor-pointer items-center gap-3"
-                        >
-                            <div
-                                class="relative h-6 w-11 rounded-full transition-all duration-300"
-                                :class="
-                                    form.vip
-                                        ? 'bg-[#003628] shadow-lg shadow-[#003628]/25'
-                                        : 'bg-[#003628]/30'
-                                "
-                            >
-                                <div
-                                    class="absolute top-1 left-1 size-4 rounded-full bg-white shadow-md transition-all duration-300"
-                                    :class="form.vip ? 'translate-x-5' : ''"
-                                />
-                                <input
-                                    type="checkbox"
-                                    v-model="form.vip"
-                                    class="sr-only"
-                                />
-                            </div>
-                            <span
-                                class="text-[11px] font-black tracking-widest text-[#003628]/70 uppercase transition-colors group-hover:text-[#003628]"
-                                >Pengguna VIP</span
-                            >
-                        </label>
-                        <label
-                            class="group flex cursor-pointer items-center gap-3"
-                        >
-                            <div
-                                class="relative h-6 w-11 rounded-full transition-all duration-300"
-                                :class="
-                                    form.remote
-                                        ? 'bg-[#003628] shadow-lg shadow-[#003628]/25'
-                                        : 'bg-[#003628]/30'
-                                "
-                            >
-                                <div
-                                    class="absolute top-1 left-1 size-4 rounded-full bg-white shadow-md transition-all duration-300"
-                                    :class="form.remote ? 'translate-x-5' : ''"
-                                />
-                                <input
-                                    type="checkbox"
-                                    v-model="form.remote"
-                                    class="sr-only"
-                                />
-                            </div>
-                            <span
-                                class="text-[11px] font-black tracking-widest text-[#003628]/70 uppercase transition-colors group-hover:text-[#003628]"
-                                >Bekerja Remote</span
-                            >
-                        </label>
-                    </div>
-
+                <div class="mb-9">
                     <div class="space-y-2">
                         <label
                             class="ml-1 text-[10px] font-black tracking-widest text-[#003628]/60 uppercase"
@@ -440,7 +346,7 @@ const submit = () => {
                         <textarea
                             v-model="form.notes"
                             rows="3"
-                            class="w-full rounded-2xl border border-[#003628]/10 bg-[#FFF2CC]/30 p-4 text-[13px] font-bold text-[#003628] transition-all outline-none placeholder:text-[#003628]/40 focus:border-[#003628]/30 focus:ring-4 focus:ring-[#003628]/10"
+                            class="w-full rounded-xl border border-slate-200 bg-white p-4 text-[13px] font-bold text-slate-800 transition-all outline-none placeholder:text-slate-400 focus:border-[#003628]/40 focus:ring-4 focus:ring-[#003628]/10"
                             placeholder="Detail catatan internal HR/IT..."
                         />
                     </div>
@@ -448,7 +354,7 @@ const submit = () => {
 
                 <!-- Footer Actions -->
                 <div
-                    class="mt-12 flex items-center justify-between border-t border-[#003628]/10 pt-10"
+                    class="mt-8 flex items-center justify-between border-t border-slate-100 pt-6"
                 >
                     <Link
                         v-if="!isModal"

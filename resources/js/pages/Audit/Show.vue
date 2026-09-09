@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { 
@@ -23,7 +23,8 @@ import {
     Filter,
     Smartphone,
     Camera,
-    Zap
+    Zap,
+    ExternalLink
 } from 'lucide-vue-next';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Button } from '@/components/ui/button';
@@ -97,20 +98,25 @@ const scanForm = useForm({
 const handleScan = async () => {
     if (!scanInput.value || scanning.value) return;
     
-    const scanTag = scanInput.value.trim();
+    const rawInput = scanInput.value.trim();
+
+    // Support scanned QR code URLs (e.g. http://127.0.0.1:8000/a/test111 or /a/test111)
+    const urlMatch = rawInput.match(/\/a\/([^/?#\s]+)/);
+    const searchRef = urlMatch ? decodeURIComponent(urlMatch[1]) : rawInput;
     
     // Check for duplicate scan (already verified)
     const duplicate = props.session.items.find(item => 
-        item.asset_tag === scanTag && item.verified_at
+        (item.asset_tag?.toLowerCase() === searchRef.toLowerCase() || 
+         item.serial?.toLowerCase() === searchRef.toLowerCase() ||
+         item.asset_tag?.toLowerCase() === rawInput.toLowerCase()) && item.verified_at
     );
     
     if (duplicate) {
-        scanError.value = `âš ï¸ Aset ${scanTag} sudah diverifikasi pada ${new Date(duplicate.verified_at!).toLocaleTimeString('id-ID')}`;
+        scanError.value = `⚠️ Aset ${duplicate.asset_tag} sudah diverifikasi pada ${new Date(duplicate.verified_at!).toLocaleTimeString('id-ID')}`;
         scanInput.value = '';
-        // Auto-clear error after 3 seconds
         setTimeout(() => {
             scanError.value = '';
-        }, 3000);
+        }, 3500);
         return;
     }
     
@@ -120,15 +126,16 @@ const handleScan = async () => {
     
     try {
         const res = await axios.post(`/audit/${props.session.id}/scan`, {
-            search: scanTag
+            search: rawInput
         });
         
-        currentScan.value = res.data.asset;
-        scanForm.physical_location = res.data.asset.location || '';
-        scanForm.physical_user = res.data.asset.assigned_to || '';
+        const asset = res.data.asset || res.data;
+        currentScan.value = asset;
+        scanForm.physical_location = asset.location || '';
+        scanForm.physical_user = asset.assigned_to || asset.user || '';
         scanForm.status = 'Match';
+        scanForm.note = '';
         
-        // Auto focus note field for user to add notes if needed
     } catch (err: any) {
         scanError.value = err.response?.data?.message || 'Aset tidak ditemukan dalam sistem Snipe-IT.';
     } finally {
@@ -169,14 +176,14 @@ const submitVerification = async () => {
     try {
         await axios.post(`/audit/${props.session.id}/verify`, {
             snipeit_asset_id: currentScan.value.id,
-            asset_tag: currentScan.value.tag,
-            serial: currentScan.value.serial,
+            asset_tag: currentScan.value.asset_tag || currentScan.value.tag || '',
+            serial: currentScan.value.serial || '',
             physical_location: scanForm.physical_location,
             physical_user: scanForm.physical_user,
             status: scanForm.status,
             note: scanForm.note,
             expected_location: currentScan.value.location,
-            expected_user: currentScan.value.user
+            expected_user: currentScan.value.assigned_to || currentScan.value.user
         });
         
         // Refresh session data
@@ -317,12 +324,18 @@ onUnmounted(() => {
                         <div v-if="currentScan" class="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <div class="p-4 bg-white/5 rounded-2xl border border-white/10">
                                 <div class="flex items-center gap-3 mb-3">
-                                    <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/10">
-                                        <Monitor class="w-6 h-6 text-emerald-200" />
+                                    <div class="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/10 overflow-hidden shrink-0">
+                                        <img v-if="currentScan.image" :src="currentScan.image" class="w-full h-full object-cover" />
+                                        <Monitor v-else class="w-6 h-6 text-emerald-200" />
                                     </div>
-                                    <div class="flex-1">
-                                        <h4 class="text-sm font-black text-white uppercase tracking-tight line-clamp-1">{{ currentScan.name }}</h4>
-                                        <p class="text-[10px] font-bold text-emerald-200/60 uppercase tracking-widest">{{ currentScan.asset_tag }}</p>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <h4 class="text-sm font-black text-white uppercase tracking-tight line-clamp-1">{{ currentScan.name }}</h4>
+                                            <a :href="`/a/${encodeURIComponent(currentScan.asset_tag || currentScan.tag || currentScan.serial)}`" target="_blank" class="text-emerald-200/60 hover:text-white transition-colors" title="Lihat Detail Singkat Asset">
+                                                <ExternalLink class="w-3.5 h-3.5" />
+                                            </a>
+                                        </div>
+                                        <p class="text-[10px] font-bold text-emerald-200/60 uppercase tracking-widest truncate">{{ currentScan.asset_tag || currentScan.tag }} • {{ currentScan.serial || 'No Serial' }}</p>
                                     </div>
                                 </div>
 
@@ -480,12 +493,19 @@ onUnmounted(() => {
                             <div v-if="currentScan" class="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                 <div class="p-5 bg-white/5 rounded-3xl border border-white/10">
                                     <div class="flex items-center gap-4 mb-4">
-                                        <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10">
-                                            <Monitor class="w-7 h-7 text-emerald-200" />
+                                        <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center border border-white/10 overflow-hidden shrink-0">
+                                            <img v-if="currentScan.image" :src="currentScan.image" class="w-full h-full object-cover" />
+                                            <Monitor v-else class="w-7 h-7 text-emerald-200" />
                                         </div>
-                                        <div>
-                                            <h4 class="text-sm font-black text-white uppercase tracking-tight">{{ currentScan.name }}</h4>
-                                            <p class="text-[10px] font-bold text-emerald-200/60 uppercase tracking-widest">{{ currentScan.asset_tag }} â€¢ {{ currentScan.serial || 'No Serial' }}</p>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <h4 class="text-sm font-black text-white uppercase tracking-tight truncate">{{ currentScan.name }}</h4>
+                                                <a :href="`/a/${encodeURIComponent(currentScan.asset_tag || currentScan.tag || currentScan.serial)}`" target="_blank" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-emerald-200/70 hover:text-white transition-colors flex items-center gap-1.5 text-[10px] font-bold shrink-0" title="Buka Profil Lengkap Asset">
+                                                    <span>Lihat Profil</span>
+                                                    <ExternalLink class="w-3 h-3" />
+                                                </a>
+                                            </div>
+                                            <p class="text-[10px] font-bold text-emerald-200/60 uppercase tracking-widest truncate">{{ currentScan.asset_tag || currentScan.tag }} • {{ currentScan.serial || 'No Serial' }}</p>
                                         </div>
                                     </div>
 

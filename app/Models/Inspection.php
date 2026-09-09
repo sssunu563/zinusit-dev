@@ -12,7 +12,7 @@ class Inspection extends Model
     protected $fillable = [
         'location', 'user', 'email', 'leader', 'company', 'department', 'dept_head',
         'it_staff',
-        'report_id', 'change_time', 'report_type', 'date',
+        'report_id', 'change_time', 'report_type', 'inspection_scope', 'component_name', 'date',
         'device_category', 'device_name', 'asset_tag', 'serial_number', 'asset_snapshot',
         'checked_by', 'approve_by', 'checked_date',
         'issue_description', 'solution', 'remarks', 'photo',
@@ -26,7 +26,7 @@ class Inspection extends Model
         'change_time'       => 'datetime',
         'date'              => 'date',
         'checked_date'      => 'date',
-        'signature_date'    => 'date',
+        'signature_date'    => 'datetime',
         'completed_at'      => 'datetime',
         'snipeit_synced_at' => 'datetime',
         'created_at'        => 'datetime',

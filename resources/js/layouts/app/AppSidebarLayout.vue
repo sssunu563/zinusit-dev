@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import AppSidebarHeader from '@/components/AppSidebarHeader.vue';
 import AppUniversalSearch from '@/components/AppUniversalSearch.vue';
-import FlashAlert from '@/Components/FlashAlert.vue';
+import FlashAlert from '@/components/FlashAlert.vue';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import type { BreadcrumbItem } from '@/types';
 

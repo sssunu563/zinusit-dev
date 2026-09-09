@@ -21,10 +21,8 @@ defineProps<{
 </script>
 
 <template>
-    <AuthBase
-        title="Login"
-    >
-        <Head title="Log in" />
+    <AuthBase title="Login">
+        <Head title="Masuk" />
 
         <!-- Status message -->
         <div
@@ -42,8 +40,11 @@ defineProps<{
         >
             <!-- Username -->
             <div class="space-y-2">
-                <Label for="email" class="text-[10px] font-black tracking-[0.1em] text-slate-500 uppercase ml-1">
-                    Username
+                <Label
+                    for="email"
+                    class="ml-1 text-[10px] font-black tracking-[0.1em] text-slate-500 uppercase"
+                >
+                    Nama Pengguna
                 </Label>
                 <Input
                     id="email"
@@ -53,21 +54,28 @@ defineProps<{
                     autofocus
                     :tabindex="1"
                     autocomplete="username"
-                    placeholder="Username"
-                    class="app-input-shell h-12 rounded-xl px-4 text-sm text-slate-900 placeholder:text-slate-300 transition-all duration-300"
+                    placeholder="Nama pengguna"
+                    class="app-input-shell h-12 rounded-xl px-4 text-sm text-slate-900 transition-all duration-300 placeholder:text-slate-300"
                 />
                 <InputError :message="errors.email" />
             </div>
 
             <!-- Password -->
             <div class="space-y-2">
-                <div class="flex items-center justify-between ml-1 text-slate-500 hover:text-primary transition-colors cursor-default">
-                    <Label for="password" class="text-[10px] font-black tracking-[0.1em] uppercase">
-                        Password
+                <div
+                    class="ml-1 flex cursor-default items-center justify-between text-slate-500 transition-colors hover:text-primary"
+                >
+                    <Label
+                        for="password"
+                        class="text-[10px] font-black tracking-[0.1em] uppercase"
+                    >
+                        Kata Sandi
                     </Label>
                 </div>
-                <div class="relative group">
-                    <LockKeyhole class="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
+                <div class="group relative">
+                    <LockKeyhole
+                        class="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-primary"
+                    />
                     <Input
                         id="password"
                         type="password"
@@ -75,39 +83,50 @@ defineProps<{
                         required
                         :tabindex="2"
                         autocomplete="current-password"
-                        class="app-input-shell h-12 rounded-xl pl-11 pr-4 text-sm text-slate-900 placeholder:text-slate-300 transition-all duration-300"
+                        class="app-input-shell h-12 rounded-xl pr-4 pl-11 text-sm text-slate-900 transition-all duration-300 placeholder:text-slate-300"
                     />
                 </div>
                 <InputError :message="errors.password" />
             </div>
 
             <!-- Remember me -->
-            <Label for="remember" class="flex cursor-pointer items-center gap-3 text-[13px] text-slate-500 ml-1 select-none hover:text-primary transition-colors group">
+            <Label
+                for="remember"
+                class="group ml-1 flex cursor-pointer items-center gap-3 text-[13px] text-slate-500 transition-colors select-none hover:text-primary"
+            >
                 <Checkbox
                     id="remember"
                     name="remember"
                     :tabindex="3"
-                    class="border-slate-300 bg-white data-[state=checked]:border-primary data-[state=checked]:bg-primary rounded-md transition-all group-hover:border-primary"
+                    class="rounded-md border-slate-300 bg-white transition-all group-hover:border-primary data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                 />
-                <span class="font-medium">Remember me</span>
+                <span class="font-medium">Ingat saya</span>
             </Label>
 
             <!-- Submit -->
             <Button
                 type="submit"
-                class="mt-4 h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:bg-primary-light hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
+                class="hover:bg-primary-light mt-4 h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
                 :tabindex="4"
                 :disabled="processing"
                 data-test="login-button"
             >
                 <Spinner v-if="processing" class="mr-2 size-4" />
-                {{ processing ? 'Logging in...' : 'Log in' }}
+                {{ processing ? 'Sedang masuk...' : 'Masuk' }}
             </Button>
 
             <!-- Employee Asset Portal Link -->
-            <div class="mt-4 pt-6 border-t border-slate-100 text-center">
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-4">Employee Self-Service</p>
-                <a href="/check-assets" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 hover:text-primary hover:border-primary/20 hover:bg-primary/[0.02] transition-all text-[11px] font-black uppercase tracking-widest group shadow-sm">
+            <div class="mt-4 border-t border-slate-100 pt-6 text-center">
+                <p
+                    class="mb-4 text-[10px] font-black tracking-[0.2em] text-slate-300 uppercase"
+                >
+                    Layanan Mandiri Karyawan
+                </p>
+                <a
+                    href="/check-assets"
+                    target="_blank"
+                    class="group inline-flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-6 py-3 text-[11px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/20 hover:bg-primary/[0.02] hover:text-primary"
+                >
                     <LayoutDashboard class="size-3.5" />
                     Cek Aset Saya
                 </a>

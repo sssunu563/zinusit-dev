@@ -9,7 +9,6 @@ import {
     LucideRefreshCw as RefreshCw,
     LucideSearch as Search,
     LucideSlidersHorizontal as SlidersHorizontal,
-    LucideDatabaseZap as DatabaseZap,
     LucideEye as Eye,
     LucideX as X,
     LucidePlus as Plus,
@@ -258,25 +257,6 @@ const downloadPdf = () => {
     window.print();
 };
 
-const syncingLdap = ref(false);
-
-const syncLdap = () => {
-    if (syncingLdap.value) return;
-
-    syncingLdap.value = true;
-    import('@inertiajs/vue3').then(({ router }) => {
-        router.post(
-            '/users/sync-ldap',
-            {},
-            {
-                onFinish: () => {
-                    syncingLdap.value = false;
-                },
-            },
-        );
-    });
-};
-
 const isModalOpen = ref(false);
 const modalMode = ref<'create' | 'edit'>('create');
 const selectedUser = ref<any>(null);
@@ -506,20 +486,6 @@ const deleteUser = (user: UserItem) => {
                                 </div>
                             </Transition>
                         </div>
-
-                        <button
-                            @click="syncLdap"
-                            :disabled="syncingLdap"
-                            class="flex h-11 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-700 transition-all hover:bg-slate-100 active:scale-95 disabled:opacity-50"
-                        >
-                            <DatabaseZap
-                                class="size-5 text-[#003628]"
-                                :class="{ 'animate-pulse': syncingLdap }"
-                            />
-                            <span class="text-[10px] tracking-widest uppercase"
-                                >Sinkronisasi Master</span
-                            >
-                        </button>
 
                         <button
                             @click="openCreateModal"
@@ -929,6 +895,7 @@ const deleteUser = (user: UserItem) => {
                             :options="options"
                             :initial-values="selectedUser"
                             @success="closeModal"
+                            @close="closeModal"
                         />
                     </div>
                 </Transition>

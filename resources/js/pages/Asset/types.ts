@@ -13,6 +13,7 @@ export type AssetItem = {
     remaining?: number | null;
     used?: string | number;
     state?: number;
+    notes?: string;
     [key: string]: unknown;
 };
 

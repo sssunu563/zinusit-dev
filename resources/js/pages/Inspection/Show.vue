@@ -124,52 +124,63 @@ const {
         `/inspection/${props.inspection.id}/sign/${role}`,
 });
 
-const approvalCardSource = computed(() => [
-    {
-        role: 'it',
-        title: 'IT',
-        name: props.inspection.it_staff || '-',
-        signaturePath: createApprovalSignatureState(
-            props.inspection.it_signature,
-            null,
-        ).path,
-        signedAt: null,
-        badge: createApprovalBadge(props.inspection.it_signature),
-    },
-    {
-        role: 'checked',
-        title: 'Checked',
-        name: props.inspection.checked_by || '-',
-        signaturePath: createApprovalSignatureState(
-            props.inspection.checked_signature,
-            null,
-        ).path,
-        signedAt: null,
-        badge: createApprovalBadge(props.inspection.checked_signature),
-    },
-    {
-        role: 'user',
-        title: 'User',
-        name: props.inspection.user || '-',
-        signaturePath: createApprovalSignatureState(
-            props.inspection.user_signature,
-            null,
-        ).path,
-        signedAt: null,
-        badge: createApprovalBadge(props.inspection.user_signature),
-    },
-    {
-        role: 'leader',
-        title: 'Leader / Head Dept.',
-        name: props.inspection.dept_head || '-',
-        signaturePath: createApprovalSignatureState(
-            props.inspection.leader_signature,
-            null,
-        ).path,
-        signedAt: null,
-        badge: createApprovalBadge(props.inspection.leader_signature),
-    },
-]);
+const approvalCardSource = computed(() => {
+    const cards = [
+        {
+            role: 'it',
+            title: 'IT',
+            name: props.inspection.it_staff || '-',
+            signaturePath: createApprovalSignatureState(
+                props.inspection.it_signature,
+                null,
+            ).path,
+            signedAt: props.inspection.it_signature ? props.inspection.signature_date : null,
+            badge: createApprovalBadge(props.inspection.it_signature),
+        },
+        {
+            role: 'checked',
+            title: 'Checked',
+            name: props.inspection.checked_by || '-',
+            signaturePath: createApprovalSignatureState(
+                props.inspection.checked_signature,
+                null,
+            ).path,
+            signedAt: props.inspection.checked_signature ? props.inspection.signature_date : null,
+            badge: createApprovalBadge(props.inspection.checked_signature),
+        },
+        {
+            role: 'user',
+            title: 'User',
+            name: props.inspection.user || '-',
+            signaturePath: createApprovalSignatureState(
+                props.inspection.user_signature,
+                null,
+            ).path,
+            signedAt: props.inspection.user_signature ? props.inspection.signature_date : null,
+            badge: createApprovalBadge(props.inspection.user_signature),
+        },
+        {
+            role: 'leader',
+            title: 'Leader / Head Dept.',
+            name: props.inspection.dept_head || '-',
+            signaturePath: createApprovalSignatureState(
+                props.inspection.leader_signature,
+                null,
+            ).path,
+            signedAt: props.inspection.leader_signature ? props.inspection.signature_date : null,
+            badge: createApprovalBadge(props.inspection.leader_signature),
+        },
+    ];
+    
+    // DEBUG - Lihat apa yang dikirim
+    if (typeof window !== 'undefined') {
+        console.log('[INSPECTION DEBUG] signature_date from props:', props.inspection.signature_date);
+        console.log('[INSPECTION DEBUG] it_signature exists:', !!props.inspection.it_signature);
+        console.log('[INSPECTION DEBUG] approvalCardSource:', cards);
+    }
+    
+    return cards;
+});
 
 const { activeApprovalCard, activeClearCard, signedCount } =
     useDocumentApprovalCards<string>({

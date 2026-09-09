@@ -219,6 +219,11 @@
             <td>{{ $sig['name'] }}</td>
             @endforeach
         </tr>
+        <tr class="confirm-name-row" style="font-size: 8px; background: #fafafa;">
+            @foreach($sigs as $sig)
+            <td>{{ $signatureDate }}</td>
+            @endforeach
+        </tr>
     </tbody>
 </table>
 

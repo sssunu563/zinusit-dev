@@ -74,11 +74,100 @@ class InspectionTest extends TestCase
 
         $this->app->instance(\App\Services\SnipeItService::class, $snipe);
 
-        $response = (new InspectionController())->complete(new Request(), $inspection);
+        $response = (new InspectionController)->complete(new Request, $inspection);
 
         $this->assertTrue($response->isRedirect());
         $inspection->refresh();
         $this->assertSame('success', $inspection->snipeit_sync_status);
+    }
+
+    public function test_hardware_inspection_always_checks_in_and_marks_asset_as_broken()
+    {
+        $inspection = Inspection::create([
+            'report_id' => 'IR-TEST-2501-00004',
+            'report_type' => 'Inspection Hardware',
+            'company' => 'PT Test',
+            'department' => 'IT',
+            'user' => 'Budi',
+            'email' => 'budi@example.com',
+            'date' => now()->toDateString(),
+            'location' => 'Jakarta',
+            'device_category' => 'printer',
+            'device_name' => 'Printer Test',
+            'asset_tag' => 'TAG-004',
+            'serial_number' => 'SN-004',
+            'asset_snapshot' => json_encode(['id' => 104, 'asset_type' => 'assets']),
+            'snipeit_asset_id' => 104,
+            'checked_by' => 'IT Staff',
+            'checked_date' => now()->toDateString(),
+            'issue_description' => 'Hasil inspection perlu ditindaklanjuti.',
+            'solution' => 'Diteruskan ke tim support.',
+        ]);
+
+        $snipe = \Mockery::mock(\App\Services\SnipeItService::class);
+        $snipe->shouldReceive('checkinAsset')->once()->andReturn(['status' => 'success']);
+        $snipe->shouldReceive('fetchRows')->with('statuslabels')->once()->andReturn([['id' => 5, 'name' => 'Broken']]);
+        $snipe->shouldReceive('updateRecord')->once()->with('hardware', 104, \Mockery::on(fn ($payload) => (int) ($payload['status_id'] ?? 0) === 5))->andReturn(['status' => 'success']);
+        $snipe->shouldReceive('flushCacheForAsset')->with('assets', 104)->once();
+        $snipe->shouldReceive('uploadFile')->with('hardware', 104, \Mockery::type('string'), \Mockery::type('string'), \Mockery::type('string'))->once()->andReturn(['status' => 'success']);
+
+        $this->app->instance(\App\Services\SnipeItService::class, $snipe);
+
+        $response = (new InspectionController)->complete(new Request, $inspection);
+
+        $this->assertTrue($response->isRedirect());
+        $inspection->refresh();
+        $this->assertSame('success', $inspection->snipeit_sync_status);
+    }
+
+    public function test_internal_component_inspection_logs_maintenance_without_breaking_parent_hardware()
+    {
+        $inspection = Inspection::create([
+            'report_id' => 'IR-TEST-2501-00005',
+            'report_type' => 'Inspection Hardware',
+            'inspection_scope' => 'internal_component',
+            'component_name' => 'SSD',
+            'company' => 'PT Test',
+            'department' => 'IT',
+            'user' => 'Budi',
+            'date' => now()->toDateString(),
+            'location' => 'Jakarta',
+            'device_category' => 'laptop',
+            'device_name' => 'Laptop Test',
+            'asset_tag' => 'TAG-005',
+            'snipeit_asset_id' => 105,
+            'checked_by' => 'IT Staff',
+            'checked_date' => now()->toDateString(),
+            'issue_description' => 'SSD tidak terbaca.',
+            'solution' => 'Ganti SSD.',
+        ]);
+
+        $snipe = \Mockery::mock(\App\Services\SnipeItService::class);
+        $snipe->shouldReceive('createRecord')->once()->with('maintenances', \Mockery::on(
+            fn ($payload) => $payload['asset_id'] === 105
+                && str_contains($payload['name'], 'SSD')
+                && $payload['asset_maintenance_type'] === 'Maintenance'
+                && ! empty($payload['completion_date'])
+                && str_contains($payload['notes'], 'Component: SSD'),
+        ))->andReturn(['status' => 'success']);
+        $snipe->shouldReceive('checkinAsset')->never();
+        $snipe->shouldReceive('updateRecord')->never();
+        $snipe->shouldReceive('flushCacheForAsset')->with('assets', 105)->once();
+        $snipe->shouldReceive('uploadFile')->with('hardware', 105, \Mockery::type('string'), \Mockery::type('string'), \Mockery::type('string'))->once()->andReturn(['status' => 'success']);
+
+        $this->app->instance(\App\Services\SnipeItService::class, $snipe);
+
+        $response = (new InspectionController)->complete(new Request, $inspection);
+
+        $this->assertTrue($response->isRedirect());
+        $inspection->refresh();
+        $this->assertSame('success', $inspection->snipeit_sync_status);
+        $this->assertNotNull($inspection->completed_at);
+        $this->assertDatabaseHas('action_logs', [
+            'action_type' => 'completed',
+            'snipeit_id' => 105,
+            'snipeit_type' => 'assets',
+        ]);
     }
 
     public function test_component_inspection_checks_in_and_reduces_quantity()
@@ -126,7 +215,7 @@ class InspectionTest extends TestCase
 
         $this->app->instance(\App\Services\SnipeItService::class, $snipe);
 
-        $response = (new InspectionController())->complete(new Request(), $inspection);
+        $response = (new InspectionController)->complete(new Request, $inspection);
 
         $this->assertTrue($response->isRedirect());
         $inspection->refresh();
@@ -179,7 +268,7 @@ class InspectionTest extends TestCase
 
         $this->app->instance(\App\Services\SnipeItService::class, $snipe);
 
-        $response = (new InspectionController())->complete(new Request(), $inspection);
+        $response = (new InspectionController)->complete(new Request, $inspection);
 
         $this->assertTrue($response->isRedirect());
         $inspection->refresh();

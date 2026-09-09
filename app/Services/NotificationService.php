@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\NotificationWebhookSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -12,9 +13,10 @@ class NotificationService
      */
     public static function sendToTeams(string $title, string $message, string $color = '003628', array $facts = [])
     {
-        $webhookUrl = config('services.teams.webhook_url');
+        $setting = NotificationWebhookSetting::first();
+        $webhookUrl = $setting?->webhook_url ?: config('services.teams.webhook_url');
 
-        if (!$webhookUrl) {
+        if (($setting && ! $setting->enabled) || ! $webhookUrl) {
             return;
         }
 
@@ -43,7 +45,14 @@ class NotificationService
         ];
 
         try {
-            Http::post($webhookUrl, $payload);
+            $response = Http::timeout(10)->post($webhookUrl, $payload);
+
+            if ($response->failed()) {
+                Log::error('Teams Webhook HTTP Error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+            }
         } catch (\Exception $e) {
             Log::error('Teams Webhook Error: ' . $e->getMessage());
         }

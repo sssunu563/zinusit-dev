@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import {
     FileText,
     User,
@@ -25,12 +25,28 @@ import {
     Clock,
     RefreshCw,
     Share2,
+    Eye,
+    ExternalLink,
+    Pencil,
+    Folder,
+    SearchCheck,
+    ClipboardList,
+    Activity,
 } from 'lucide-vue-next';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AddStockModal from '@/pages/Asset/Partials/AddStockModal.vue';
 import UploadDocumentModal from '@/pages/Asset/Partials/UploadDocumentModal.vue';
 import AppPdfViewerModal from '@/components/AppPdfViewerModal.vue';
+import AppPagination from '@/components/AppPagination.vue';
+import AssetStockHistoryTable from '@/pages/Asset/Partials/AssetStockHistoryTable.vue';
+import AssetAssignmentsTable from '@/pages/Asset/Partials/AssetAssignmentsTable.vue';
+import AssetInfoSection from '@/pages/Asset/Partials/AssetInfoSection.vue';
+import AssetDocumentsTable from '@/pages/Asset/Partials/AssetDocumentsTable.vue';
+import AssetActivityHistoryTable from '@/pages/Asset/Partials/AssetActivityHistoryTable.vue';
+import AssetActivityDetailSheet, {
+    type ActivityDetailItem,
+} from '@/pages/Asset/Partials/AssetActivityDetailSheet.vue';
 import type { BreadcrumbItem } from '@/types';
 
 interface AssetDetail {
@@ -70,15 +86,32 @@ interface CheckoutRecord {
     date: string;
     image: string;
 }
+
 interface ActivityRecord {
-    id: number;
+    id: string | number;
     action_type: string;
+    action_label?: string | null;
     user: string;
-    user_image: string;
+    user_id?: number | null;
+    user_image?: string;
     target: string;
+    target_type?: string;
     note: string;
     date: string;
+    file_status?: 'success' | 'failed' | null;
+    file_name?: string;
+    file_url?: string | null;
+    doc_no?: string | null;
+    doc_url?: string | null;
+    pdf_url?: string | null;
+    form_type?: string | null;
+    form_name?: string | null;
+    role?: string | null;
+    quantity?: number | string | null;
+    changed?: string | null;
+    log_meta?: Record<string, any> | null;
 }
+
 interface AssetFile {
     id: number;
     filename: string;
@@ -86,6 +119,10 @@ interface AssetFile {
     created_by: string;
     date: string;
     notes: string;
+    doc_no?: string | null;
+    doc_url?: string | null;
+    form_type?: string | null;
+    form_name?: string | null;
 }
 
 interface StockRecord {
@@ -120,6 +157,63 @@ const openPdfViewer = (url: string) => {
 };
 const showStockModal = ref(false);
 
+// Activity Log & File Detail Sheet State
+const activitySheetOpen = ref(false);
+const selectedActivityItem = ref<ActivityDetailItem | null>(null);
+const openActivityDetail = (item: ActivityDetailItem) => {
+    selectedActivityItem.value = item;
+    activitySheetOpen.value = true;
+};
+
+const getFormIcon = (formType?: string | null) => {
+    switch ((formType || '').toLowerCase()) {
+        case 'stb':
+            return Folder;
+        case 'peminjaman':
+            return ClipboardList;
+        case 'inspection':
+            return SearchCheck;
+        case 'ticket':
+        case 'helpdesk':
+            return Briefcase;
+        default:
+            return FileText;
+    }
+};
+
+const getActionIcon = (actionType?: string | null) => {
+    const a = (actionType || '').toLowerCase();
+    if (a.includes('update') || a.includes('edit')) return Pencil;
+    if (a.includes('upload') || a.includes('download')) return Download;
+    if (a.includes('check')) return RotateCcw;
+    if (a.includes('create') || a.includes('add')) return Plus;
+    if (a.includes('delete') || a.includes('destroy')) return AlertTriangle;
+    if (a.includes('stb') || a.includes('mutasi')) return Folder;
+    if (a.includes('inspection')) return SearchCheck;
+    return Activity;
+};
+
+// Pagination for files and history
+const filesPage = ref(1);
+const filesPerPage = 15;
+const paginatedFiles = computed(() => {
+    const start = (filesPage.value - 1) * filesPerPage;
+    return props.assetFiles.slice(start, start + filesPerPage);
+});
+const filesTotalPages = computed(() =>
+    Math.ceil(props.assetFiles.length / filesPerPage),
+);
+
+const historyPage = ref(1);
+const historyPerPage = 15;
+const paginatedHistory = computed(() => {
+    const start = (historyPage.value - 1) * historyPerPage;
+    return props.activityHistory.slice(start, start + historyPerPage);
+});
+const historyTotalPages = computed(() =>
+    Math.ceil(props.activityHistory.length / historyPerPage),
+);
+
 const stockHistory = ref<StockRecord[]>([]);
 const stockHistoryLoading = ref(false);
 const stockHistoryLoaded = ref(false);
@@ -149,6 +243,10 @@ watch(activeTab, (tab) => {
     if (tab === 'stock') loadStockHistory();
 });
 
+onMounted(() => {
+    loadStockHistory();
+});
+
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Dashboard', href: '/dashboard' },
     {
@@ -172,6 +270,7 @@ const handleGenerateSTB = () => {
     const params = new URLSearchParams({
         documentType: 'handover',
         movementType,
+        assetType: props.assetType, // Pass asset type to resolver
     });
 
     params.append('selectedAssetIds[]', String(props.asset.id));
@@ -193,9 +292,9 @@ const tabs = computed(() => [
         label: 'Assignments',
         badge: props.checkoutRecords.length,
     },
-    { id: 'stock', label: 'Riwayat Stok', badge: 0 },
+    { id: 'stock', label: 'Riwayat Stok', badge: stockHistory.value.length },
     { id: 'files', label: 'Dokumen', badge: props.assetFiles.length },
-    { id: 'history', label: 'Aktivitas', badge: 0 },
+    { id: 'history', label: 'Aktivitas', badge: props.activityHistory.length },
 ]);
 
 const actionBadgeClass = (action: string) => {
@@ -454,509 +553,53 @@ const actionBadgeClass = (action: string) => {
                 <!-- Tab content -->
                 <div class="p-6">
                     <!-- INFO TAB -->
-                    <div v-if="activeTab === 'info'" class="space-y-6">
-                        <!-- Model / Part Number highlight -->
-                        <div
-                            class="flex items-center gap-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-5 py-4"
-                        >
-                            <div
-                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200"
-                            >
-                                <Hash class="size-4 text-[#003628]" />
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <p
-                                    class="text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Model No.
-                                </p>
-                                <p
-                                    class="mt-0.5 font-mono text-sm font-bold text-slate-800 select-all"
-                                >
-                                    {{
-                                        asset.model_number ||
-                                        '— tidak tercatat —'
-                                    }}
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Detail grid -->
-                        <div
-                            class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-                        >
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Category
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.category || '—' }}
-                                </p>
-                            </div>
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Manufacturer
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.manufacturer || '—' }}
-                                </p>
-                            </div>
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Supplier
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.supplier || '—' }}
-                                </p>
-                            </div>
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Location
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.location || '—' }}
-                                </p>
-                            </div>
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Company
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.company || '—' }}
-                                </p>
-                            </div>
-                            <div
-                                class="rounded-xl border border-slate-100 bg-slate-50/40 p-4"
-                            >
-                                <p
-                                    class="mb-1 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                                >
-                                    Min. QTY
-                                </p>
-                                <p class="text-sm font-semibold text-slate-800">
-                                    {{ asset.min_qty ?? '—' }}
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Purchase info -->
-                        <div
-                            class="rounded-xl border border-slate-100 bg-white p-5"
-                        >
-                            <p
-                                class="mb-3 flex items-center gap-1.5 text-[11px] font-semibold tracking-widest text-slate-500 uppercase"
-                            >
-                                <Wallet class="size-3.5" /> Pembelian
-                            </p>
-                            <dl class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                                <div
-                                    class="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5"
-                                >
-                                    <dt class="text-xs text-slate-400">
-                                        No. Order
-                                    </dt>
-                                    <dd
-                                        class="text-xs font-semibold text-slate-700"
-                                    >
-                                        {{ asset.order_number || '—' }}
-                                    </dd>
-                                </div>
-                                <div
-                                    class="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5"
-                                >
-                                    <dt class="text-xs text-slate-400">
-                                        Tanggal Beli
-                                    </dt>
-                                    <dd
-                                        class="text-xs font-semibold text-slate-700"
-                                    >
-                                        {{ asset.purchase_date || '—' }}
-                                    </dd>
-                                </div>
-                                <div
-                                    class="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5"
-                                >
-                                    <dt class="text-xs text-slate-400">
-                                        Harga Satuan
-                                    </dt>
-                                    <dd
-                                        class="text-xs font-semibold text-slate-900"
-                                    >
-                                        {{ asset.purchase_cost || '—' }}
-                                    </dd>
-                                </div>
-                            </dl>
-                        </div>
-
-                        <!-- Notes -->
-                        <div
-                            v-if="asset.notes"
-                            class="rounded-xl border border-amber-100 bg-amber-50/40 p-4"
-                        >
-                            <p
-                                class="mb-1.5 text-[10px] font-semibold tracking-widest text-amber-600/70 uppercase"
-                            >
-                                Catatan Administrator
-                            </p>
-                            <p class="text-sm leading-relaxed text-slate-600">
-                                {{ asset.notes }}
-                            </p>
-                        </div>
+                    <div v-if="activeTab === 'info'">
+                        <AssetInfoSection
+                            :asset="asset"
+                            :asset-type="assetType"
+                            :asset-type-label="assetTypeLabel"
+                        />
                     </div>
 
                     <!-- ASSIGNED TAB -->
                     <div v-if="activeTab === 'assigned'">
-                        <div
-                            v-if="checkoutRecords.length > 0"
-                            class="divide-y divide-slate-50"
-                        >
-                            <div
-                                class="grid grid-cols-12 gap-4 pb-2 text-[10px] font-semibold tracking-widest text-slate-400 uppercase"
-                            >
-                                <div class="col-span-5">Penerima / Target</div>
-                                <div class="col-span-4 hidden sm:block">
-                                    Catatan / Konteks
-                                </div>
-                                <div class="col-span-3 text-right">
-                                    Tanggal Checkout
-                                </div>
-                            </div>
-                            <div
-                                v-for="rec in checkoutRecords"
-                                :key="rec.id"
-                                class="-mx-2 grid grid-cols-12 items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-slate-50/60"
-                            >
-                                <div class="col-span-5 flex items-center gap-3">
-                                    <div
-                                        class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100"
-                                    >
-                                        <img
-                                            v-if="rec.image"
-                                            :src="rec.image"
-                                            class="size-full object-cover"
-                                        />
-                                        <User
-                                            v-else
-                                            class="size-4 text-slate-300"
-                                        />
-                                    </div>
-                                    <div class="min-w-0">
-                                        <p
-                                            class="truncate text-sm font-semibold text-slate-800"
-                                        >
-                                            {{ rec.name }}
-                                        </p>
-                                        <p
-                                            v-if="rec.secondary"
-                                            class="truncate text-[10px] tracking-tighter text-slate-400 uppercase"
-                                        >
-                                            {{ rec.secondary }}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="col-span-4 hidden sm:block">
-                                    <span class="text-xs text-slate-500 italic"
-                                        >"{{ rec.note || '-' }}"</span
-                                    >
-                                </div>
-                                <div class="col-span-3 text-right">
-                                    <span
-                                        class="text-[11px] font-medium text-slate-400 uppercase tabular-nums"
-                                        >{{ rec.date }}</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                        <div
-                            v-else
-                            class="flex flex-col items-center justify-center py-16 text-center"
-                        >
-                            <div
-                                class="mb-3 flex size-12 items-center justify-center rounded-xl bg-slate-50"
-                            >
-                                <Users class="size-6 text-slate-200" />
-                            </div>
-                            <p class="text-sm font-medium text-slate-300">
-                                Belum ada penugasan aktif (Stock in Inventory)
-                            </p>
-                        </div>
+                        <AssetAssignmentsTable
+                            :records="checkoutRecords"
+                            :asset-type="assetType"
+                            unit-label="Unit"
+                            title="Penugasan Aksesoris ke Pengguna"
+                        />
                     </div>
 
                     <!-- STOCK HISTORY TAB -->
                     <div v-if="activeTab === 'stock'">
-                        <div
-                            v-if="stockHistoryLoading"
-                            class="flex items-center justify-center py-16"
-                        >
-                            <RefreshCw
-                                class="size-6 animate-spin text-slate-300"
-                            />
-                        </div>
-                        <div
-                            v-else-if="stockHistory.length > 0"
-                            class="space-y-3"
-                        >
-                            <div
-                                v-for="rec in stockHistory"
-                                :key="rec.id"
-                                class="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50/40 p-4 transition hover:border-slate-200 sm:flex-row sm:items-center"
-                            >
-                                <div
-                                    class="flex items-center gap-3 sm:w-28 sm:shrink-0"
-                                >
-                                    <div
-                                        class="flex h-9 w-9 items-center justify-center rounded-lg"
-                                        :class="
-                                            rec.qty < 0
-                                                ? 'bg-rose-50 text-rose-600'
-                                                : 'bg-emerald-50 text-emerald-600'
-                                        "
-                                    >
-                                        <component
-                                            :is="rec.qty < 0 ? Minus : Plus"
-                                            class="size-4"
-                                        />
-                                    </div>
-                                    <div>
-                                        <p
-                                            class="text-sm font-bold text-slate-900"
-                                        >
-                                            {{ rec.qty > 0 ? '+' : ''
-                                            }}{{ rec.qty }}
-                                        </p>
-                                        <p
-                                            class="text-[9px] font-medium tracking-widest text-slate-400 uppercase"
-                                        >
-                                            Unit
-                                        </p>
-                                    </div>
-                                </div>
-                                <div class="flex-1 space-y-0.5">
-                                    <p
-                                        class="text-xs font-semibold text-slate-700 uppercase"
-                                    >
-                                        PO: {{ rec.po_number || '—' }}
-                                    </p>
-                                    <p
-                                        v-if="rec.notes"
-                                        class="text-xs text-slate-500 italic"
-                                    >
-                                        "{{ rec.notes }}"
-                                    </p>
-                                    <p
-                                        class="text-[10px] text-slate-400 uppercase"
-                                    >
-                                        {{ rec.created_by }} ·
-                                        {{ rec.created_at }}
-                                    </p>
-                                </div>
-                                <div
-                                    class="flex items-center gap-2 sm:shrink-0"
-                                >
-                                    <span
-                                        class="flex items-center gap-1 text-[10px] font-medium text-slate-400 uppercase"
-                                    >
-                                        <Calendar class="size-3" />
-                                        {{ rec.purchase_date }}
-                                    </span>
-                                    <button
-                                        v-if="
-                                            rec.document_url &&
-                                            /\.pdf$/i.test(rec.document_url)
-                                        "
-                                        type="button"
-                                        class="flex h-7 items-center gap-1.5 rounded-lg bg-white px-3 text-[10px] font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
-                                        @click="openPdfViewer(rec.document_url)"
-                                    >
-                                        <FileText class="size-3" /> Lihat PDF
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div
-                            v-else
-                            class="flex flex-col items-center justify-center py-16 text-center"
-                        >
-                            <div
-                                class="mb-3 flex size-12 items-center justify-center rounded-xl bg-slate-50"
-                            >
-                                <RotateCcw class="size-6 text-slate-200" />
-                            </div>
-                            <p class="text-sm font-medium text-slate-300">
-                                Belum ada riwayat penambahan stok
-                            </p>
-                        </div>
+                        <AssetStockHistoryTable
+                            :stock-history="stockHistory"
+                            :loading="stockHistoryLoading"
+                            unit-label="Unit"
+                            title="Riwayat Stok"
+                            @add-stock="showStockModal = true"
+                            @open-pdf="openPdfViewer"
+                        />
                     </div>
 
                     <!-- FILES TAB -->
                     <div v-if="activeTab === 'files'">
-                        <div class="mb-4 flex justify-end">
-                            <button
-                                type="button"
-                                class="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
-                                @click="showDocModal = true"
-                            >
-                                <Plus class="size-3.5" /> Upload Dokumen
-                            </button>
-                        </div>
-                        <div v-if="assetFiles.length > 0" class="space-y-2">
-                            <div
-                                v-for="file in assetFiles"
-                                :key="file.id"
-                                class="group flex items-center gap-4 rounded-xl border border-slate-100 bg-slate-50/40 p-3.5 transition hover:border-slate-200 hover:bg-white"
-                            >
-                                <div
-                                    class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-slate-200 transition group-hover:bg-[#003628] group-hover:ring-[#003628]"
-                                >
-                                    <FileText
-                                        class="size-4 text-slate-400 transition group-hover:text-white"
-                                    />
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <p
-                                        class="truncate text-sm font-semibold text-slate-800"
-                                    >
-                                        {{ file.filename }}
-                                    </p>
-                                    <p
-                                        class="text-[10px] tracking-tighter text-slate-400 uppercase"
-                                    >
-                                        {{ file.date }} · {{ file.created_by }}
-                                    </p>
-                                </div>
-                                <button
-                                    v-if="/\.pdf$/i.test(file.filename)"
-                                    type="button"
-                                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition hover:bg-[#003628] hover:text-white hover:ring-[#003628]"
-                                    @click="openPdfViewer(file.download_url)"
-                                >
-                                    <FileText class="size-4" />
-                                </button>
-                                <a
-                                    v-else
-                                    :href="file.download_url"
-                                    target="_blank"
-                                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 transition hover:bg-[#003628] hover:text-white hover:ring-[#003628]"
-                                >
-                                    <Download class="size-4" />
-                                </a>
-                            </div>
-                        </div>
-                        <div
-                            v-else
-                            class="flex flex-col items-center justify-center py-16 text-center"
-                        >
-                            <div
-                                class="mb-3 flex size-12 items-center justify-center rounded-xl bg-slate-50"
-                            >
-                                <FileText class="size-6 text-slate-200" />
-                            </div>
-                            <p
-                                class="text-sm font-medium tracking-widest text-slate-300 uppercase"
-                            >
-                                Belum ada dokumen terunggah
-                            </p>
-                        </div>
+                        <AssetDocumentsTable
+                            :files="assetFiles"
+                            @upload-document="showDocModal = true"
+                            @open-pdf="openPdfViewer"
+                            @open-detail="openActivityDetail"
+                        />
                     </div>
 
                     <!-- HISTORY TAB -->
                     <div v-if="activeTab === 'history'">
-                        <div
-                            v-if="activityHistory.length > 0"
-                            class="space-y-3"
-                        >
-                            <div
-                                v-for="log in activityHistory"
-                                :key="log.id"
-                                class="flex items-start gap-4 rounded-xl border border-slate-100 bg-slate-50/40 p-4 transition hover:border-slate-200 hover:bg-white"
-                            >
-                                <div
-                                    class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-2 ring-white"
-                                >
-                                    <img
-                                        v-if="log.user_image"
-                                        :src="log.user_image"
-                                        class="size-full object-cover"
-                                    />
-                                    <User
-                                        v-else
-                                        class="size-4 text-slate-300"
-                                    />
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <div
-                                        class="mb-1 flex flex-wrap items-center gap-2"
-                                    >
-                                        <span
-                                            class="text-sm font-semibold text-slate-800"
-                                            >{{ log.user }}</span
-                                        >
-                                        <span
-                                            class="rounded-md border px-2 py-0.5 text-[10px] font-semibold tracking-widest uppercase"
-                                            :class="
-                                                actionBadgeClass(
-                                                    log.action_type,
-                                                )
-                                            "
-                                        >
-                                            {{ log.action_type }}
-                                        </span>
-                                        <span
-                                            v-if="log.target"
-                                            class="flex items-center gap-1 text-[10px] tracking-tighter text-slate-400 uppercase"
-                                        >
-                                            <ChevronRight class="size-3" />
-                                            {{ log.target }}
-                                        </span>
-                                    </div>
-                                    <p
-                                        v-if="log.note && log.note !== '-'"
-                                        class="text-xs text-slate-500 italic"
-                                    >
-                                        "{{ log.note }}"
-                                    </p>
-                                </div>
-                                <span
-                                    class="shrink-0 text-[10px] font-medium tracking-tighter text-slate-400 uppercase tabular-nums"
-                                    >{{ log.date }}</span
-                                >
-                            </div>
-                        </div>
-                        <div
-                            v-else
-                            class="flex flex-col items-center justify-center py-16 text-center"
-                        >
-                            <div
-                                class="mb-3 flex size-12 items-center justify-center rounded-xl bg-slate-50"
-                            >
-                                <History class="size-6 text-slate-200" />
-                            </div>
-                            <p
-                                class="text-sm font-medium tracking-widest text-slate-300 uppercase"
-                            >
-                                Belum ada aktivitas tercatat
-                            </p>
-                        </div>
+                        <AssetActivityHistoryTable
+                            :history="activityHistory"
+                            @open-pdf="openPdfViewer"
+                            @open-detail="openActivityDetail"
+                        />
                     </div>
                 </div>
             </div>
@@ -981,6 +624,15 @@ const actionBadgeClass = (action: string) => {
             :asset-id="asset.id"
             :asset-type="assetType"
             @close="showStockModal = false"
+        />
+
+        <!-- Asset Activity & Document Detail Sheet -->
+        <AssetActivityDetailSheet
+            v-if="selectedActivityItem"
+            v-model:open="activitySheetOpen"
+            :item="selectedActivityItem"
+            @open-pdf="openPdfViewer"
+            @update:open="(val) => { if (!val) selectedActivityItem = null; }"
         />
     </AppLayout>
 </template>

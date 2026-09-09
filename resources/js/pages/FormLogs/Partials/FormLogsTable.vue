@@ -349,9 +349,10 @@ const getActionIcon = (actionType: string) => {
                                         class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
                                         :class="{
                                             'bg-[#003628]/5 text-[#003628] border-[#003628]/10': log.action_type === 'created' || log.action_type === 'stb_complete' || log.action_type === 'completed',
-                                            'bg-amber-50 text-amber-600 border-amber-100': log.action_type === 'updated' || log.action_type === 'sign',
+                                            'bg-violet-50 text-violet-700 border-violet-100': log.action_type === 'sign' || log.action_type === 'sign_cleared',
+                                            'bg-amber-50 text-amber-600 border-amber-100': log.action_type === 'updated',
                                             'bg-red-50 text-red-500 border-red-100': log.action_type === 'deleted' || log.action_type === 'cancelled' || log.action_type === 'sync_failed',
-                                            'bg-slate-100 text-slate-500 border-slate-200': !['created', 'updated', 'deleted', 'sign', 'stb_complete', 'completed', 'cancelled', 'sync_failed'].includes(log.action_type)
+                                            'bg-slate-100 text-slate-500 border-slate-200': !['created', 'updated', 'deleted', 'sign', 'sign_cleared', 'stb_complete', 'completed', 'cancelled', 'sync_failed'].includes(log.action_type)
                                         }"
                                     >
                                         {{ log.action_label }}
@@ -407,9 +408,10 @@ const getActionIcon = (actionType: string) => {
                             class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border"
                             :class="{
                                 'bg-[#003628]/5 text-[#003628] border-[#003628]/10': log.action_type === 'created' || log.action_type === 'stb_complete' || log.action_type === 'completed',
-                                'bg-amber-50 text-amber-600 border-amber-100': log.action_type === 'updated' || log.action_type === 'sign',
+                                'bg-violet-50 text-violet-700 border-violet-100': log.action_type === 'sign' || log.action_type === 'sign_cleared',
+                                'bg-amber-50 text-amber-600 border-amber-100': log.action_type === 'updated',
                                 'bg-red-50 text-red-500 border-red-100': log.action_type === 'deleted' || log.action_type === 'cancelled' || log.action_type === 'sync_failed',
-                                'bg-slate-100 text-slate-500 border-slate-200': !['created', 'updated', 'deleted', 'sign', 'stb_complete', 'completed', 'cancelled', 'sync_failed'].includes(log.action_type)
+                                'bg-slate-100 text-slate-500 border-slate-200': !['created', 'updated', 'deleted', 'sign', 'sign_cleared', 'stb_complete', 'completed', 'cancelled', 'sync_failed'].includes(log.action_type)
                             }"
                         >
                             {{ log.action_label }}

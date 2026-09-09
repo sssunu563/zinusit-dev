@@ -23,7 +23,11 @@ import { store } from '@/routes/password/confirm';
         >
             <div class="space-y-8">
                 <div class="space-y-3">
-                    <Label for="password" class="text-[10px] font-black tracking-widest text-slate-400 uppercase ml-1">Identity Security Passcode</Label>
+                    <Label
+                        for="password"
+                        class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
+                        >Kata Sandi Konfirmasi</Label
+                    >
                     <Input
                         id="password"
                         type="password"
@@ -31,7 +35,7 @@ import { store } from '@/routes/password/confirm';
                         required
                         autocomplete="current-password"
                         autofocus
-                        class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:border-primary/50 focus:bg-white transition-all outline-none"
+                        class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-300 focus:border-primary/50 focus:bg-white"
                     />
                     <InputError :message="errors.password" />
                 </div>
@@ -39,7 +43,7 @@ import { store } from '@/routes/password/confirm';
                 <div class="flex items-center">
                     <Button
                         type="submit"
-                        class="h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:bg-primary-dark hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
+                        class="hover:bg-primary-dark h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
                         :disabled="processing"
                         data-test="confirm-password-button"
                     >

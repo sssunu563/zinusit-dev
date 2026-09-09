@@ -248,6 +248,108 @@ class LdapService
     }
 
     /**
+     * Return group CNs containing the user's DN or uid.
+     * Supports the common LLDAP uniqueMember and memberUid schemas.
+     */
+    public function getGroupsForUser(string $username): array
+    {
+        if ($username === '') {
+            return [];
+        }
+
+        try {
+            $conn = $this->connect();
+            $this->adminBind($conn);
+            $groupsOu = (string) config('services.ldap.groups_ou', config('services.ldap.base_dn', ''));
+            $userDn = $this->buildUserDn($username);
+            $filter = '(|(uniqueMember=' . $this->escapeFilter($userDn) . ')(memberUid=' . $this->escapeFilter($username) . '))';
+            $result = ldap_search($conn, $groupsOu, $filter, ['cn'], 0, 0);
+            $entries = $result !== false ? ldap_get_entries($conn, $result) : false;
+            ldap_unbind($conn);
+
+            if ($entries === false || empty($entries['count'])) {
+                return [];
+            }
+
+            $groups = [];
+            for ($i = 0; $i < $entries['count']; $i++) {
+                $group = $this->firstValue($entries[$i], 'cn');
+                if ($group !== '') {
+                    $groups[] = $group;
+                }
+            }
+
+            return array_values(array_unique($groups));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Return available LDAP group CNs for the membership selector.
+     */
+    public function getAllGroups(): array
+    {
+        try {
+            $conn = $this->connect();
+            $this->adminBind($conn);
+            $groupsOu = (string) config('services.ldap.groups_ou', config('services.ldap.base_dn', ''));
+            $result = ldap_search($conn, $groupsOu, '(objectClass=groupOfUniqueNames)', ['cn'], 0, 0);
+            $entries = $result !== false ? ldap_get_entries($conn, $result) : false;
+            ldap_unbind($conn);
+
+            if ($entries === false || empty($entries['count'])) {
+                return [];
+            }
+
+            $groups = [];
+            for ($i = 0; $i < $entries['count']; $i++) {
+                $group = $this->firstValue($entries[$i], 'cn');
+                if ($group !== '') {
+                    $groups[] = $group;
+                }
+            }
+
+            sort($groups, SORT_NATURAL | SORT_FLAG_CASE);
+
+            return array_values(array_unique($groups));
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    public function addUserToGroup(string $username, string $groupCn): bool
+    {
+        if ($username === '' || $groupCn === '') {
+            return false;
+        }
+
+        try {
+            $conn = $this->connect();
+            $this->adminBind($conn);
+            $groupsOu = (string) config('services.ldap.groups_ou', config('services.ldap.base_dn', ''));
+            $result = ldap_search($conn, $groupsOu, '(cn=' . $this->escapeFilter($groupCn) . ')', ['dn'], 0, 1);
+            $entries = $result !== false ? ldap_get_entries($conn, $result) : false;
+            $groupDn = $entries[0]['dn'] ?? null;
+            if (! $groupDn) {
+                ldap_unbind($conn);
+                return false;
+            }
+
+            $userDn = $this->buildUserDn($username);
+            $added = @ldap_mod_add($conn, $groupDn, [
+                'uniqueMember' => [$userDn],
+                'memberUid' => [$username],
+            ]);
+            ldap_unbind($conn);
+
+            return (bool) $added;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Create a new user in LLDAP.
      *
      * Required keys in $data: username, password
@@ -291,6 +393,19 @@ class LdapService
 
         if ($phone !== '') {
             $entry['telephoneNumber'] = $phone;
+        }
+
+        foreach ([
+            'o' => 'company_name',
+            'ou' => 'department_name',
+            'l' => 'location_name',
+            'manager' => 'manager',
+            'title' => 'title',
+        ] as $attribute => $key) {
+            $value = trim((string) ($data[$key] ?? ''));
+            if ($value !== '') {
+                $entry[$attribute] = $value;
+            }
         }
 
         try {
@@ -350,6 +465,18 @@ class LdapService
         $phone = isset($data['phone']) ? trim((string) $data['phone']) : null;
         if ($phone !== null && $phone !== '') {
             $modifications['telephoneNumber'] = [$phone];
+        }
+
+        foreach ([
+            'o' => 'company_name',
+            'ou' => 'department_name',
+            'l' => 'location_name',
+            'manager' => 'manager',
+            'title' => 'title',
+        ] as $attribute => $key) {
+            if (array_key_exists($key, $data)) {
+                $modifications[$attribute] = [trim((string) $data[$key])];
+            }
         }
 
         if (empty($modifications)) {
@@ -507,7 +634,13 @@ class LdapService
      */
     private function searchAll(string $filter, int $sizeLimit = 0): array
     {
-        $attributes = ['uid', 'cn', 'sn', 'givenName', 'displayName', 'mail', 'telephoneNumber', 'o', 'company', 'l', 'streetAddress'];
+        $attributes = [
+            'uid', 'cn', 'sn', 'givenName', 'displayName', 'mail',
+            'telephoneNumber', 'o', 'ou', 'company', 'department', 'l', 'location',
+            'streetAddress', 'physicalDeliveryOfficeName', 'manager', 'title',
+            'entryUUID', 'createTimestamp', 'modifyTimestamp',
+            'pwdChangedTime',
+        ];
 
         try {
             $conn = $this->connect();
@@ -564,8 +697,20 @@ class LdapService
             'name'         => $displayName ?: trim("{$givenName} {$sn}") ?: $uid,
             'email'        => $this->firstValue($entry, 'mail'),
             'phone'        => $this->firstValue($entry, 'telephonenumber'),
-            'company_name' => $this->firstValue($entry, 'o') ?: $this->firstValue($entry, 'company'),
-            'location_name'=> $this->firstValue($entry, 'l') ?: $this->firstValue($entry, 'streetaddress'),
+            'company_name' => $this->firstValue($entry, 'o')
+                ?: $this->firstValue($entry, 'company'),
+            'department_name' => $this->firstValue($entry, 'ou')
+                ?: $this->firstValue($entry, 'department'),
+            'location_name'=> $this->firstValue($entry, 'l')
+                ?: $this->firstValue($entry, 'location')
+                ?: $this->firstValue($entry, 'streetaddress')
+                ?: $this->firstValue($entry, 'physicaldeliveryofficename'),
+            'manager'      => $this->firstValue($entry, 'manager'),
+            'title'        => $this->firstValue($entry, 'title'),
+            'uuid'         => $this->firstValue($entry, 'entryuuid'),
+            'created_at'   => $this->firstValue($entry, 'createtimestamp'),
+            'modified_at'  => $this->firstValue($entry, 'modifytimestamp'),
+            'password_modified_at' => $this->firstValue($entry, 'pwdchangedtime'),
         ];
     }
 

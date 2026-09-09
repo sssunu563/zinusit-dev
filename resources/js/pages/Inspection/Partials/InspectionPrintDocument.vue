@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SignatureRenderer from '@/Components/SignatureRenderer.vue';
+import SignatureRenderer from '@/components/SignatureRenderer.vue';
 
 interface Inspection {
     id: number;

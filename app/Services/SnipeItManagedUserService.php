@@ -38,7 +38,13 @@ class SnipeItManagedUserService
                 'comp_p2'    => ['companies',   ['limit' => 500, 'offset' => 500]],
             ]);
 
-            $users   = array_merge($pool['users_p1']['rows'] ?? [], $pool['users_p2']['rows'] ?? []);
+            $users   = collect(array_merge(
+                $pool['users_p1']['rows'] ?? [],
+                $pool['users_p2']['rows'] ?? [],
+            ))
+                ->reject(fn (array $user): bool => (bool) ($user['ldap_import'] ?? false))
+                ->values()
+                ->all();
             $locs    = array_merge($pool['loc_p1']['rows']   ?? [], $pool['loc_p2']['rows']   ?? []);
             $depts   = array_merge($pool['dept_p1']['rows']  ?? [], $pool['dept_p2']['rows']  ?? []);
             $comps   = array_merge($pool['comp_p1']['rows']  ?? [], $pool['comp_p2']['rows']  ?? []);

@@ -26,19 +26,25 @@ import { update } from '@/routes/password/change';
             <div
                 class="rounded-[24px] border border-amber-100 bg-amber-50 px-6 py-5 text-sm text-slate-600"
             >
-                <div class="flex items-center gap-2 mb-2">
-                    <div class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span class="text-[10px] font-black tracking-[0.2em] text-amber-600 uppercase">Security Mandate</span>
+                <div class="mb-2 flex items-center gap-2">
+                    <div
+                        class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"
+                    />
+                    <span
+                        class="text-[10px] font-black tracking-[0.2em] text-amber-600 uppercase"
+                        >Kebijakan Keamanan</span
+                    >
                 </div>
-                <p class="text-[12px] font-medium leading-relaxed">
-                    This is your initial authentication. Please establish a unique enterprise passcode to secure your identity.
+                <p class="text-[12px] leading-relaxed font-medium">
+                    This is your initial authentication. Please establish a
+                    unique enterprise passcode to secure your identity.
                 </p>
             </div>
 
             <div class="space-y-3">
                 <Label
                     for="password"
-                    class="text-[10px] font-black tracking-widest text-slate-400 uppercase ml-1"
+                    class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
                 >
                     New Access Passcode
                 </Label>
@@ -47,8 +53,8 @@ import { update } from '@/routes/password/change';
                     name="password"
                     type="password"
                     autocomplete="new-password"
-                    placeholder="Minimum 8 characters"
-                    class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:border-primary/50 focus:bg-white transition-all outline-none"
+                    placeholder="Minimal 8 karakter"
+                    class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-300 focus:border-primary/50 focus:bg-white"
                     required
                     autofocus
                 />
@@ -58,7 +64,7 @@ import { update } from '@/routes/password/change';
             <div class="space-y-3">
                 <Label
                     for="password_confirmation"
-                    class="text-[10px] font-black tracking-widest text-slate-400 uppercase ml-1"
+                    class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
                 >
                     Verify Passcode
                 </Label>
@@ -67,8 +73,8 @@ import { update } from '@/routes/password/change';
                     name="password_confirmation"
                     type="password"
                     autocomplete="new-password"
-                    placeholder="Repeat new passcode"
-                    class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 placeholder:text-slate-300 focus:border-primary/50 focus:bg-white transition-all outline-none"
+                    placeholder="Ulangi kata sandi baru"
+                    class="h-12 rounded-xl border-slate-200 bg-slate-50/30 px-4 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-300 focus:border-primary/50 focus:bg-white"
                     required
                 />
                 <InputError :message="errors.password_confirmation" />
@@ -76,7 +82,7 @@ import { update } from '@/routes/password/change';
 
             <Button
                 type="submit"
-                class="mt-4 h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:bg-primary-dark hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
+                class="hover:bg-primary-dark mt-4 h-12 w-full rounded-2xl bg-primary text-sm font-bold text-white shadow-xl shadow-primary/20 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/30 active:scale-[0.98] disabled:opacity-50"
                 :disabled="processing"
             >
                 <Spinner v-if="processing" class="mr-2 size-4" />

@@ -302,6 +302,22 @@ const customFields = computed(() => selectedModel.value?.default_fields || []);
 
 watch(customFields, (val) => {}, { immediate: true });
 
+const getExistingCustomFieldValue = (
+    field: ModelField,
+    values: Record<string, string>,
+): string | undefined => {
+    if (values[field.db_column_name] !== undefined) {
+        return values[field.db_column_name];
+    }
+
+    const fieldName = field.name.trim().toLowerCase();
+    const matched = Object.entries(values).find(
+        ([key]) => key.trim().toLowerCase() === fieldName,
+    );
+
+    return matched?.[1];
+};
+
 const currentTypeLabel = computed(
     () =>
         props.types.find((item) => item.key === currentType.value)?.label ||
@@ -381,6 +397,17 @@ watch(
                     (model.default_fields ?? []).map((field) => [
                         field.db_column_name,
                         String(field.default_value ?? ''),
+                    ]),
+                );
+            } else {
+                // Edit mode: preserve loaded values while merging with model field definitions
+                form.custom_fields = Object.fromEntries(
+                    (model.default_fields ?? []).map((field) => [
+                        field.db_column_name,
+                        getExistingCustomFieldValue(
+                            field,
+                            form.custom_fields,
+                        ) ?? String(field.default_value ?? ''),
                     ]),
                 );
             }
@@ -995,10 +1022,8 @@ const submitAddStatus = async () => {
                         :categories="categories"
                         :companies="companies"
                         :locations="locations"
-                        :manufacturers="
-                            metadata[form.type]?.manufacturers || []
-                        "
-                        :suppliers="metadata[form.type]?.suppliers || []"
+                        :manufacturers="manufacturers"
+                        :suppliers="suppliers"
                         :users="metadata.users || []"
                         :is-stock-type="isStockType"
                         :selected-model="selectedModel"
@@ -1048,6 +1073,7 @@ const submitAddStatus = async () => {
                                 class="group relative inline-flex cursor-pointer items-center"
                             >
                                 <input
+                                    v-if="!isEditMode"
                                     type="checkbox"
                                     v-model="form.create_stb"
                                     class="peer sr-only"
@@ -1059,7 +1085,7 @@ const submitAddStatus = async () => {
                         </div>
 
                         <div
-                            v-show="form.create_stb"
+                            v-show="form.create_stb && !isEditMode"
                             class="animate-in space-y-4 duration-300 slide-in-from-top-2"
                         >
                             <div class="app-form-classic-row !border-none !p-0">

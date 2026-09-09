@@ -36,7 +36,14 @@ class UserController extends Controller
     public function index(): Response
     {
         // Pull all users from Snipe-IT (up to 500; adjust limit as needed)
-        $remoteUsers = $this->snipe->fetchRows('users', ['limit' => 500, 'sort' => 'name', 'order' => 'asc'], 500);
+        $remoteUsers = collect($this->snipe->fetchRows(
+            'users',
+            ['limit' => 500, 'sort' => 'name', 'order' => 'asc'],
+            500,
+        ))
+            ->reject(fn (array $remote): bool => (bool) ($remote['ldap_import'] ?? false))
+            ->values()
+            ->all();
 
         // Build a lookup map of local users keyed by snipeit_user_id for enrichment
         $localBySnipeId = User::query()
@@ -73,13 +80,185 @@ class UserController extends Controller
                 'email_verified_at' => $local?->email_verified_at?->toIso8601String(),
                 'snipeit_synced_at' => $local?->snipeit_synced_at?->toIso8601String(),
             ];
-        })->values();
+        })
+            // Snipe-IT can contain historical duplicate identities. Keep one
+            // directory row and prefer the record linked to local data.
+            ->sortByDesc(fn (array $user): int => (int) ($user['id'] !== null))
+            ->unique(function (array $user): string {
+                $email = strtolower(trim((string) ($user['email'] ?? '')));
+                $username = strtolower(trim((string) ($user['snipeit_username'] ?? '')));
+
+                return $email !== '' ? 'email:' . $email : 'username:' . $username;
+            })
+            ->values();
 
         return Inertia::render('Users/Index', [
             'users'  => $users,
             'status' => session('status'),
             'options' => $this->managedUsers->getFormOptions(),
         ]);
+    }
+
+    public function ldapIndex(): Response
+    {
+        $users = collect($this->ldap->getAllUsers())
+                ->map(function (array $user): array {
+                    $username = (string) ($user['username'] ?? '');
+
+                    return [
+                    'username' => $username,
+                    'name' => (string) ($user['name'] ?? ''),
+                    'first_name' => (string) ($user['first_name'] ?? ''),
+                    'last_name' => (string) ($user['last_name'] ?? ''),
+                    'email' => (string) ($user['email'] ?? ''),
+                    'phone' => (string) ($user['phone'] ?? ''),
+                    'company_name' => (string) ($user['company_name'] ?? ''),
+                    'department_name' => (string) ($user['department_name'] ?? ''),
+                    'location_name' => (string) ($user['location_name'] ?? ''),
+                    'manager' => (string) ($user['manager'] ?? ''),
+                    'title' => (string) ($user['title'] ?? ''),
+                    'uuid' => (string) ($user['uuid'] ?? ''),
+                    'created_at' => (string) ($user['created_at'] ?? ''),
+                    'modified_at' => (string) ($user['modified_at'] ?? ''),
+                    'password_modified_at' => (string) ($user['password_modified_at'] ?? ''),
+                    'groups' => $this->ldap->getGroupsForUser($username),
+                    ];
+                })
+                ->filter(fn (array $user): bool => $user['username'] !== '')
+                ->unique(fn (array $user): string => strtolower(trim($user['username'])))
+                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
+
+        $uniqueValues = static fn (string $key): array => $users
+            ->pluck($key)
+            ->map(fn ($value): string => trim((string) $value))
+            ->filter()
+            ->unique()
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+
+        return Inertia::render('Users/Ldap', [
+            'users' => $users->all(),
+            'status' => session('status'),
+            'options' => [
+                'companies' => $uniqueValues('company_name'),
+                'locations' => $uniqueValues('location_name'),
+                'managers' => $users
+                    ->map(fn (array $user): array => [
+                        'value' => $user['name'] ?: $user['username'],
+                        'label' => ($user['name'] ?: $user['username']) . ' (' . $user['username'] . ')',
+                    ])
+                    ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+                    ->values()
+                    ->all(),
+            ],
+        ]);
+    }
+
+    public function ldapStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'username' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'department_name' => ['nullable', 'string', 'max:255'],
+            'location_name' => ['nullable', 'string', 'max:255'],
+            'manager' => ['nullable', 'string', 'max:255'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'password' => ['required', 'string', 'min:8'],
+            'group' => ['nullable', 'string', 'in:lldap_admin'],
+        ]);
+
+        if (! $this->ldap->createUser($data)) {
+            return back()->withErrors(['api' => 'User LDAP tidak dapat dibuat. Periksa username atau koneksi LDAP.']);
+        }
+
+        $this->ldap->addUserToGroup($data['username'], 'lldap_admin');
+
+        try {
+            ActionLog::create([
+                'user_id' => auth()->id(),
+                'action_type' => 'created',
+                'item_type' => User::class,
+                'target_type' => User::class,
+                'note' => "User LDAP '{$data['username']}' dibuat",
+                'log_meta' => [
+                    'source' => 'ldap',
+                    'username' => $data['username'],
+                    'email' => $data['email'] ?? null,
+                    'group' => 'lldap_admin',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write LDAP user create log', ['error' => $e->getMessage()]);
+        }
+
+        return to_route('users.ldap.index')->with('status', 'User LDAP berhasil dibuat.');
+    }
+
+    public function ldapUpdate(Request $request, string $username): RedirectResponse
+    {
+        $data = $request->validate([
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'department_name' => ['nullable', 'string', 'max:255'],
+            'location_name' => ['nullable', 'string', 'max:255'],
+            'manager' => ['nullable', 'string', 'max:255'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'min:8'],
+        ]);
+
+        if (! $this->ldap->updateUser($username, $data)) {
+            return back()->withErrors(['api' => 'Profil User LDAP tidak dapat diperbarui.']);
+        }
+
+        if (filled($data['password'] ?? null)) {
+            $this->ldap->changePassword($username, $data['password']);
+        }
+
+        try {
+            ActionLog::create([
+                'user_id' => auth()->id(),
+                'action_type' => 'updated',
+                'item_type' => User::class,
+                'target_type' => User::class,
+                'note' => "User LDAP '{$username}' diperbarui",
+                'log_meta' => ['source' => 'ldap', 'username' => $username],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write LDAP user update log', ['error' => $e->getMessage()]);
+        }
+
+        return to_route('users.ldap.index')->with('status', 'User LDAP berhasil diperbarui.');
+    }
+
+    public function ldapDestroy(string $username): RedirectResponse
+    {
+        if (! $this->ldap->deleteUser($username)) {
+            return back()->withErrors(['api' => 'User LDAP tidak dapat dihapus.']);
+        }
+
+        try {
+            ActionLog::create([
+                'user_id' => auth()->id(),
+                'action_type' => 'deleted',
+                'item_type' => User::class,
+                'target_type' => User::class,
+                'note' => "User LDAP '{$username}' dihapus",
+                'log_meta' => ['source' => 'ldap', 'username' => $username],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write LDAP user delete log', ['error' => $e->getMessage()]);
+        }
+
+        return to_route('users.ldap.index')->with('status', 'User LDAP berhasil dihapus.');
     }
 
     /**
@@ -123,12 +302,11 @@ class UserController extends Controller
     }
 
     // =========================================================================
-    // Criterion 4 – Create: dual-write to Snipe-IT + LLDAP
+    // Snipe-IT user management
     // =========================================================================
 
     /**
-     * Create user in Snipe-IT (via SnipeItManagedUserService) then mirror
-     * the account to LLDAP so SSO credentials are immediately available.
+    * Create a user for Snipe-IT asset operations.
      */
     public function store(UserStoreRequest $request): RedirectResponse
     {
@@ -136,18 +314,6 @@ class UserController extends Controller
 
         // Step 1: write to Snipe-IT and local DB
         $user = $this->managedUsers->createManagedUser($data);
-
-        // Step 2: mirror credentials to LLDAP
-        if (filled($data['username'] ?? null) && filled($data['password'] ?? null)) {
-            $this->ldap->createUser([
-                'username'   => $data['username'],
-                'password'   => $data['password'],
-                'first_name' => $data['first_name'] ?? null,
-                'last_name'  => $data['last_name'] ?? null,
-                'email'      => $data['email'] ?? null,
-                'phone'      => $data['phone'] ?? null,
-            ]);
-        }
 
         // Log user creation
         try {
@@ -202,11 +368,11 @@ class UserController extends Controller
     }
 
     // =========================================================================
-    // Criterion 4 – Update: dual-write to Snipe-IT + LLDAP
+    // Snipe-IT user management
     // =========================================================================
 
     /**
-     * Update user in Snipe-IT + local DB, then push changes to LLDAP.
+    * Update a user used for Snipe-IT asset operations.
      */
     public function update(UserUpdateRequest $request, User $user): RedirectResponse
     {
@@ -219,22 +385,6 @@ class UserController extends Controller
             allowPasswordUpdate: true,
             markVerified: true,
         );
-
-        // Step 2: push profile changes to LLDAP
-        $ldapUsername = $user->username;
-        if ($ldapUsername) {
-            $this->ldap->updateUser($ldapUsername, [
-                'first_name' => $data['first_name'] ?? null,
-                'last_name'  => $data['last_name'] ?? null,
-                'email'      => $data['email'] ?? null,
-                'phone'      => $data['phone'] ?? null,
-            ]);
-
-            // If a new password was provided, push it to LLDAP
-            if (filled($data['password'] ?? null)) {
-                $this->ldap->changePassword($ldapUsername, $data['password']);
-            }
-        }
 
         // Log user update
         try {
@@ -268,16 +418,6 @@ class UserController extends Controller
 
         // Update local password
         $user->update(['password' => \Hash::make($password)]);
-
-        // Push to LLDAP if username exists
-        if ($user->username) {
-            try {
-                $this->ldap->changePassword($user->username, $password);
-            } catch (\Exception $e) {
-                \Log::error('Failed to change LLDAP password: ' . $e->getMessage());
-                return back()->with('error', 'Password lokal diperbarui, namun gagal diperbarui di LLDAP.');
-            }
-        }
 
         // Push to Snipe-IT if ID exists
         if ($user->snipeit_user_id) {
@@ -972,18 +1112,6 @@ class UserController extends Controller
             }
         }
 
-        // Remove from LLDAP
-        if ($user->username) {
-            try {
-                $this->ldap->deleteUser($user->username);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to remove user from LLDAP', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
         $user->delete();
 
         return to_route('users.index')->with('status', 'User berhasil dihapus.');
@@ -1005,23 +1133,31 @@ class UserController extends Controller
     public function syncLdap(): RedirectResponse
     {
         $ldapUsers = $this->ldap->getAllUsers();
+        $snipeUsers = $this->snipe->fetchRows(
+            'users',
+            ['limit' => 500, 'sort' => 'name', 'order' => 'asc'],
+            500,
+            true,
+        );
         $synced = 0;
         $failed = 0;
 
         foreach ($ldapUsers as $ldapUser) {
-            $username = $ldapUser['username'] ?? '';
-            $email    = $ldapUser['email'] ?? '';
+            $username = trim((string) ($ldapUser['username'] ?? ''));
+            $email    = trim((string) ($ldapUser['email'] ?? ''));
 
             if ($username === '') {
                 continue;
             }
 
             try {
-                // Check if already in Snipe-IT
-                $existing = $this->snipe->fetchRows('users', ['search' => $username, 'limit' => 5], 5);
-                $match = collect($existing)->first(
-                    fn ($u) => strtolower((string) ($u['username'] ?? '')) === strtolower($username)
-                               || ($email !== '' && strtolower((string) ($u['email'] ?? '')) === strtolower($email)),
+                // Match against one fresh snapshot; cached empty searches can
+                // otherwise make the same LDAP user get created repeatedly.
+                $normalizedUsername = strtolower($username);
+                $normalizedEmail = strtolower($email);
+                $match = collect($snipeUsers)->first(
+                    fn ($u) => strtolower(trim((string) ($u['username'] ?? ''))) === $normalizedUsername
+                        || ($normalizedEmail !== '' && strtolower(trim((string) ($u['email'] ?? ''))) === $normalizedEmail),
                 );
 
                 $companyId = $this->managedUsers->resolveCompanyIdByName($ldapUser['company_name'] ?? null);

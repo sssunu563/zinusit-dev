@@ -6,10 +6,9 @@ import {
     LucideDownload as Download,
     LucideSearch as Search,
     LucideSlidersHorizontal as SlidersHorizontal,
-    LucideFileEdit as EditIcon, 
-    LucideSettings as SettingsIcon, 
-    LucidePackage as PackageIcon, 
-    LucideUser as UserIcon, 
+    LucideFileEdit as EditIcon,
+    LucidePackage as PackageIcon,
+    LucideUser as UserIcon,
     LucideHardDrive as AssetIcon,
     LucideServer as ServerIcon,
     LucideWifi as NetworkIcon,
@@ -17,6 +16,14 @@ import {
     LucideRefreshCw as RefreshCw,
     LucideEye as EyeIcon,
     LucideExternalLink as ExternalLink,
+    LucideActivity as ActivityIcon,
+    LucideLaptop as LaptopIcon,
+    LucideKeyRound as LicenseIcon,
+    LucideBox as AccessoryIcon,
+    LucideShield as ShieldIcon,
+    LucideArrowUpRight as ArrowUpRight,
+    LucideFileText as FileTextIcon,
+    LucidePenTool as PenTool,
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import type { ActionLogItem } from '@/pages/Logs/Partials/LogDetailSheet.vue';
@@ -74,33 +81,67 @@ onClickOutside(filterPanelRef, () => {
     showFilters.value = false;
 });
 
-const getModelIcon = (type: string) => {
+const getEntityIcon = (type: string) => {
     const t = (type || '').toLowerCase();
     if (t.includes('user')) return UserIcon;
     if (t.includes('server')) return ServerIcon;
     if (t.includes('cctv')) return CctvIcon;
     if (t.includes('network') || t.includes('bandwidth') || t.includes('uptime')) return NetworkIcon;
-    if (t.includes('asset') || t.includes('hardware') || t.includes('license') || t.includes('accessory') || t.includes('consumable') || t.includes('component')) return AssetIcon;
-    return EditIcon;
+    if (t.includes('laptop')) return LaptopIcon;
+    if (t.includes('license')) return LicenseIcon;
+    if (t.includes('accessory') || t.includes('accessories')) return AccessoryIcon;
+    if (t.includes('asset') || t.includes('hardware') || t.includes('consumable') || t.includes('component')) return AssetIcon;
+    return ActivityIcon;
 };
 
-const getActionIcon = (type: string) => {
-    switch(type) {
-        case 'created':
-        case 'create':
-            return PackageIcon;
-        case 'updated':
-        case 'update':
-            return EditIcon;
-        case 'deleted':
-        case 'delete':
-            return Search;
-        case 'login':
-        case 'logout':
-            return UserIcon;
-        default:
-            return RefreshCw;
-    }
+const getEntityBadgeClass = (type: string) => {
+    const t = (type || '').toLowerCase();
+    if (t.includes('user')) return 'bg-purple-50 text-purple-700 border-purple-100';
+    if (t.includes('server')) return 'bg-slate-100 text-slate-600 border-slate-200';
+    if (t.includes('laptop')) return 'bg-indigo-50 text-indigo-700 border-indigo-100';
+    if (t.includes('license')) return 'bg-amber-50 text-amber-700 border-amber-100';
+    if (t.includes('accessories') || t.includes('accessory')) return 'bg-orange-50 text-orange-700 border-orange-100';
+    if (t.includes('consumable')) return 'bg-teal-50 text-teal-700 border-teal-100';
+    if (t.includes('component')) return 'bg-cyan-50 text-cyan-700 border-cyan-100';
+    // asset / hardware / default
+    return 'bg-[#003628]/5 text-[#003628] border-[#003628]/10';
+};
+
+const getActionIcon = (actionType: string) => {
+    const a = (actionType || '').toLowerCase();
+    if (['created', 'create', 'add_stock'].includes(a)) return FileTextIcon;
+    if (['updated', 'update'].includes(a)) return EditIcon;
+    if (['sign'].includes(a)) return PenTool;
+    if (['deleted', 'delete'].includes(a)) return ShieldIcon;
+    if (['checkin', 'login'].includes(a)) return RefreshCw;
+    if (['checkout'].includes(a)) return ArrowUpRight;
+    return ActivityIcon;
+};
+
+const getActionBadgeClass = (action: string) => {
+    const a = (action || '').toLowerCase();
+    if (['created', 'create', 'add_stock'].includes(a)) return 'bg-[#003628]/5 text-[#003628] border-[#003628]/10';
+    if (['updated', 'update', 'checkout'].includes(a)) return 'bg-amber-50 text-amber-600 border-amber-100';
+    if (['deleted', 'delete'].includes(a)) return 'bg-rose-50 text-rose-600 border-rose-100';
+    if (['checkin', 'login'].includes(a)) return 'bg-blue-50 text-blue-700 border-blue-100';
+    if (['stb_complete', 'completed'].includes(a)) return 'bg-[#003628]/5 text-[#003628] border-[#003628]/10';
+    if (['sign', 'upload'].includes(a)) return 'bg-violet-50 text-violet-700 border-violet-100';
+    return 'bg-slate-100 text-slate-600 border-slate-200';
+};
+
+const getEntityLabel = (type: string, rawType?: string): string => {
+    const raw = (rawType || type || '').toLowerCase();
+    if (raw.includes('user')) return 'Pengguna';
+    if (raw.includes('laptop')) return 'Laptop';
+    if (raw.includes('license')) return 'Lisensi';
+    if (raw.includes('accessories')) return 'Aksesori';
+    if (raw.includes('consumable')) return 'Consumable';
+    if (raw.includes('component')) return 'Komponen';
+    if (raw.includes('server')) return 'Server';
+    if (raw.includes('cctv')) return 'CCTV';
+    if (raw.includes('bandwidth') || raw.includes('network') || raw.includes('uptime')) return 'Infrastruktur';
+    if (raw.includes('asset') || raw.includes('hardware')) return 'Aset Hardware';
+    return type || 'Entitas';
 };
 </script>
 
@@ -108,7 +149,7 @@ const getActionIcon = (type: string) => {
     <div class="space-y-4">
         <!-- TABLE CARD -->
         <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-            
+
             <!-- Toolbar Section -->
             <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="relative w-full lg:max-w-md">
@@ -171,7 +212,7 @@ const getActionIcon = (type: string) => {
                             >
                                 <div class="flex items-center justify-between mb-6">
                                     <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter Log Aktivitas</h3>
-                                    <button 
+                                    <button
                                         @click="filterForm.search = ''; filterForm.filter_category = ''; filterForm.filter_action = ''; filterForm.filter_admin = ''; filterForm.filter_item = ''; clearDateFilters(); showFilters = false;"
                                         class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5"
                                     >
@@ -256,14 +297,15 @@ const getActionIcon = (type: string) => {
                         <tr class="border-b border-slate-100 bg-slate-50/50">
                             <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Timeline</th>
                             <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Otorisasi Oleh</th>
-                            <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Entitas & Kategori</th>
-                            <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Operasi</th>
+                            <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Jenis Formulir & Dokumen</th>
+                            <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Operasi & Role</th>
                             <th class="px-6 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400">Catatan</th>
                             <th class="px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         <tr v-for="log in logs.data" :key="log.id" class="group hover:bg-slate-50/50 transition-colors">
+
                             <!-- Timeline -->
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="flex items-center gap-2.5">
@@ -285,49 +327,55 @@ const getActionIcon = (type: string) => {
                                 </div>
                             </td>
 
-                            <!-- Entity / Item Name -->
+                            <!-- Jenis Formulir & Dokumen -->
                             <td class="px-6 py-4">
-                                <div class="flex items-center gap-2">
-                                    <div class="h-7 w-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-                                        <component :is="getModelIcon(log.item_type)" class="size-3.5" />
+                                <div class="flex items-center gap-2.5">
+                                    <div class="h-7 w-7 rounded-lg bg-emerald-50 text-[#003628] flex items-center justify-center shrink-0">
+                                        <component :is="getEntityIcon(log.item_type || '')" class="size-3.5" />
                                     </div>
-                                    <div class="space-y-0.5">
-                                        <span class="text-[10px] font-black uppercase tracking-wider text-slate-400 block">{{ log.category || log.item_type }}</span>
-                                        <button 
-                                            v-if="log.item_id && ['assets', 'hardware', 'laptop', 'license', 'accessories', 'consumable', 'component'].includes((log.item_type || '').toLowerCase())" 
-                                            @click="emit('open-asset', log.item_id, log.item_type)"
-                                            class="text-[12px] font-black text-[#003628] hover:underline transition-all text-left cursor-pointer active:scale-95 truncate max-w-xs block"
+                                    <div class="space-y-0.5 min-w-0">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                                {{ log.form_name || 'Aktivitas Asset' }}
+                                            </span>
+                                        </div>
+                                        <button
+                                            v-if="log.item_id && ['assets', 'hardware', 'laptop', 'license', 'accessories', 'consumable', 'component'].includes((log.item_type || '').toLowerCase())"
+                                            @click="emit('open-asset', log.item_id!, log.item_type)"
+                                            class="text-[12px] font-black text-[#003628] hover:underline transition-all text-left cursor-pointer active:scale-95 truncate max-w-[260px] block leading-tight"
+                                            :title="log.item_name || 'Lihat Detail'"
                                         >
                                             {{ log.item_name || 'Lihat Detail' }}
                                         </button>
                                         <Link
                                             v-else-if="log.item_url"
                                             :href="log.item_url"
-                                            class="text-[12px] font-black text-slate-800 hover:text-[#003628] hover:underline transition-all truncate max-w-xs block"
+                                            class="text-[12px] font-black text-[#003628] hover:underline inline-flex items-center gap-1 transition-all truncate max-w-[260px]"
+                                            :title="log.item_name || 'Buka Halaman'"
                                         >
-                                            {{ log.item_name || 'Buka Halaman' }}
+                                            <span class="truncate">{{ log.item_name || 'Buka Halaman' }}</span>
+                                            <ExternalLink class="size-3 opacity-60 shrink-0" />
                                         </Link>
-                                        <span v-else class="text-[12px] font-black text-slate-700 truncate max-w-xs block">
+                                        <span v-else class="text-[12px] font-black text-slate-800 truncate block max-w-[260px]">
                                             {{ log.item_name || '—' }}
                                         </span>
                                     </div>
                                 </div>
                             </td>
 
-                            <!-- Operasi -->
+                            <!-- Operasi & Role -->
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span
-                                    class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border"
-                                    :class="{
-                                        'bg-[#003628]/5 text-[#003628] border-[#003628]/10': ['created', 'create', 'login', 'add_stock'].includes(log.action_type),
-                                        'bg-blue-50 text-blue-700 border-blue-100': ['checkin'].includes(log.action_type),
-                                        'bg-amber-50 text-amber-600 border-amber-100': ['updated', 'update', 'checkout'].includes(log.action_type),
-                                        'bg-red-50 text-red-500 border-red-100': ['deleted', 'delete'].includes(log.action_type),
-                                        'bg-slate-100 text-slate-500 border-slate-200': !['created', 'create', 'updated', 'update', 'deleted', 'delete', 'login', 'checkout', 'checkin', 'add_stock'].includes(log.action_type)
-                                    }"
-                                >
-                                    {{ log.action_label || log.action_type }}
-                                </span>
+                                <div class="flex flex-col gap-1 items-start">
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border"
+                                        :class="getActionBadgeClass(log.action_type)"
+                                    >
+                                        {{ log.action_label || log.action_type }}
+                                    </span>
+                                    <span v-if="log.target_name" class="text-[10px] font-bold text-slate-400 truncate max-w-[150px]">
+                                        Target: {{ log.target_name }}
+                                    </span>
+                                </div>
                             </td>
 
                             <!-- Catatan -->
@@ -339,15 +387,25 @@ const getActionIcon = (type: string) => {
 
                             <!-- Aksi -->
                             <td class="px-4 py-4 text-center whitespace-nowrap">
-                                <button
-                                    type="button"
-                                    @click="emit('open-detail', log)"
-                                    class="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-bold transition-all active:scale-95 shadow-xs inline-flex items-center gap-1.5"
-                                    title="Lihat Detail Log"
-                                >
-                                    <EyeIcon class="size-3.5" />
-                                    <span>Detail</span>
-                                </button>
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <Link
+                                        v-if="log.item_url && !['assets', 'hardware', 'laptop', 'license', 'accessories', 'consumable', 'component'].includes((log.item_type || '').toLowerCase())"
+                                        :href="log.item_url"
+                                        class="h-8 w-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all active:scale-95 shadow-xs flex items-center justify-center"
+                                        title="Buka halaman"
+                                    >
+                                        <ExternalLink class="size-3.5" />
+                                    </Link>
+                                    <button
+                                        type="button"
+                                        @click="emit('open-detail', log)"
+                                        class="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-bold transition-all active:scale-95 shadow-xs inline-flex items-center gap-1.5"
+                                        title="Lihat Detail Log"
+                                    >
+                                        <EyeIcon class="size-3.5" />
+                                        <span>Detail</span>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                         <tr v-if="logs.data.length === 0">
@@ -368,18 +426,14 @@ const getActionIcon = (type: string) => {
                 >
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
-                            <component :is="getModelIcon(log.item_type)" class="size-4 text-[#003628]" />
-                            <span class="text-xs font-black text-slate-900">{{ log.category || log.item_type }}</span>
+                            <div class="h-7 w-7 rounded-lg bg-emerald-50 text-[#003628] flex items-center justify-center shrink-0">
+                                <component :is="getEntityIcon(log.item_type || '')" class="size-3.5" />
+                            </div>
+                            <span class="text-xs font-black text-slate-900">{{ log.form_name || 'Aktivitas Asset' }}</span>
                         </div>
                         <span
                             class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border"
-                            :class="{
-                                'bg-[#003628]/5 text-[#003628] border-[#003628]/10': ['created', 'create', 'login', 'add_stock'].includes(log.action_type),
-                                'bg-blue-50 text-blue-700 border-blue-100': ['checkin'].includes(log.action_type),
-                                'bg-amber-50 text-amber-600 border-amber-100': ['updated', 'update', 'checkout'].includes(log.action_type),
-                                'bg-red-50 text-red-500 border-red-100': ['deleted', 'delete'].includes(log.action_type),
-                                'bg-slate-100 text-slate-500 border-slate-200': !['created', 'create', 'updated', 'update', 'deleted', 'delete', 'login', 'checkout', 'checkin', 'add_stock'].includes(log.action_type)
-                            }"
+                            :class="getActionBadgeClass(log.action_type)"
                         >
                             {{ log.action_label || log.action_type }}
                         </span>
@@ -388,25 +442,34 @@ const getActionIcon = (type: string) => {
                     <div class="space-y-1">
                         <p v-if="log.item_name" class="text-xs font-bold text-[#003628]">{{ log.item_name }}</p>
                         <p v-if="log.note" class="text-xs text-slate-600">{{ log.note }}</p>
+                        <div v-if="log.target_name" class="flex items-center gap-1 text-[10px] text-slate-500">
+                            <ArrowUpRight class="size-3" />
+                            <span>Target: {{ log.target_name }}</span>
+                        </div>
                     </div>
 
                     <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-2 border-t border-slate-200/60">
-                        <span>{{ log.created_at }}</span>
+                        <div class="flex items-center gap-1.5">
+                            <UserIcon class="size-3 text-slate-300" />
+                            <span>{{ log.user?.name || 'Sistem' }}</span>
+                            <span class="text-slate-300">·</span>
+                            <span>{{ log.created_at }}</span>
+                        </div>
                         <button
                             type="button"
                             @click="emit('open-detail', log)"
                             class="text-[#003628] font-bold underline"
                         >
-                            Lihat Detail
+                            Detail
                         </button>
                     </div>
                 </div>
             </div>
 
             <!-- Table Footer -->
-            <div class="px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white mt-4">
-                 <span class="text-[11px] font-black uppercase tracking-widest text-slate-400">{{ summaryText }}</span>
-                 <nav v-if="logs.links.length > 3" class="flex items-center gap-1.5">
+            <div class="px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-white mt-4">
+                <span class="text-[11px] font-black uppercase tracking-widest text-slate-400">{{ summaryText }}</span>
+                <nav v-if="logs.links.length > 3" class="flex items-center gap-1.5">
                     <Link
                         v-for="(link, i) in logs.links"
                         :key="i"

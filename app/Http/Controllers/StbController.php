@@ -2,24 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Stb;
 use App\Models\ActionLog;
+use App\Models\Stb;
 use App\Models\User;
 use App\Services\AssetNoteFormatterService;
 use App\Services\ErrorMessageService;
-use App\Traits\DocumentCheckoutTrait;
-use Illuminate\Validation\Rule;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class StbController extends DocumentFlowController
 {
-
     protected function buildDocumentRelationSummary(Stb $stb, string $relationLabel): array
     {
         $groupParts = $this->buildGroupParts($stb->group_id);
@@ -61,15 +59,36 @@ class StbController extends DocumentFlowController
         return 'unsupported';
     }
 
-    protected function resolveSelectedAssetMovementType(array $selectedAssetIds): ?string
+    protected function resolveSelectedAssetMovementType(array $selectedAssetIds, ?string $assetType = null): ?string
     {
         if ($selectedAssetIds === []) {
             return null;
         }
 
         $states = collect($selectedAssetIds)
-            ->map(function (int $assetId): ?string {
-                $record = $this->snipe->getHardware($assetId);
+            ->map(function (int $assetId) use ($assetType): ?string {
+                // Try to get asset info based on type
+                $record = null;
+
+                if ($assetType === 'consumable') {
+                    $record = $this->snipe->getConsumable($assetId);
+                } elseif ($assetType === 'license') {
+                    $record = $this->snipe->getLicense($assetId);
+                } elseif ($assetType === 'accessories') {
+                    $record = $this->snipe->getAccessory($assetId);
+                } elseif ($assetType === 'component') {
+                    $record = $this->snipe->getComponent($assetId);
+                } else {
+                    // Default to hardware for unknown types
+                    $record = $this->snipe->getHardware($assetId);
+                }
+
+                // For non-hardware items (consumable, license, accessory), they're always "out"
+                // because they don't have "Active" status - they only have stock quantities
+                if (in_array($assetType, ['consumable', 'license', 'accessories', 'component'], true)) {
+                    return $record ? 'out' : null;
+                }
+
                 $status = (string) (data_get($record, 'status_label.name')
                     ?? data_get($record, 'status.name')
                     ?? data_get($record, 'status_label')
@@ -98,6 +117,13 @@ class StbController extends DocumentFlowController
     {
         $documentType = $request->query('documentType');
         $movementType = $request->query('movementType');
+        $assetType = match (strtolower((string) $request->query('assetType', 'assets'))) {
+            'license', 'licenses' => 'license',
+            'accessory', 'accessories' => 'accessories',
+            'consumable', 'consumables' => 'consumable',
+            'component', 'components' => 'component',
+            default => 'assets',
+        };
 
         if ($documentType === 'handover' && $movementType === null) {
             $movementType = 'out';
@@ -110,7 +136,7 @@ class StbController extends DocumentFlowController
         ];
 
         $selectedAssetIds = $request->query('selectedAssetIds', []);
-        if (!is_array($selectedAssetIds)) {
+        if (! is_array($selectedAssetIds)) {
             $selectedAssetIds = is_string($selectedAssetIds)
                 ? preg_split('/[\s,]+/', trim($selectedAssetIds), -1, PREG_SPLIT_NO_EMPTY) ?? []
                 : [];
@@ -126,51 +152,94 @@ class StbController extends DocumentFlowController
             ]);
 
             if ($selectedAssetIds !== []) {
-                $resolvedSelectedUserId = collect($selectedAssetIds)
-                    ->map(function (int $assetId): ?int {
-                        $record = $this->snipe->getHardware($assetId);
-                        $assignedTo = data_get($record, 'assigned_to') ?? data_get($record, 'assignedUser') ?? [];
-                        $assignedId = is_array($assignedTo) ? (int) ($assignedTo['id'] ?? 0) : (int) $assignedTo;
+                // Only auto-assign user for hardware items
+                // Consumable/License/Accessory are stock items, not personal assets
+                if (! in_array($assetType, ['consumable', 'license', 'accessories', 'component'], true)) {
+                    $resolvedSelectedUserId = collect($selectedAssetIds)
+                        ->map(function (int $assetId) use ($assetType): ?int {
+                            $record = null;
 
-                        return $assignedId > 0 ? $assignedId : null;
-                    })
-                    ->filter(fn (?int $userId) => $userId !== null)
-                    ->first();
+                            if ($assetType === 'consumable') {
+                                $record = $this->snipe->getConsumable($assetId);
+                            } elseif ($assetType === 'license') {
+                                $record = $this->snipe->getLicense($assetId);
+                            } elseif ($assetType === 'accessories') {
+                                $record = $this->snipe->getAccessory($assetId);
+                            } elseif ($assetType === 'component') {
+                                $record = $this->snipe->getComponent($assetId);
+                            } else {
+                                $record = $this->snipe->getHardware($assetId);
+                            }
 
-                if ($resolvedSelectedUserId) {
-                    $baseData['user_id'] = $resolvedSelectedUserId;
+                            $assignedTo = data_get($record, 'assigned_to') ?? data_get($record, 'assignedUser') ?? [];
+                            $assignedId = is_array($assignedTo) ? (int) ($assignedTo['id'] ?? 0) : (int) $assignedTo;
 
-                    $selectedUser = $this->snipe->getUser($resolvedSelectedUserId);
-                    $selectedGroupId = data_get($selectedUser, 'location_id')
-                        ?? data_get($selectedUser, 'location.id')
-                        ?? data_get($selectedUser, 'group_id')
-                        ?? null;
+                            return $assignedId > 0 ? $assignedId : null;
+                        })
+                        ->filter(fn (?int $userId) => $userId !== null)
+                        ->first();
 
-                    if ($selectedGroupId) {
-                        $baseData['group_id'] = (int) $selectedGroupId;
+                    if ($resolvedSelectedUserId) {
+                        $baseData['user_id'] = $resolvedSelectedUserId;
+
+                        $selectedUser = $this->snipe->getUser($resolvedSelectedUserId);
+                        $selectedGroupId = data_get($selectedUser, 'location_id')
+                            ?? data_get($selectedUser, 'location.id')
+                            ?? data_get($selectedUser, 'group_id')
+                            ?? null;
+
+                        if ($selectedGroupId) {
+                            $baseData['group_id'] = (int) $selectedGroupId;
+                        }
                     }
                 }
 
                 $baseData['items'] = collect($selectedAssetIds)
-                    ->map(function (int $assetId): array {
-                        $record = $this->snipe->getHardware($assetId);
+                    ->map(function (int $assetId) use ($assetType): array {
+                        $record = null;
+                        $itemType = 'Hardware';
+
+                        if ($assetType === 'consumable') {
+                            $record = $this->snipe->getConsumable($assetId);
+                            $itemType = 'Consumable';
+                        } elseif ($assetType === 'license') {
+                            $record = $this->snipe->getLicense($assetId);
+                            $itemType = 'License';
+                        } elseif ($assetType === 'accessories') {
+                            $record = $this->snipe->getAccessory($assetId);
+                            $itemType = 'Accessory';
+                        } elseif ($assetType === 'component') {
+                            $record = $this->snipe->getComponent($assetId);
+                            $itemType = 'Component';
+                        } else {
+                            $record = $this->snipe->getHardware($assetId);
+                        }
 
                         if (empty($record['id'])) {
                             return [];
                         }
 
+                        $itemCategory = $assetType;
+                        $reference = match ($itemCategory) {
+                            'assets' => $record['asset_tag'] ?? '',
+                            'license' => $record['product_key'] ?? $record['serial'] ?? '',
+                            'consumable', 'accessories' => $record['model_number'] ?? $record['serial'] ?? '',
+                            'component' => $record['serial'] ?? '',
+                            default => '',
+                        };
+
                         return [
                             'nama' => (string) ($record['name'] ?? 'Asset'),
-                            'kategori' => 'assets',
-                            'type' => (string) data_get($record, 'category.name', 'Hardware'),
+                            'kategori' => $itemCategory,
+                            'type' => $itemType,
                             'jumlah' => 1,
-                            'serialNo' => (string) ($record['serial'] ?? ''),
-                            'inventory_number' => (string) ($record['asset_tag'] ?? ''),
+                            'serialNo' => (string) ($record['serial'] ?? $record['product_key'] ?? ''),
+                            'inventory_number' => (string) $reference,
                             'computer_id' => null,
                             'snipeit_asset_id' => $assetId,
                             'condition' => 'Good',
                             'is_selected' => true,
-                            'asset_reference_snapshot' => (string) ($record['asset_tag'] ?? ''),
+                            'asset_reference_snapshot' => (string) $reference,
                         ];
                     })
                     ->filter()
@@ -183,7 +252,7 @@ class StbController extends DocumentFlowController
 
         $linkedDoc = Stb::with('items')->find($linkedStbId);
 
-        if (!$linkedDoc || $this->isCancelledState($linkedDoc) || !empty($linkedDoc->returned_at)) {
+        if (! $linkedDoc || $this->isCancelledState($linkedDoc) || ! empty($linkedDoc->returned_at)) {
             return array_filter($initialData, fn ($value) => $value !== null && $value !== '');
         }
 
@@ -265,7 +334,7 @@ class StbController extends DocumentFlowController
                 ->map(fn (Stb $linkedReturn) => $this->buildDocumentRelationSummary($linkedReturn, 'Dokumen Pengembalian'))
                 ->values()
                 ->all(),
-            'completedPdfUrl' => $stb->completed_pdf_path ? '/storage/' . ltrim($stb->completed_pdf_path, '/') : null,
+            'completedPdfUrl' => $stb->completed_pdf_path ? '/storage/'.ltrim($stb->completed_pdf_path, '/') : null,
         ];
     }
 
@@ -294,16 +363,16 @@ class StbController extends DocumentFlowController
                 ->where('is_completed', true))
             ->when($this->hasCompletionFlagColumn() && $activeTab === 'pending', fn ($builder) => $builder
                 ->where('is_completed', false))
-            ->when(!$this->hasCompletionFlagColumn() && $hasCompletionColumns && $activeTab === 'completed', fn ($builder) => $builder
+            ->when(! $this->hasCompletionFlagColumn() && $hasCompletionColumns && $activeTab === 'completed', fn ($builder) => $builder
                 ->whereNotNull('completed_at')
                 ->whereNotNull('completed_pdf_path'))
-            ->when(!$this->hasCompletionFlagColumn() && $hasCompletionColumns && $activeTab === 'pending', fn ($builder) => $builder
+            ->when(! $this->hasCompletionFlagColumn() && $hasCompletionColumns && $activeTab === 'pending', fn ($builder) => $builder
                 ->where(function ($pendingQuery) {
                     $pendingQuery
                         ->whereNull('completed_at')
                         ->orWhereNull('completed_pdf_path');
                 }))
-            ->when(!$hasCompletionColumns && $activeTab === 'completed', fn ($builder) => $builder->whereRaw('1 = 0'));
+            ->when(! $hasCompletionColumns && $activeTab === 'completed', fn ($builder) => $builder->whereRaw('1 = 0'));
 
         $stbs = $query
             ->paginate(10)
@@ -317,7 +386,7 @@ class StbController extends DocumentFlowController
                     'is_fully_signed' => $this->hasAllSignatures($stb),
                     'is_completed' => $this->isCompletedState($stb),
                     'is_cancelled' => $this->isCancelledState($stb),
-                    'completed_pdf_url' => $stb->completed_pdf_path ? '/storage/' . ltrim($stb->completed_pdf_path, '/') : null,
+                    'completed_pdf_url' => $stb->completed_pdf_path ? '/storage/'.ltrim($stb->completed_pdf_path, '/') : null,
                 ]);
             });
 
@@ -367,7 +436,7 @@ class StbController extends DocumentFlowController
         }
 
         $selectedAssetIds = $request->query('selectedAssetIds', []);
-        if (!is_array($selectedAssetIds)) {
+        if (! is_array($selectedAssetIds)) {
             $selectedAssetIds = is_string($selectedAssetIds)
                 ? preg_split('/[\s,]+/', trim($selectedAssetIds), -1, PREG_SPLIT_NO_EMPTY) ?? []
                 : [];
@@ -376,7 +445,8 @@ class StbController extends DocumentFlowController
         $selectedAssetIds = array_values(array_filter(array_map('intval', $selectedAssetIds), fn ($id) => $id > 0));
 
         if ($selectedAssetIds !== []) {
-            $resolvedMovementType = $this->resolveSelectedAssetMovementType($selectedAssetIds);
+            $assetType = $request->query('assetType');
+            $resolvedMovementType = $this->resolveSelectedAssetMovementType($selectedAssetIds, $assetType);
 
             if ($resolvedMovementType === null) {
                 return redirect()->route('stb.index')->with('error', 'Hanya aset dengan status Active atau Stock yang dapat dibuat STB. Status lain tidak diperbolehkan.');
@@ -466,7 +536,7 @@ class StbController extends DocumentFlowController
             $category = strtolower(trim((string) ($item['kategori'] ?? 'assets')));
             $isHardware = in_array($category, ['assets', 'asset', 'hardware', 'hardware_assets'], true);
 
-            if (!$isHardware) {
+            if (! $isHardware) {
                 continue;
             }
 
@@ -525,7 +595,7 @@ class StbController extends DocumentFlowController
                     ? $this->validateLinkedLoanReference((int) ($validated['linkedStbId'] ?? 0))
                     : null;
 
-                if ($documentType === 'loan' && $movementType === 'return' && !$linkedLoan) {
+                if ($documentType === 'loan' && $movementType === 'return' && ! $linkedLoan) {
                     throw new \InvalidArgumentException('Dokumen pinjaman asal wajib dipilih.');
                 }
 
@@ -546,7 +616,7 @@ class StbController extends DocumentFlowController
                     'req_doc_no' => $validated['reqDocNo'] ?? null,
                     'po_doc_no' => $validated['poDocNo'] ?? null,
                     'user_id' => $validated['user_id'] ?? null,
-                    'user_name' => $recipient ? (trim(data_get($recipient, 'first_name', '') . ' ' . data_get($recipient, 'last_name', '')) ?: data_get($recipient, 'name')) : null,
+                    'user_name' => $recipient ? (trim(data_get($recipient, 'first_name', '').' '.data_get($recipient, 'last_name', '')) ?: data_get($recipient, 'name')) : null,
                     'user_company' => data_get($recipient, 'company.name'),
                     'user_dept' => data_get($recipient, 'department.name'),
                     'user_title' => data_get($recipient, 'jobtitle') ?: data_get($recipient, 'title_name'),
@@ -594,27 +664,27 @@ class StbController extends DocumentFlowController
                     action: 'Document Created',
                     recipient: $stb->user_name ?? 'System'
                 );
-                
+
                 ActionLog::create([
-                    'user_id'     => auth()->id(),
+                    'user_id' => auth()->id(),
                     'action_type' => 'created',
-                    'item_type'   => Stb::class,
-                    'item_id'     => $stb->id,
-                    'note'        => $note,
-                    'log_meta'    => [
-                        'stb_id'         => $stb->id,
-                        'document_type'  => $stb->document_type,
-                        'movement_type'  => $stb->movement_type,
-                        'user_id'        => $stb->user_id,
-                        'group_id'       => $stb->group_id,
-                        'items_count'    => count($validated['items'] ?? []),
+                    'item_type' => Stb::class,
+                    'item_id' => $stb->id,
+                    'note' => $note,
+                    'log_meta' => [
+                        'stb_id' => $stb->id,
+                        'document_type' => $stb->document_type,
+                        'movement_type' => $stb->movement_type,
+                        'user_id' => $stb->user_id,
+                        'group_id' => $stb->group_id,
+                        'items_count' => count($validated['items'] ?? []),
                     ],
                 ]);
             } catch (\Exception $e) {
                 Log::warning('Failed to write STB action log', [
-                    'action'  => 'created',
-                    'stb_id'  => $stb->id,
-                    'error'   => $e->getMessage(),
+                    'action' => 'created',
+                    'stb_id' => $stb->id,
+                    'error' => $e->getMessage(),
                 ]);
             }
 
@@ -636,11 +706,21 @@ class StbController extends DocumentFlowController
         parent::ensureEditable($stb);
 
         $signedCount = 0;
-        if ($stb->it_drafter_signature_path) $signedCount++;
-        if ($stb->it_checker_signature_path) $signedCount++;
-        if ($stb->it_approved_signature_path) $signedCount++;
-        if ($stb->requester_received_signature_path) $signedCount++;
-        if ($stb->requester_dept_head_signature_path) $signedCount++;
+        if ($stb->it_drafter_signature_path) {
+            $signedCount++;
+        }
+        if ($stb->it_checker_signature_path) {
+            $signedCount++;
+        }
+        if ($stb->it_approved_signature_path) {
+            $signedCount++;
+        }
+        if ($stb->requester_received_signature_path) {
+            $signedCount++;
+        }
+        if ($stb->requester_dept_head_signature_path) {
+            $signedCount++;
+        }
 
         if ($signedCount > 0) {
             abort(403, 'Document cannot be edited once signatures are collected.');
@@ -752,6 +832,15 @@ class StbController extends DocumentFlowController
         }
 
         try {
+            $oldData = [
+                'user_name' => $stb->user_name,
+                'location_name' => $stb->location_name,
+                'building' => $stb->building,
+                'use_date' => $stb->use_date ? \Carbon\Carbon::parse($stb->use_date)->format('Y-m-d') : null,
+                'remark' => $stb->remark,
+                'items_count' => $stb->items()->count(),
+            ];
+
             DB::transaction(function () use ($request, $validated, $stb) {
                 $photoPath = $stb->photo;
                 $documentType = $validated['documentType'];
@@ -760,7 +849,7 @@ class StbController extends DocumentFlowController
                     ? $this->validateLinkedLoanReference((int) ($validated['linkedStbId'] ?? 0), $stb)
                     : null;
 
-                if ($documentType === 'loan' && $movementType === 'return' && !$linkedLoan) {
+                if ($documentType === 'loan' && $movementType === 'return' && ! $linkedLoan) {
                     throw new \InvalidArgumentException('Dokumen pinjaman asal wajib dipilih.');
                 }
 
@@ -785,7 +874,7 @@ class StbController extends DocumentFlowController
                     'req_doc_no' => $validated['reqDocNo'] ?? null,
                     'po_doc_no' => $validated['poDocNo'] ?? null,
                     'user_id' => $validated['user_id'] ?? null,
-                    'user_name' => $recipient ? (trim(data_get($recipient, 'first_name', '') . ' ' . data_get($recipient, 'last_name', '')) ?: data_get($recipient, 'name')) : null,
+                    'user_name' => $recipient ? (trim(data_get($recipient, 'first_name', '').' '.data_get($recipient, 'last_name', '')) ?: data_get($recipient, 'name')) : null,
                     'user_company' => data_get($recipient, 'company.name'),
                     'user_dept' => data_get($recipient, 'department.name'),
                     'user_title' => data_get($recipient, 'jobtitle') ?: data_get($recipient, 'title_name'),
@@ -808,6 +897,53 @@ class StbController extends DocumentFlowController
                     $stb->items()->create($this->buildItemSnapshotPayload($item));
                 }
             });
+
+            // Log update to ActionLog with detected changes
+            try {
+                $docNo = $stb->doc_id ?? "STB-{$stb->id}";
+                $changedFields = [];
+                if (($oldData['user_name'] ?? '') !== ($stb->user_name ?? '')) {
+                    $changedFields[] = sprintf('Penerima / User: %s -> %s', $oldData['user_name'] ?: '-', $stb->user_name ?: '-');
+                }
+                if (($oldData['location_name'] ?? '') !== ($stb->location_name ?? '')) {
+                    $changedFields[] = sprintf('Lokasi: %s -> %s', $oldData['location_name'] ?: '-', $stb->location_name ?: '-');
+                }
+                if (($oldData['building'] ?? '') !== ($stb->building ?? '')) {
+                    $changedFields[] = sprintf('Gedung: %s -> %s', $oldData['building'] ?: '-', $stb->building ?: '-');
+                }
+                $newUseDate = $stb->use_date ? \Carbon\Carbon::parse($stb->use_date)->format('Y-m-d') : null;
+                if ($oldData['use_date'] !== $newUseDate) {
+                    $changedFields[] = sprintf('Tanggal Pakai: %s -> %s', $oldData['use_date'] ?: '-', $newUseDate ?: '-');
+                }
+                if (($oldData['remark'] ?? '') !== ($stb->remark ?? '')) {
+                    $changedFields[] = sprintf('Catatan: %s -> %s', $oldData['remark'] ?: '-', $stb->remark ?: '-');
+                }
+                $newItemsCount = $stb->items()->count();
+                if ($oldData['items_count'] !== $newItemsCount) {
+                    $changedFields[] = sprintf('Jumlah Item: %d item -> %d item', $oldData['items_count'], $newItemsCount);
+                }
+
+                ActionLog::create([
+                    'user_id' => auth()->id(),
+                    'action_type' => 'updated',
+                    'item_type' => Stb::class,
+                    'item_id' => $stb->id,
+                    'note' => "Dokumen STB #{$stb->id} diperbarui oleh ".(auth()->user()->name ?? 'Admin'),
+                    'log_meta' => [
+                        'doc_no' => $docNo,
+                        'stb_id' => $stb->id,
+                        'document_type' => $stb->document_type,
+                        'movement_type' => $stb->movement_type,
+                        'user_id' => $stb->user_id,
+                        'user_name' => $stb->user_name,
+                        'group_id' => $stb->group_id,
+                        'items_count' => $newItemsCount,
+                        'changed_fields' => $changedFields,
+                    ],
+                ]);
+            } catch (\Throwable $logEx) {
+                Log::warning('Failed to write stb update action log', ['error' => $logEx->getMessage()]);
+            }
 
             Log::info('STB updated successfully', [
                 'stb_id' => $stb->id,
@@ -846,6 +982,7 @@ class StbController extends DocumentFlowController
             }
 
             $stb->delete();
+
             return redirect()->route('stb.index')
                 ->with('success', 'STB berhasil dihapus.');
         } catch (\Exception $e) {
@@ -864,7 +1001,7 @@ class StbController extends DocumentFlowController
 
         $this->ensureEditable($stb);
 
-        if (!$this->hasCancellationColumns()) {
+        if (! $this->hasCancellationColumns()) {
             return redirect()->back()
                 ->with('error', 'Kolom cancellation belum ada. Jalankan migration terlebih dahulu.');
         }
@@ -881,12 +1018,12 @@ class StbController extends DocumentFlowController
             // Log to ActionLog
             try {
                 ActionLog::create([
-                    'user_id'     => auth()->id(),
+                    'user_id' => auth()->id(),
                     'action_type' => 'cancelled',
-                    'item_type'   => Stb::class,
-                    'item_id'     => $stb->id,
-                    'note'        => "STB #{$stb->id} dibatalkan",
-                    'log_meta'    => ['document_type' => $stb->document_type, 'movement_type' => $stb->movement_type],
+                    'item_type' => Stb::class,
+                    'item_id' => $stb->id,
+                    'note' => "STB #{$stb->id} dibatalkan",
+                    'log_meta' => ['document_type' => $stb->document_type, 'movement_type' => $stb->movement_type],
                 ]);
             } catch (\Throwable $logEx) {
                 Log::warning('Failed to write cancel action log', ['error' => $logEx->getMessage()]);
@@ -927,10 +1064,10 @@ class StbController extends DocumentFlowController
 
         if ($stb->completed_pdf_path && Storage::disk('public')->exists($stb->completed_pdf_path)) {
             return response()->file(
-                storage_path('app/public/' . $stb->completed_pdf_path),
+                storage_path('app/public/'.$stb->completed_pdf_path),
                 [
                     'Content-Type' => 'application/pdf',
-                    'Content-Disposition' => 'inline; filename="' . basename($stb->completed_pdf_path) . '"',
+                    'Content-Disposition' => 'inline; filename="'.basename($stb->completed_pdf_path).'"',
                 ],
             );
         }
@@ -944,6 +1081,7 @@ class StbController extends DocumentFlowController
 
         if ($this->isLoanDocument($stb)) {
             Log::info('STB Completion skipped: Is loan document.');
+
             return redirect()->route('peminjaman.show', $stb);
         }
 
@@ -951,19 +1089,21 @@ class StbController extends DocumentFlowController
 
         if ($this->isCancelledState($stb)) {
             Log::warning('STB Completion aborted: Document is cancelled.', ['stb_id' => $stb->id]);
+
             return $request->expectsJson()
                 ? response()->json(['message' => 'Cancelled STB cannot be completed.'], 409)
                 : redirect()->back()->with('error', 'Cancelled STB cannot be completed.');
         }
 
-        if (!$this->hasCompletionColumns()) {
+        if (! $this->hasCompletionColumns()) {
             return $request->expectsJson()
                 ? response()->json(['message' => 'Kolom completion belum ada. Jalankan migration terlebih dahulu.'], 409)
                 : redirect()->back()->with('error', 'Kolom completion belum ada. Jalankan migration terlebih dahulu.');
         }
 
-        if (!$this->hasAllSignatures($stb)) {
+        if (! $this->hasAllSignatures($stb)) {
             Log::warning('STB Completion aborted: Missing signatures.', ['stb_id' => $stb->id]);
+
             return $request->expectsJson()
                 ? response()->json(['message' => 'Semua signature harus lengkap sebelum complete.'], 422)
                 : redirect()->back()->with('error', 'Semua signature harus lengkap sebelum complete.');
@@ -1011,7 +1151,7 @@ class StbController extends DocumentFlowController
                 }
             });
             Log::info('Database record updated successfully.');
-            
+
             // Centralized finalization: Logs history, Uploads PDF to Snipe-IT, Flushes cache, Triggers auto-service
             $this->finalizeDocumentCompletion($stb, $pdfPath);
 
@@ -1079,7 +1219,7 @@ class StbController extends DocumentFlowController
             ->latest()
             ->first();
 
-        if (!$stb) {
+        if (! $stb) {
             return response()->json(['stb' => null]);
         }
 
@@ -1087,13 +1227,14 @@ class StbController extends DocumentFlowController
             'stb' => [
                 'id' => $stb->id,
                 'docId' => $this->formatDocId($stb, null), // Company not strictly needed for link
-            ]
+            ],
         ]);
     }
 
     public function nextStbId(): \Illuminate\Http\JsonResponse
     {
         $lastId = \App\Models\Stb::query()->max('id') ?? 0;
+
         return response()->json(['next_id' => $lastId + 1]);
     }
 }

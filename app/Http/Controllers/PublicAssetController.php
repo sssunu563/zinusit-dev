@@ -16,50 +16,108 @@ class PublicAssetController extends Controller
 
     public function show(Request $request, string $serial)
     {
-        // 1. Check if it's an STB ID (formatted STB-XXX-XXXX-ID or raw ID)
-        $stb = null;
-        if (is_numeric($serial)) {
-            $stb = Stb::find($serial);
-        } else if (str_starts_with($serial, 'STB-')) {
+        // 1. Check if it's explicitly an STB formatted code (e.g. STB-2024-001-5)
+        if (str_starts_with($serial, 'STB-')) {
             $parts = explode('-', $serial);
             $id = end($parts);
             if (is_numeric($id)) {
                 $stb = Stb::find($id);
+                if ($stb) {
+                    return $this->handleStbPublic($request, $stb);
+                }
             }
         }
 
-        if ($stb) {
-            return $this->handleStbPublic($request, $stb);
+        // 2. Search Snipe-IT Hardware:
+        $assetData = null;
+
+        // A. By Asset Tag (e.g. test111)
+        $res = $this->snipeIt->getHardwareByAssetTag($serial);
+        if (!empty($res['rows'])) {
+            $assetData = $res['rows'][0];
         }
 
-        // 2. Fallback to Snipe-IT Asset lookup by Serial
-        $asset = $this->snipeIt->getHardwareBySerial($serial);
+        // B. By Serial Number
+        if (!$assetData) {
+            $res = $this->snipeIt->getHardwareBySerial($serial);
+            if (!empty($res['rows'])) {
+                $assetData = $res['rows'][0];
+            }
+        }
 
-        if (!$asset || empty($asset['rows'])) {
+        // C. By General Search
+        if (!$assetData) {
+            $res = $this->snipeIt->request('hardware', ['search' => $serial, 'limit' => 1]);
+            if (!empty($res['rows'])) {
+                $assetData = $res['rows'][0];
+            }
+        }
+
+        // D. By Numeric ID
+        if (!$assetData && is_numeric($serial)) {
+            $record = $this->snipeIt->getHardware((int) $serial);
+            if (!empty($record['id'])) {
+                $assetData = $record;
+            }
+        }
+
+        // E. Fallback to STB if still not found and numeric
+        if (!$assetData && is_numeric($serial)) {
+            $stb = Stb::find((int) $serial);
+            if ($stb) {
+                return $this->handleStbPublic($request, $stb);
+            }
+        }
+
+        if (!$assetData) {
             abort(404, 'Asset/Document not found');
         }
 
-        $assetData = $asset['rows'][0];
         $assetId = $assetData['id'];
 
         // Fetch components
         $components = $this->snipeIt->request("hardware/{$assetId}/components")['rows'] ?? [];
-        
+
+        // Extract any meaningful custom fields
+        $customFields = [];
+        if (!empty($assetData['custom_fields']) && is_array($assetData['custom_fields'])) {
+            foreach ($assetData['custom_fields'] as $label => $field) {
+                $val = $field['value'] ?? null;
+                if ($val !== null && $val !== '' && !in_array(strtolower($label), ['checked', 'inventory check'])) {
+                    $customFields[] = [
+                        'label' => $label,
+                        'value' => (string) $val,
+                    ];
+                }
+            }
+        }
+
         return Inertia::render('Public/AssetShow', [
             'asset' => [
-                'name' => $assetData['name'],
-                'asset_tag' => $assetData['asset_tag'],
-                'serial' => $assetData['serial'],
-                'model' => $assetData['model']['name'] ?? 'Unknown',
-                'image' => $assetData['image'] ?? null,
-                'status' => $assetData['status_label']['name'] ?? 'Unknown',
-                'assigned_to' => $assetData['assigned_to']['name'] ?? 'Available',
-                'location' => $assetData['location']['name'] ?? 'Warehouse',
-                'components' => array_map(fn($c) => [
-                    'name' => $c['name'],
+                'id'              => $assetData['id'],
+                'name'            => $assetData['name'] ?? $assetData['model']['name'] ?? 'Hardware Asset',
+                'asset_tag'       => $assetData['asset_tag'] ?? '-',
+                'serial'          => $assetData['serial'] ?? '-',
+                'model'           => $assetData['model']['name'] ?? '-',
+                'model_number'    => $assetData['model_number'] ?? null,
+                'category'        => $assetData['category']['name'] ?? 'Hardware',
+                'manufacturer'    => $assetData['manufacturer']['name'] ?? null,
+                'image'           => $assetData['image'] ?? null,
+                'status'          => $assetData['status_label']['name'] ?? 'Active',
+                'status_type'     => $assetData['status_label']['status_type'] ?? 'deployable',
+                'assigned_to'     => $assetData['assigned_to']['name'] ?? 'Available / In Stock',
+                'assigned_email'  => $assetData['assigned_to']['email'] ?? null,
+                'location'        => $assetData['location']['name'] ?? ($assetData['rtd_location']['name'] ?? 'Warehouse'),
+                'company'         => $assetData['company']['name'] ?? 'Zinus Global Indonesia',
+                'purchase_date'   => $assetData['purchase_date']['formatted'] ?? null,
+                'warranty_months' => $assetData['warranty_months'] ?? null,
+                'notes'           => $assetData['notes'] ?? null,
+                'components'      => array_map(fn($c) => [
+                    'name'     => $c['name'],
                     'category' => $c['category']['name'] ?? null,
-                    'qty' => $c['qty'] ?? 1,
+                    'qty'      => $c['qty'] ?? 1,
                 ], $components),
+                'custom_fields'   => $customFields,
             ]
         ]);
     }

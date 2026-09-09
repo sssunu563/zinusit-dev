@@ -218,10 +218,14 @@ const triggerPrint = () => {
 };
 
 const printSingleAsset = (asset: AssetItem) => {
-    window.open(
-        `/asset/label/${encodeURIComponent(asset.asset_tag || asset.serial || String(asset.id))}`,
-        '_blank',
-    );
+    // Create a temporary link element to open in new tab without triggering Inertia
+    const link = document.createElement('a');
+    link.href = `/asset/label/${encodeURIComponent(asset.asset_tag || asset.serial || String(asset.id))}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 };
 </script>
 

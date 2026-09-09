@@ -70,11 +70,40 @@ const getToneColor = (tone) => {
     }
 };
 
+let pollingInterval = null;
+
+const startPolling = () => {
+    if (pollingInterval) return;
+    pollingInterval = setInterval(fetchNotifications, 60000);
+};
+
+const stopPolling = () => {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+};
+
+const handleVisibilityChange = () => {
+    if (document.hidden) {
+        stopPolling();
+    } else {
+        fetchNotifications();
+        startPolling();
+    }
+};
+
 onMounted(() => {
     fetchNotifications();
-    // Poll every 60 seconds
-    const interval = setInterval(fetchNotifications, 60000);
-    onUnmounted(() => clearInterval(interval));
+    startPolling();
+    
+    // Pause polling when page is not visible (e.g., when print dialog is open)
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    onUnmounted(() => {
+        stopPolling();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+    });
 });
 
 defineExpose({ toggleDrawer });

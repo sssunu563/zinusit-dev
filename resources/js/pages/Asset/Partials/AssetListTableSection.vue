@@ -156,6 +156,16 @@ const toggleSelect = (id: number | string) => {
     }
     emit('update:selectedIds', newIds);
 };
+
+// Extract inspection code from notes if it exists
+const getInspectionCode = (asset: AssetItem): string | null => {
+    const notes = String(asset.notes || '').toLowerCase();
+    if (!notes) return null;
+    
+    // Look for patterns like IR-ZGI-2609-00005
+    const match = notes.match(/\bir-[a-z]{3}-\d{4}-\d{5}\b/i);
+    return match ? match[0].toUpperCase() : null;
+};
 </script>
 
 <template>
@@ -528,18 +538,30 @@ const toggleSelect = (id: number | string) => {
                                 <button
                                     v-if="column.linkStyle === 'asset-tag'"
                                     type="button"
-                                    class="text-[13px] font-black tracking-tight text-slate-900 uppercase transition-colors outline-none group-hover:text-primary"
+                                    class="flex items-center gap-2 text-[13px] font-black tracking-tight text-slate-900 uppercase transition-colors outline-none group-hover:text-primary"
                                     @click="emit('show-detail', asset)"
                                 >
-                                    {{ formatCellValue(column.value(asset)) }}
+                                    <span>{{ formatCellValue(column.value(asset)) }}</span>
+                                    <span
+                                        v-if="getInspectionCode(asset)"
+                                        class="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-black tracking-widest text-sky-600 uppercase"
+                                    >
+                                        🔍 {{ getInspectionCode(asset) }}
+                                    </span>
                                 </button>
                                 <button
                                     v-else-if="column.linkStyle === 'text'"
                                     type="button"
-                                    class="text-[13px] font-black tracking-tight text-slate-800 transition-colors outline-none group-hover:text-primary"
+                                    class="flex items-center gap-2 text-[13px] font-black tracking-tight text-slate-800 transition-colors outline-none group-hover:text-primary"
                                     @click="emit('show-detail', asset)"
                                 >
-                                    {{ formatCellValue(column.value(asset)) }}
+                                    <span>{{ formatCellValue(column.value(asset)) }}</span>
+                                    <span
+                                        v-if="getInspectionCode(asset)"
+                                        class="ml-auto inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[9px] font-black tracking-widest text-sky-600 uppercase"
+                                    >
+                                        🔍 {{ getInspectionCode(asset) }}
+                                    </span>
                                 </button>
                                 <template
                                     v-else-if="column.key === 'state_name'"

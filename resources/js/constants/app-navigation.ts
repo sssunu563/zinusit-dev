@@ -18,7 +18,6 @@ import {
     Briefcase,
     Laptop,
     Scan,
-    Truck,
     BookOpen,
     ShoppingCart,
     Wifi,
@@ -27,7 +26,7 @@ import {
     LifeBuoy,
     Shield,
     FolderArchive,
-    Tag,
+    Bell,
 } from 'lucide-vue-next';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
@@ -44,22 +43,22 @@ export const assetMenuItems: NavItem[] = [
         icon: Laptop,
     },
     {
-        title: 'License',
+        title: 'Lisensi',
         href: '/asset?type=license',
         icon: Key,
     },
     {
-        title: 'Accessories',
+        title: 'Aksesori',
         href: '/asset?type=accessories',
         icon: Plug,
     },
     {
-        title: 'Consumable',
+        title: 'Barang Habis Pakai',
         href: '/asset?type=consumable',
         icon: Package,
     },
     {
-        title: 'Component',
+        title: 'Komponen',
         href: '/asset?type=component',
         icon: CircuitBoard,
     },
@@ -77,17 +76,17 @@ export const formMenuItems: NavItem[] = [
         icon: ClipboardList,
     },
     {
-        title: 'Inspection',
+        title: 'Inspeksi',
         href: '/inspection',
         icon: Search,
     },
     {
-        title: 'Workspace',
+        title: 'Helpdesk',
         href: '/helpdesk',
         icon: Briefcase,
     },
     {
-        title: 'Bank Document',
+        title: 'Bank Dokumen',
         href: '/bank-documents',
         icon: FolderArchive,
     },
@@ -95,22 +94,22 @@ export const formMenuItems: NavItem[] = [
 
 export const logMenuItems: NavItem[] = [
     {
-        title: 'Auth Logs',
+        title: 'Log Autentikasi',
         href: '/auth-logs',
         icon: ClipboardList,
     },
     {
-        title: 'Activity Logs',
+        title: 'Log Aktivitas',
         href: '/action-logs',
         icon: History,
     },
     {
-        title: 'Form Logs',
+        title: 'Log Formulir',
         href: '/form-logs',
         icon: FileText,
     },
     {
-        title: 'Report Logs',
+        title: 'Log Laporan',
         href: '/report-logs',
         icon: BarChart,
     },
@@ -123,73 +122,75 @@ export const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Assets',
+        title: 'Aset',
         href: '/asset',
         icon: Boxes,
         children: assetMenuItems,
     },
     {
-        title: 'Form',
+        title: 'Formulir',
         href: '/stb',
         icon: FileText,
         children: formMenuItems,
     },
     {
-        title: 'Users',
+        title: 'Pengguna',
         href: '/users',
         icon: Users,
+        children: [
+            {
+                title: 'User Snipe-IT',
+                href: '/users',
+                icon: Users,
+            },
+            {
+                title: 'User LDAP',
+                href: '/users/ldap',
+                icon: Shield,
+            },
+        ],
     },
     {
-        title: 'Report',
+        title: 'Laporan',
         href: '/reports',
         icon: BarChart,
         children: [
             {
-                title: 'Infra Report',
+                title: 'Laporan Infrastruktur',
                 href: '/infra-report',
                 icon: Shield,
             },
             {
-                title: 'Network Operation',
+                title: 'Operasional Jaringan',
                 href: '/network-operation',
                 icon: Wifi,
             },
             {
-                title: 'CCTV Operation',
+                title: 'Operasional CCTV',
                 href: '/cctv-operation',
                 icon: Camera,
             },
             {
-                title: 'Server Operation',
+                title: 'Operasional Server',
                 href: '/server-operation',
                 icon: Server,
             },
             {
-                title: 'Support Operation',
+                title: 'Operasional Dukungan',
                 href: '/support-operation',
                 icon: LifeBuoy,
             },
         ],
     },
     {
-        title: 'Tools',
+        title: 'Alat',
         href: '#',
         icon: QrCode,
         children: [
             {
-                title: 'Label Engine',
-                href: '/label-generator',
-                icon: Tag,
-            },
-            {
                 title: 'Stock Opname',
                 href: '/audit',
                 icon: Scan,
-            },
-            {
-                title: 'Master Vendors',
-                href: '/vendors',
-                icon: Truck,
             },
             {
                 title: 'Knowledge Base',
@@ -200,6 +201,11 @@ export const mainNavItems: NavItem[] = [
                 title: 'Rekap Pengadaan',
                 href: '/procurement',
                 icon: ShoppingCart,
+            },
+            {
+                title: 'Webhook Notification',
+                href: '/notification-settings',
+                icon: Bell,
             },
         ],
     },

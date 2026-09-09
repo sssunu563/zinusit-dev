@@ -59,15 +59,36 @@ class AuditController extends Controller
     public function scan(Request $request, AuditSession $session)
     {
         $request->validate([
-            'search' => 'required|string', // asset tag or serial
+            'search' => 'required|string', // asset tag, serial, or QR URL
         ]);
 
-        $query = $request->input('search');
+        $query = trim($request->input('search'));
+
+        // Handle URL scans like http://domain/a/{ref} or /a/{ref}
+        if (preg_match('|/a/([^/?# ]+)|', $query, $matches)) {
+            $query = urldecode($matches[1]);
+        }
         
-        // Search in Snipe-IT
-        $assetResponse = $this->snipe->getHardwareBySerial($query);
+        // Search in Snipe-IT:
+        // 1. By Asset Tag
+        $assetResponse = $this->snipe->getHardwareByAssetTag($query);
+
+        // 2. By Serial
         if (empty($assetResponse['rows'])) {
-            $assetResponse = $this->snipe->request('hardware', ['asset_tag' => $query]);
+            $assetResponse = $this->snipe->getHardwareBySerial($query);
+        }
+
+        // 3. By General Search
+        if (empty($assetResponse['rows'])) {
+            $assetResponse = $this->snipe->request('hardware', ['search' => $query, 'limit' => 1]);
+        }
+
+        // 4. By ID if numeric
+        if (empty($assetResponse['rows']) && is_numeric($query)) {
+            $record = $this->snipe->getHardware((int) $query);
+            if (!empty($record['id'])) {
+                $assetResponse = ['rows' => [$record]];
+            }
         }
 
         if (empty($assetResponse['rows'])) {
@@ -76,30 +97,42 @@ class AuditController extends Controller
 
         $asset = $assetResponse['rows'][0];
 
+        $assetData = [
+            'id'          => $asset['id'],
+            'name'        => $asset['name'] ?? $asset['model']['name'] ?? 'Hardware Asset',
+            'asset_tag'   => $asset['asset_tag'] ?? '',
+            'tag'         => $asset['asset_tag'] ?? '',
+            'serial'      => $asset['serial'] ?? '',
+            'model'       => $asset['model']['name'] ?? '-',
+            'category'    => $asset['category']['name'] ?? 'Hardware',
+            'location'    => $asset['location']['name'] ?? 'N/A',
+            'assigned_to' => $asset['assigned_to']['name'] ?? 'Available',
+            'user'        => $asset['assigned_to']['name'] ?? 'Available',
+            'image'       => $asset['image'] ?? null,
+            'status'      => $asset['status_label']['name'] ?? 'Deployable',
+        ];
+
         return response()->json([
-            'id' => $asset['id'],
-            'name' => $asset['name'] ?? $asset['model']['name'],
-            'tag' => $asset['asset_tag'],
-            'serial' => $asset['serial'],
-            'location' => $asset['location']['name'] ?? 'N/A',
-            'user' => $asset['assigned_to']['name'] ?? 'Available',
-            'image' => $asset['image'] ?? null,
+            'asset' => $assetData,
+            ...$assetData,
         ]);
     }
 
     public function verify(Request $request, AuditSession $session)
     {
         $validated = $request->validate([
-            'snipeit_asset_id' => 'required|integer',
-            'asset_tag' => 'required|string',
-            'serial' => 'required|string',
-            'status' => 'required|string', // Match, Wrong Location, etc.
+            'snipeit_asset_id'  => 'required|integer',
+            'asset_tag'         => 'required|string',
+            'serial'            => 'nullable|string',
+            'status'            => 'required|string', // Match, Mismatch, Missing
             'physical_location' => 'nullable|string',
-            'physical_user' => 'nullable|string',
-            'note' => 'nullable|string',
+            'physical_user'     => 'nullable|string',
+            'note'              => 'nullable|string',
             'expected_location' => 'nullable|string',
-            'expected_user' => 'nullable|string',
+            'expected_user'     => 'nullable|string',
         ]);
+
+        $validated['serial'] = $validated['serial'] ?? '';
 
         $item = $session->items()->updateOrCreate(
             ['snipeit_asset_id' => $validated['snipeit_asset_id']],

@@ -30,6 +30,17 @@ const formatDate = (d?: string | null) => {
     });
 };
 
+const formatSignatureDate = (d?: string | null) => {
+    if (!d) return '-';
+    return new Date(d).toLocaleString('id-ID', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+};
+
 const catLabels: Record<string, string> = {
     pc: 'PC',
     laptop: 'Laptop',
@@ -448,6 +459,9 @@ const sigPath = (data: any) => (data ? data : null);
         </table>
 
         <!-- 7. CONFIRMATION / SIGNATURES -->
+        <div style="margin-bottom: 8px; padding: 4px; background: #fafafa; border-radius: 4px; font-size: 8px; font-family: monospace;" class="print:hidden">
+            [DEBUG] signature_date: {{ inspection.signature_date }} | it_sig: {{ !!inspection.it_signature }} | checked_sig: {{ !!inspection.checked_signature }} | user_sig: {{ !!inspection.user_signature }} | leader_sig: {{ !!inspection.leader_signature }}
+        </div>
         <table class="insp-confirm">
             <thead>
                 <tr>
@@ -474,12 +488,11 @@ const sigPath = (data: any) => (data ? data : null);
                             />
                         </div>
                         <div class="sig-name">{{ sig.name }}</div>
-                        <div class="sig-status">
-                            {{
-                                sig.data
-                                    ? 'Ditandatangani'
-                                    : 'Belum ditandatangani'
-                            }}
+                        <div v-if="sig.data" class="sig-date">
+                            {{ formatSignatureDate(inspection.signature_date) }}
+                        </div>
+                        <div v-else class="sig-status">
+                            Belum ditandatangani
                         </div>
                         <div v-if="!isCompleted" class="sig-actions">
                             <button
