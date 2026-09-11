@@ -9,6 +9,10 @@ use Inertia\Inertia;
 use App\Models\NetworkDevice;
 use App\Models\CctvDevice;
 use App\Models\ServerDevice;
+use App\Models\IspSlaContract;
+use App\Models\NetworkMaintenanceLog;
+use App\Models\ServerMaintenanceLog;
+use App\Models\CctvMaintenanceLog;
 use App\Models\Ticket;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +23,159 @@ class InfraReportController extends Controller
     public function index()
     {
         return Inertia::render('Report/InfraReport/Index');
+    }
+
+    public static function ensureDefaultBandwidthContracts(): void
+    {
+        $defaults = [
+            ['location' => 'Bogor', 'fct' => 'F1', 'provider' => 'ISAT', 'bandwidth' => 180.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 1],
+            ['location' => 'Bogor', 'fct' => 'F1', 'provider' => 'TGG', 'bandwidth' => 100.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 2],
+            ['location' => 'Karawang', 'fct' => 'F2', 'provider' => 'ISAT', 'bandwidth' => 180.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 3],
+            ['location' => 'Karawang', 'fct' => 'F2', 'provider' => 'TGG', 'bandwidth' => 80.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 4],
+            ['location' => 'Tangerang', 'fct' => 'F3', 'provider' => 'BIZNET', 'bandwidth' => 240.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 5],
+            ['location' => 'Tangerang', 'fct' => 'F3', 'provider' => 'TGG', 'bandwidth' => 100.0, 'target_pct' => 99.5, 'is_active' => true, 'sort_order' => 6],
+        ];
+
+        foreach ($defaults as $d) {
+            IspSlaContract::firstOrCreate(
+                ['fct' => $d['fct'], 'provider' => $d['provider']],
+                $d
+            );
+        }
+    }
+
+    public function deviceSettings(Request $request)
+    {
+        self::ensureDefaultBandwidthContracts();
+
+        return Inertia::render('Report/InfraReport/DeviceSettings', [
+            'devices' => $this->deviceSettingsData(),
+            'bandwidthContracts' => IspSlaContract::orderBy('sort_order')->get(),
+            'failedDevices' => $this->getRecentFailedDevices(),
+        ]);
+    }
+
+    public function updateDeviceSetting(Request $request, string $type, int $id)
+    {
+        $validated = $request->validate(['included' => 'required|boolean']);
+        $model = $this->deviceModel($type);
+        $device = $model::findOrFail($id);
+        $device->update(['is_excluded' => !$validated['included']]);
+
+        return response()->json(['success' => true, 'included' => !$device->is_excluded]);
+    }
+
+    public function batchUpdateDeviceSettings(Request $request)
+    {
+        $request->validate([
+            'type' => 'required|string|in:network,nvr,cctv,server',
+            'included_ids' => 'present|array',
+            'included_ids.*' => 'integer',
+            'site' => 'nullable|string',
+        ]);
+
+        $model = $this->deviceModel($request->type);
+        $query = $model::where('is_active', true);
+        if ($request->type === 'nvr') {
+            $query->where('device_type', 'NVR');
+        } elseif ($request->type === 'cctv') {
+            $query->where('device_type', 'CCTV');
+        }
+        if ($request->site && $request->site !== 'all') {
+            $query->where('site', $request->site);
+        }
+
+        $allIds = $query->pluck('id')->toArray();
+        $includedIds = array_map('intval', $request->included_ids);
+
+        $toInclude = array_intersect($allIds, $includedIds);
+        $toExclude = array_diff($allIds, $includedIds);
+
+        if (!empty($toInclude)) {
+            $model::whereIn('id', $toInclude)->update(['is_excluded' => false]);
+        }
+        if (!empty($toExclude)) {
+            $model::whereIn('id', $toExclude)->update(['is_excluded' => true]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'included_count' => count($toInclude),
+            'excluded_count' => count($toExclude),
+        ]);
+    }
+
+    public function updateBandwidthCapacity(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'required|integer|exists:isp_sla_contracts,id',
+            'bandwidth' => 'required|numeric|min:0',
+            'target_pct' => 'nullable|numeric|min:0|max:100',
+        ]);
+
+        $contract = IspSlaContract::findOrFail($validated['id']);
+        $contract->update([
+            'bandwidth' => $validated['bandwidth'],
+            'target_pct' => $validated['target_pct'] ?? $contract->target_pct,
+        ]);
+
+        return response()->json(['success' => true, 'contract' => $contract]);
+    }
+
+    public function saveMaintenanceLog(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => 'nullable|integer',
+            'device_type' => 'required|string|in:network,server,cctv,nvr',
+            'device_id' => 'required|integer',
+            'started_at' => 'required|string',
+            'resolved_at' => 'nullable|string',
+            'event_type' => 'nullable|string',
+            'status' => 'nullable|string|in:open,closed',
+            'notes' => 'nullable|string',
+        ]);
+
+        $status = $validated['status'] ?? (!empty($validated['resolved_at']) ? 'closed' : 'open');
+        $started = Carbon::parse($validated['started_at'])->toDateTimeString();
+        $resolved = !empty($validated['resolved_at']) ? Carbon::parse($validated['resolved_at'])->toDateTimeString() : null;
+
+        $payload = [
+            'device_id' => $validated['device_id'],
+            'status' => $status,
+            'started_at' => $started,
+            'resolved_at' => $resolved,
+            'event_type' => $validated['event_type'] ?? 'maintenance',
+            'notes' => $validated['notes'] ?? '',
+            'created_by' => auth()->id(),
+        ];
+
+        $logClass = match ($validated['device_type']) {
+            'network' => NetworkMaintenanceLog::class,
+            'server' => ServerMaintenanceLog::class,
+            'cctv', 'nvr' => CctvMaintenanceLog::class,
+        };
+
+        if (!empty($validated['id'])) {
+            $log = $logClass::findOrFail($validated['id']);
+            $log->update($payload);
+        } else {
+            $log = $logClass::create($payload);
+        }
+
+        return response()->json(['success' => true, 'log' => $log]);
+    }
+
+    public function deleteMaintenanceLog(string $type, int $id)
+    {
+        $logClass = match ($type) {
+            'network' => NetworkMaintenanceLog::class,
+            'server' => ServerMaintenanceLog::class,
+            'cctv', 'nvr' => CctvMaintenanceLog::class,
+            default => abort(404),
+        };
+
+        $logClass::findOrFail($id)->delete();
+        return response()->json(['success' => true]);
     }
 
     public function data(Request $request)
@@ -72,8 +229,8 @@ class InfraReportController extends Controller
 
     public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $from = $request->from ?? now()->subDays(6)->toDateString();
-        $to   = $request->to   ?? now()->toDateString();
+        $from = $request->from ?? now()->subDays(7)->toDateString();
+        $to   = $request->to   ?? now()->subDays(1)->toDateString();
 
         $fileName = 'Weekly_Infra_Report_' . $from . '_to_' . $to . '.xlsx';
 
@@ -87,14 +244,15 @@ class InfraReportController extends Controller
         foreach ($sites as $site) {
             // ── 1. Get devices for this site ─────────────────────────────
             if ($type === 'network') {
-                $devices = NetworkDevice::where('site', $site)->where('is_active', true)->get();
+                $devices = NetworkDevice::where('site', $site)->where('is_active', true)->where('is_excluded', false)->get();
             } elseif ($type === 'server') {
-                $devices = ServerDevice::where('site', $site)->where('is_active', true)->get();
+                $devices = ServerDevice::where('site', $site)->where('is_active', true)->where('is_excluded', false)->get();
             } else {
                 // nvr / cctv
                 $devices = CctvDevice::where('site', $site)
                     ->where('device_type', strtoupper($type))
                     ->where('is_active', true)
+                    ->where('is_excluded', false)
                     ->get();
             }
 
@@ -126,11 +284,12 @@ class InfraReportController extends Controller
 
                 $presentHostIds = $rows->pluck('host_id')->unique();
                 $downDevices    = $devices->filter(fn ($d) => !$presentHostIds->contains($d->source_id));
-                $failedList     = $downDevices->map(function ($d) use ($from) {
+                $failedList     = $downDevices->map(function ($d) use ($from, $to) {
                     $log = DB::table('server_maintenance_logs')
                         ->where('device_id', $d->id)
-                        ->where('started_at', '<=', $from . ' 23:59:59')
+                        ->where('started_at', '<=', $to . ' 23:59:59')
                         ->where(fn($q) => $q->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'))
+                        ->orderByDesc('started_at')
                         ->first();
 
                         $duration = '-';
@@ -169,7 +328,10 @@ class InfraReportController extends Controller
                     ->join('network_devices', 'network_uptime_daily.device_id', '=', 'network_devices.id')
                     ->leftJoin('network_maintenance_logs', function($join) {
                         $join->on('network_uptime_daily.device_id', '=', 'network_maintenance_logs.device_id')
-                             ->on('network_uptime_daily.report_date', '=', DB::raw('DATE(network_maintenance_logs.started_at)'));
+                             ->where(function($q) {
+                                 $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
+                                   ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
+                             });
                     })
                     ->whereIn('network_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('network_uptime_daily.report_date', [$from, $to])
@@ -225,7 +387,10 @@ class InfraReportController extends Controller
                     ->join('cctv_devices', 'cctv_uptime_daily.device_id', '=', 'cctv_devices.id')
                     ->leftJoin('cctv_maintenance_logs', function($join) {
                         $join->on('cctv_uptime_daily.device_id', '=', 'cctv_maintenance_logs.device_id')
-                             ->on('cctv_uptime_daily.report_date', '=', DB::raw('DATE(cctv_maintenance_logs.started_at)'));
+                             ->where(function($q) {
+                                 $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
+                                   ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
+                             });
                     })
                     ->whereIn('cctv_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('cctv_uptime_daily.report_date', [$from, $to])
@@ -343,6 +508,191 @@ class InfraReportController extends Controller
             ];
         }
         return $results;
+    }
+
+    private function deviceModel(string $type): string
+    {
+        return match ($type) {
+            'network' => NetworkDevice::class,
+            'nvr', 'cctv' => CctvDevice::class,
+            'server' => ServerDevice::class,
+            default => abort(404),
+        };
+    }
+
+    private function deviceSettingsData(): array
+    {
+        return [
+            'network' => NetworkDevice::where('is_active', true)->orderBy('site')->orderBy('device_name')->get()->map(fn ($device) => $this->mapDeviceSetting($device, 'network'))->values(),
+            'nvr' => CctvDevice::where('device_type', 'NVR')->where('is_active', true)->orderBy('site')->orderBy('device_name')->get()->map(fn ($device) => $this->mapDeviceSetting($device, 'nvr'))->values(),
+            'cctv' => CctvDevice::where('device_type', 'CCTV')->where('is_active', true)->orderBy('site')->orderBy('device_name')->get()->map(fn ($device) => $this->mapDeviceSetting($device, 'cctv'))->values(),
+            'server' => ServerDevice::where('is_active', true)->orderBy('site')->orderBy('device_name')->get()->map(fn ($device) => $this->mapDeviceSetting($device, 'server'))->values(),
+        ];
+    }
+
+    private function mapDeviceSetting($device, string $type): array
+    {
+        return [
+            'id' => $device->id,
+            'type' => $type,
+            'device_name' => $device->device_name,
+            'ip_address' => $device->ip_address,
+            'site' => $device->site,
+            'location' => $device->location,
+            'host_group' => $device->host_group,
+            'included' => !$device->is_excluded,
+        ];
+    }
+
+    private function getRecentFailedDevices(): array
+    {
+        $from = now()->subDays(13)->toDateString();
+        $to = now()->toDateString();
+        $list = [];
+
+        // 1. Network devices
+        $downNetDevices = NetworkDevice::where('is_active', true)
+            ->where(function ($q) use ($from, $to) {
+                $q->where('is_excluded', true)
+                    ->orWhereExists(function ($sub) use ($from, $to) {
+                        $sub->select(DB::raw(1))
+                            ->from('network_uptime_daily')
+                            ->whereColumn('network_uptime_daily.device_id', 'network_devices.id')
+                            ->whereBetween('report_date', [$from, $to])
+                            ->where('uptime_percent', '<', 100);
+                    })
+                    ->orWhereExists(function ($sub) use ($from, $to) {
+                        $sub->select(DB::raw(1))
+                            ->from('network_maintenance_logs')
+                            ->whereColumn('network_maintenance_logs.device_id', 'network_devices.id')
+                            ->where('started_at', '<=', $to . ' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
+                    });
+            })
+            ->orderBy('site')
+            ->orderBy('device_name')
+            ->get();
+
+        foreach ($downNetDevices as $d) {
+            $log = NetworkMaintenanceLog::where('device_id', $d->id)
+                ->orderByDesc('started_at')
+                ->first();
+
+            $worstUptime = DB::table('network_uptime_daily')
+                ->where('device_id', $d->id)
+                ->whereBetween('report_date', [$from, $to])
+                ->min('uptime_percent');
+
+            $list[] = [
+                'id' => $log?->id,
+                'device_id' => $d->id,
+                'device_name' => $d->device_name,
+                'ip_address' => $d->ip_address,
+                'site' => $d->site,
+                'category' => 'Network',
+                'type' => 'network',
+                'is_excluded' => (bool)$d->is_excluded,
+                'uptime_percent' => $worstUptime !== null ? (float)$worstUptime : 0,
+                'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
+                'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
+                'event_type' => $log?->event_type ?? 'maintenance',
+                'status' => $log?->status ?? ($log?->resolved_at ? 'closed' : 'open'),
+                'remark' => $log?->notes ?? '',
+            ];
+        }
+
+        // 2. CCTV & NVR devices
+        $downCctvDevices = CctvDevice::where('is_active', true)
+            ->where(function ($q) use ($from, $to) {
+                $q->where('is_excluded', true)
+                    ->orWhereExists(function ($sub) use ($from, $to) {
+                        $sub->select(DB::raw(1))
+                            ->from('cctv_uptime_daily')
+                            ->whereColumn('cctv_uptime_daily.device_id', 'cctv_devices.id')
+                            ->whereBetween('report_date', [$from, $to])
+                            ->where('uptime_percent', '<', 100);
+                    })
+                    ->orWhereExists(function ($sub) use ($from, $to) {
+                        $sub->select(DB::raw(1))
+                            ->from('cctv_maintenance_logs')
+                            ->whereColumn('cctv_maintenance_logs.device_id', 'cctv_devices.id')
+                            ->where('started_at', '<=', $to . ' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
+                    });
+            })
+            ->orderBy('site')
+            ->orderBy('device_name')
+            ->get();
+
+        foreach ($downCctvDevices as $d) {
+            $log = CctvMaintenanceLog::where('device_id', $d->id)
+                ->orderByDesc('started_at')
+                ->first();
+
+            $worstUptime = DB::table('cctv_uptime_daily')
+                ->where('device_id', $d->id)
+                ->whereBetween('report_date', [$from, $to])
+                ->min('uptime_percent');
+
+            $cat = strtoupper($d->device_type ?? 'CCTV');
+            $list[] = [
+                'id' => $log?->id,
+                'device_id' => $d->id,
+                'device_name' => $d->device_name,
+                'ip_address' => $d->ip_address,
+                'site' => $d->site,
+                'category' => $cat,
+                'type' => strtolower($cat),
+                'is_excluded' => (bool)$d->is_excluded,
+                'uptime_percent' => $worstUptime !== null ? (float)$worstUptime : 0,
+                'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
+                'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
+                'event_type' => $log?->event_type ?? 'maintenance',
+                'status' => $log?->status ?? ($log?->resolved_at ? 'closed' : 'open'),
+                'remark' => $log?->notes ?? '',
+            ];
+        }
+
+        // 3. Server devices
+        $downServerDevices = ServerDevice::where('is_active', true)
+            ->where(function ($q) use ($from, $to) {
+                $q->where('is_excluded', true)
+                    ->orWhereExists(function ($sub) use ($from, $to) {
+                        $sub->select(DB::raw(1))
+                            ->from('server_maintenance_logs')
+                            ->whereColumn('server_maintenance_logs.device_id', 'server_devices.id')
+                            ->where('started_at', '<=', $to . ' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
+                    });
+            })
+            ->orderBy('site')
+            ->orderBy('device_name')
+            ->get();
+
+        foreach ($downServerDevices as $d) {
+            $log = ServerMaintenanceLog::where('device_id', $d->id)
+                ->orderByDesc('started_at')
+                ->first();
+
+            $list[] = [
+                'id' => $log?->id,
+                'device_id' => $d->id,
+                'device_name' => $d->device_name,
+                'ip_address' => $d->ip_address,
+                'site' => $d->site,
+                'category' => 'Server',
+                'type' => 'server',
+                'is_excluded' => (bool)$d->is_excluded,
+                'uptime_percent' => 0,
+                'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
+                'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
+                'event_type' => $log?->event_type ?? 'maintenance',
+                'status' => $log?->status ?? ($log?->resolved_at ? 'closed' : 'open'),
+                'remark' => $log?->notes ?? '',
+            ];
+        }
+
+        return $list;
     }
 
     private function getHelpdeskReport(array $sites, string $from, string $to): array

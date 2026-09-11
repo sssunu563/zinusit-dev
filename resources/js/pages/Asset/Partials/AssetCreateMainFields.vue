@@ -1,6 +1,13 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ChevronDown, Check, Save, Plus, Loader2, AlertCircle } from 'lucide-vue-next';
+import {
+    ChevronDown,
+    Check,
+    Save,
+    Plus,
+    Loader2,
+    AlertCircle,
+} from 'lucide-vue-next';
 import { ref } from 'vue';
 
 interface FormErrors {
@@ -112,6 +119,8 @@ defineProps<{
     serialError?: string;
     checkingSerial?: boolean;
     isEditMode: boolean;
+    auditMode?: boolean;
+    auditReadOnly?: boolean;
 }>();
 
 import AssetCustomFieldsSection from './AssetCustomFieldsSection.vue';
@@ -123,14 +132,32 @@ const emit = defineEmits(['submit']);
 </script>
 
 <template>
-    <div class="app-form-classic-naked">
+    <div
+        class="app-form-classic-naked"
+        :class="{ 'audit-read-only': auditReadOnly }"
+    >
         <!-- ─── MODERN HEADER ─── -->
-        <div class="px-8 py-6 border-b border-slate-100 bg-white">
+        <div
+            v-if="!auditMode"
+            class="border-b border-slate-100 bg-white px-8 py-6"
+        >
             <h2 class="text-2xl font-black tracking-tight text-slate-900">
-                {{ isEditMode ? 'Edit' : 'Create' }} {{ currentTypeLabel }}
+                {{
+                    auditMode
+                        ? 'Stock Opname'
+                        : (isEditMode ? 'Edit' : 'Create') +
+                          ' ' +
+                          currentTypeLabel
+                }}
             </h2>
-            <p class="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-[0.15em]">
-                Registration details for inventory management
+            <p
+                class="mt-1 text-[10px] font-black tracking-[0.15em] text-slate-400 uppercase"
+            >
+                {{
+                    auditMode
+                        ? 'Match mengunci form. Pilih Mismatch untuk mengedit data sesuai kondisi lapangan.'
+                        : 'Registration details for inventory management'
+                }}
             </p>
         </div>
 
@@ -140,23 +167,46 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Company</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.company_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.company_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Company</option>
-                            <option v-for="co in companies" :key="co.id" :value="String(co.id)">{{ co.name }}</option>
+                            <option
+                                v-for="co in companies"
+                                :key="co.id"
+                                :value="String(co.id)"
+                            >
+                                {{ co.name }}
+                            </option>
                         </select>
-                        <p v-if="form.errors.company_id" class="app-form-error">{{ form.errors.company_id }}</p>
+                        <p v-if="form.errors.company_id" class="app-form-error">
+                            {{ form.errors.company_id }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- Asset Tag -->
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Asset Tag <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Asset Tag
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <input v-model="form.asset_tag" type="text" class="app-input-shell app-input-compact" placeholder="AST-..." :disabled="form.processing" />
+                            <input
+                                v-model="form.asset_tag"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                placeholder="AST-..."
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
-                        <p v-if="form.errors.asset_tag" class="app-form-error">{{ form.errors.asset_tag }}</p>
+                        <p v-if="form.errors.asset_tag" class="app-form-error">
+                            {{ form.errors.asset_tag }}
+                        </p>
                     </div>
                 </div>
 
@@ -165,70 +215,155 @@ const emit = defineEmits(['submit']);
                     <label class="app-form-classic-label">Serial</label>
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="relative">
-                            <input v-model="form.serial" type="text" class="app-input-shell app-input-compact" :class="{ 'border-red-300 ring-1 ring-red-100': serialError }" placeholder="Serial Number" :disabled="form.processing" />
-                            <div v-if="checkingSerial" class="absolute right-3 top-1/2 -translate-y-1/2">
-                                <Loader2 class="size-3.5 text-slate-400 animate-spin" />
+                            <input
+                                v-model="form.serial"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                :class="{
+                                    'border-red-300 ring-1 ring-red-100':
+                                        serialError,
+                                }"
+                                placeholder="Serial Number"
+                                :disabled="form.processing"
+                            />
+                            <div
+                                v-if="checkingSerial"
+                                class="absolute top-1/2 right-3 -translate-y-1/2"
+                            >
+                                <Loader2
+                                    class="size-3.5 animate-spin text-slate-400"
+                                />
                             </div>
                         </div>
-                        <div v-if="serialError" class="mt-1.5 flex items-center gap-1.5 text-red-500 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div
+                            v-if="serialError"
+                            class="mt-1.5 flex animate-in items-center gap-1.5 text-red-500 duration-200 fade-in slide-in-from-top-1"
+                        >
                             <AlertCircle class="size-3" />
-                            <p class="text-[10px] font-bold uppercase tracking-tight">{{ serialError }}</p>
+                            <p
+                                class="text-[10px] font-bold tracking-tight uppercase"
+                            >
+                                {{ serialError }}
+                            </p>
                         </div>
-                        <p v-if="form.errors.serial" class="app-form-error">{{ form.errors.serial }}</p>
+                        <p v-if="form.errors.serial" class="app-form-error">
+                            {{ form.errors.serial }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- Model -->
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Model <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Model
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.model_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.model_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select a Model</option>
-                                <option v-for="model in models" :key="model.id" :value="String(model.id)">{{ model.label || model.name }}</option>
+                                <option
+                                    v-for="model in models"
+                                    :key="model.id"
+                                    :value="String(model.id)"
+                                >
+                                    {{ model.label || model.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
-                        <p v-if="form.errors.model_id" class="app-form-error">{{ form.errors.model_id }}</p>
+                        <p v-if="form.errors.model_id" class="app-form-error">
+                            {{ form.errors.model_id }}
+                        </p>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddModelModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddModelModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
 
                 <!-- Status -->
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Status <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Status
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.status_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.status_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select Status</option>
-                                <option v-for="st in statuses" :key="st.id" :value="String(st.id)">{{ st.name }}</option>
+                                <option
+                                    v-for="st in statuses"
+                                    :key="st.id"
+                                    :value="String(st.id)"
+                                >
+                                    {{ st.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
-                        <p v-if="form.errors.status_id" class="app-form-error">{{ form.errors.status_id }}</p>
+                        <p v-if="form.errors.status_id" class="app-form-error">
+                            {{ form.errors.status_id }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- Default Location -->
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Default Location</label>
+                    <label class="app-form-classic-label"
+                        >Default Location</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.location_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.location_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Location</option>
-                            <option v-for="loc in locations" :key="loc.id" :value="String(loc.id)">{{ loc.name }}</option>
+                            <option
+                                v-for="loc in locations"
+                                :key="loc.id"
+                                :value="String(loc.id)"
+                            >
+                                {{ loc.name }}
+                            </option>
                         </select>
-                        <p v-if="form.errors.location_id" class="app-form-error">{{ form.errors.location_id }}</p>
+                        <p
+                            v-if="form.errors.location_id"
+                            class="app-form-error"
+                        >
+                            {{ form.errors.location_id }}
+                        </p>
                     </div>
                 </div>
 
                 <!-- Hardware Specifc: Requestable -->
                 <div class="app-form-classic-row">
                     <div class="md:w-56" />
-                    <label class="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" v-model="form.requestable" class="size-4 rounded border-border bg-background accent-primary" :disabled="form.processing" />
-                        <span class="text-xs font-bold text-muted-foreground group-hover:text-foreground transition-colors">Requestable</span>
+                    <label class="group flex cursor-pointer items-center gap-3">
+                        <input
+                            type="checkbox"
+                            v-model="form.requestable"
+                            class="size-4 rounded border-border bg-background accent-primary"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="text-xs font-bold text-muted-foreground transition-colors group-hover:text-foreground"
+                            >Requestable</span
+                        >
                     </label>
                 </div>
             </template>
@@ -236,34 +371,70 @@ const emit = defineEmits(['submit']);
             <!-- BRANCH 2: LICENSE -->
             <template v-else-if="currentType === 'license'">
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Software Name <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Software Name
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <input v-model="form.name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Category Name <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Category Name
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.category_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.category_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select a Category</option>
-                                <option v-for="cat in categories" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</option>
+                                <option
+                                    v-for="cat in categories"
+                                    :key="cat.id"
+                                    :value="String(cat.id)"
+                                >
+                                    {{ cat.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddCategoryModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddCategoryModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Seats <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Seats
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper max-w-[150px]">
-                            <input v-model="form.seats" type="number" class="app-input-shell app-input-compact" min="1" :disabled="form.processing" />
+                            <input
+                                v-model="form.seats"
+                                type="number"
+                                class="app-input-shell app-input-compact"
+                                min="1"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
@@ -272,119 +443,249 @@ const emit = defineEmits(['submit']);
                     <label class="app-form-classic-label">Min. QTY</label>
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="flex items-center gap-3">
-                            <input v-model="form.min_qty" type="number" class="app-input-shell app-input-compact max-w-[150px]" :disabled="form.processing" />
+                            <input
+                                v-model="form.min_qty"
+                                type="number"
+                                class="app-input-shell app-input-compact max-w-[150px]"
+                                :disabled="form.processing"
+                            />
                         </div>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Product Key</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <textarea v-model="form.serial" rows="4" class="app-textarea-shell text-xs bg-white" :disabled="form.processing" />
+                        <textarea
+                            v-model="form.serial"
+                            rows="4"
+                            class="app-textarea-shell bg-white text-xs"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Company</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.company_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.company_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Company</option>
-                            <option v-for="co in companies" :key="co.id" :value="String(co.id)">{{ co.name }}</option>
+                            <option
+                                v-for="co in companies"
+                                :key="co.id"
+                                :value="String(co.id)"
+                            >
+                                {{ co.name }}
+                            </option>
                         </select>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Manufacturer</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.manufacturer_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.manufacturer_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Manufacturer</option>
-                            <option v-for="m in manufacturers" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            <option
+                                v-for="m in manufacturers"
+                                :key="m.id"
+                                :value="String(m.id)"
+                            >
+                                {{ m.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddManufacturerModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddManufacturerModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Licensed To</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.license_name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.license_name"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Licensed to Email</label>
+                    <label class="app-form-classic-label"
+                        >Licensed to Email</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.license_email" type="email" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.license_email"
+                            type="email"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <div class="md:w-56" />
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" v-model="form.reassignable" class="size-4 rounded border-border" :disabled="form.processing" />
-                        <span class="text-xs font-bold text-slate-700">Reassignable</span>
+                    <label class="flex cursor-pointer items-center gap-2">
+                        <input
+                            type="checkbox"
+                            v-model="form.reassignable"
+                            class="size-4 rounded border-border"
+                            :disabled="form.processing"
+                        />
+                        <span class="text-xs font-bold text-slate-700"
+                            >Reassignable</span
+                        >
                     </label>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Supplier</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.supplier_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.supplier_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Supplier</option>
-                            <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
+                            <option
+                                v-for="s in suppliers"
+                                :key="s.id"
+                                :value="String(s.id)"
+                            >
+                                {{ s.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddSupplierModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddSupplierModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Order Number</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.order_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.order_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Cost</label>
-                    <div class="app-form-classic-input-group max-w-2xl flex items-center">
-                        <input v-model="form.purchase_cost" type="number" step="0.01" class="app-input-shell app-input-compact !rounded-r-none" :disabled="form.processing" />
-                        <span class="h-[38px] px-4 flex items-center bg-slate-50 border border-l-0 border-slate-200 rounded-r-lg text-xs font-bold text-slate-500">USD</span>
+                    <div
+                        class="app-form-classic-input-group flex max-w-2xl items-center"
+                    >
+                        <input
+                            v-model="form.purchase_cost"
+                            type="number"
+                            step="0.01"
+                            class="app-input-shell app-input-compact !rounded-r-none"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="flex h-[38px] items-center rounded-r-lg border border-l-0 border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-500"
+                            >USD</span
+                        >
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Expiration Date</label>
+                    <label class="app-form-classic-label"
+                        >Expiration Date</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.expiration_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.expiration_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Termination Date</label>
+                    <label class="app-form-classic-label"
+                        >Termination Date</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.termination_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.termination_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Purchase Order Number</label>
+                    <label class="app-form-classic-label"
+                        >Purchase Order Number</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.po_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.po_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Depreciation</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.depreciation_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.depreciation_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Do Not Depreciate</option>
-                            <option v-for="d in depreciations" :key="d.id" :value="String(d.id)">{{ d.name }}</option>
+                            <option
+                                v-for="d in depreciations"
+                                :key="d.id"
+                                :value="String(d.id)"
+                            >
+                                {{ d.name }}
+                            </option>
                         </select>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <div class="md:w-56" />
-                    <label class="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" v-model="form.maintained" class="size-4 rounded border-border" :disabled="form.processing" />
-                        <span class="text-xs font-bold text-slate-700">Maintained</span>
+                    <label class="flex cursor-pointer items-center gap-2">
+                        <input
+                            type="checkbox"
+                            v-model="form.maintained"
+                            class="size-4 rounded border-border"
+                            :disabled="form.processing"
+                        />
+                        <span class="text-xs font-bold text-slate-700"
+                            >Maintained</span
+                        >
                     </label>
                 </div>
             </template>
@@ -394,102 +695,222 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Company</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.company_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.company_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Company</option>
-                            <option v-for="co in companies" :key="co.id" :value="String(co.id)">{{ co.name }}</option>
+                            <option
+                                v-for="co in companies"
+                                :key="co.id"
+                                :value="String(co.id)"
+                            >
+                                {{ co.name }}
+                            </option>
                         </select>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Accessory Name <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Accessory Name
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <input v-model="form.name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Category <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Category
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.category_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.category_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select a Category</option>
-                                <option v-for="cat in categories" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</option>
+                                <option
+                                    v-for="cat in categories"
+                                    :key="cat.id"
+                                    :value="String(cat.id)"
+                                >
+                                    {{ cat.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddCategoryModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddCategoryModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Supplier</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.supplier_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.supplier_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Supplier</option>
-                            <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
+                            <option
+                                v-for="s in suppliers"
+                                :key="s.id"
+                                :value="String(s.id)"
+                            >
+                                {{ s.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddSupplierModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddSupplierModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Manufacturer</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.manufacturer_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.manufacturer_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Manufacturer</option>
-                            <option v-for="m in manufacturers" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            <option
+                                v-for="m in manufacturers"
+                                :key="m.id"
+                                :value="String(m.id)"
+                            >
+                                {{ m.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddManufacturerModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddManufacturerModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Location</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.location_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.location_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Location</option>
-                            <option v-for="loc in locations" :key="loc.id" :value="String(loc.id)">{{ loc.name }}</option>
+                            <option
+                                v-for="loc in locations"
+                                :key="loc.id"
+                                :value="String(loc.id)"
+                            >
+                                {{ loc.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddLocationModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddLocationModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Model No.</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.model_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.model_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Order Number</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.order_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.order_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Unit Cost</label>
-                    <div class="app-form-classic-input-group max-w-2xl flex items-center">
-                        <input v-model="form.purchase_cost" type="number" step="0.01" class="app-input-shell app-input-compact !rounded-r-none" :disabled="form.processing" />
-                        <span class="h-[38px] px-4 flex items-center bg-slate-50 border border-l-0 border-slate-200 rounded-r-lg text-xs font-bold text-slate-500">USD</span>
+                    <div
+                        class="app-form-classic-input-group flex max-w-2xl items-center"
+                    >
+                        <input
+                            v-model="form.purchase_cost"
+                            type="number"
+                            step="0.01"
+                            class="app-input-shell app-input-compact !rounded-r-none"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="flex h-[38px] items-center rounded-r-lg border border-l-0 border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-500"
+                            >USD</span
+                        >
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Quantity <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Quantity
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper max-w-[150px]">
-                            <input v-model="form.qty" type="number" class="app-input-shell app-input-compact" min="1" :disabled="form.processing" />
+                            <input
+                                v-model="form.qty"
+                                type="number"
+                                class="app-input-shell app-input-compact"
+                                min="1"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
@@ -497,7 +918,12 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Min. QTY</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.min_qty" type="number" class="app-input-shell app-input-compact max-w-[150px]" :disabled="form.processing" />
+                        <input
+                            v-model="form.min_qty"
+                            type="number"
+                            class="app-input-shell app-input-compact max-w-[150px]"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
             </template>
@@ -507,41 +933,87 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Company</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.company_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.company_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Company</option>
-                            <option v-for="co in companies" :key="co.id" :value="String(co.id)">{{ co.name }}</option>
+                            <option
+                                v-for="co in companies"
+                                :key="co.id"
+                                :value="String(co.id)"
+                            >
+                                {{ co.name }}
+                            </option>
                         </select>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Name <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Name
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <input v-model="form.name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Category <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Category
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.category_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.category_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select a Category</option>
-                                <option v-for="cat in categories" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</option>
+                                <option
+                                    v-for="cat in categories"
+                                    :key="cat.id"
+                                    :value="String(cat.id)"
+                                >
+                                    {{ cat.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddCategoryModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddCategoryModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Quantity <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Quantity
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper max-w-[150px]">
-                            <input v-model="form.qty" type="number" class="app-input-shell app-input-compact" min="1" :disabled="form.processing" />
+                            <input
+                                v-model="form.qty"
+                                type="number"
+                                class="app-input-shell app-input-compact"
+                                min="1"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
@@ -549,74 +1021,158 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Min. QTY</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.min_qty" type="number" class="app-input-shell app-input-compact max-w-[150px]" :disabled="form.processing" />
+                        <input
+                            v-model="form.min_qty"
+                            type="number"
+                            class="app-input-shell app-input-compact max-w-[150px]"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Supplier</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.supplier_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.supplier_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Supplier</option>
-                            <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
+                            <option
+                                v-for="s in suppliers"
+                                :key="s.id"
+                                :value="String(s.id)"
+                            >
+                                {{ s.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddSupplierModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddSupplierModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Manufacturer</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.manufacturer_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.manufacturer_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Manufacturer</option>
-                            <option v-for="m in manufacturers" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            <option
+                                v-for="m in manufacturers"
+                                :key="m.id"
+                                :value="String(m.id)"
+                            >
+                                {{ m.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddManufacturerModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddManufacturerModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Location</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.location_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.location_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Location</option>
-                            <option v-for="loc in locations" :key="loc.id" :value="String(loc.id)">{{ loc.name }}</option>
+                            <option
+                                v-for="loc in locations"
+                                :key="loc.id"
+                                :value="String(loc.id)"
+                            >
+                                {{ loc.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddLocationModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddLocationModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Model No.</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.model_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.model_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Item No.</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.item_no" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.item_no"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Order Number</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.order_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.order_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Unit Cost</label>
-                    <div class="app-form-classic-input-group max-w-2xl flex items-center">
-                        <input v-model="form.purchase_cost" type="number" step="0.01" class="app-input-shell app-input-compact !rounded-r-none" :disabled="form.processing" />
-                        <span class="h-[38px] px-4 flex items-center bg-slate-50 border border-l-0 border-slate-200 rounded-r-lg text-xs font-bold text-slate-500">USD</span>
+                    <div
+                        class="app-form-classic-input-group flex max-w-2xl items-center"
+                    >
+                        <input
+                            v-model="form.purchase_cost"
+                            type="number"
+                            step="0.01"
+                            class="app-input-shell app-input-compact !rounded-r-none"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="flex h-[38px] items-center rounded-r-lg border border-l-0 border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-500"
+                            >USD</span
+                        >
                     </div>
                 </div>
             </template>
@@ -624,34 +1180,70 @@ const emit = defineEmits(['submit']);
             <!-- BRANCH 5: COMPONENT -->
             <template v-else-if="currentType === 'component'">
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Component Name <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Component Name
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <input v-model="form.name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                            <input
+                                v-model="form.name"
+                                type="text"
+                                class="app-input-shell app-input-compact"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Category <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Category
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper">
-                            <select v-model="form.category_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                            <select
+                                v-model="form.category_id"
+                                class="app-select-shell app-select-compact"
+                                :disabled="form.processing"
+                            >
                                 <option value="">Select a Category</option>
-                                <option v-for="cat in categories" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</option>
+                                <option
+                                    v-for="cat in categories"
+                                    :key="cat.id"
+                                    :value="String(cat.id)"
+                                >
+                                    {{ cat.name }}
+                                </option>
                             </select>
                             <div class="app-input-indicator" />
                         </div>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddCategoryModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddCategoryModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Quantity <span class="app-form-label-required">*</span></label>
+                    <label class="app-form-classic-label"
+                        >Quantity
+                        <span class="app-form-label-required">*</span></label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
                         <div class="app-input-classic-wrapper max-w-[150px]">
-                            <input v-model="form.qty" type="number" class="app-input-shell app-input-compact" min="1" :disabled="form.processing" />
+                            <input
+                                v-model="form.qty"
+                                type="number"
+                                class="app-input-shell app-input-compact"
+                                min="1"
+                                :disabled="form.processing"
+                            />
                             <div class="app-input-indicator" />
                         </div>
                     </div>
@@ -659,83 +1251,177 @@ const emit = defineEmits(['submit']);
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Min. QTY</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.min_qty" type="number" class="app-input-shell app-input-compact max-w-[150px]" :disabled="form.processing" />
+                        <input
+                            v-model="form.min_qty"
+                            type="number"
+                            class="app-input-shell app-input-compact max-w-[150px]"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Serial</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.serial" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.serial"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Manufacturer</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.manufacturer_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.manufacturer_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Manufacturer</option>
-                            <option v-for="m in manufacturers" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            <option
+                                v-for="m in manufacturers"
+                                :key="m.id"
+                                :value="String(m.id)"
+                            >
+                                {{ m.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddManufacturerModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddManufacturerModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Model No.</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.model_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.model_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Company</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.company_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.company_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Company</option>
-                            <option v-for="co in companies" :key="co.id" :value="String(co.id)">{{ co.name }}</option>
+                            <option
+                                v-for="co in companies"
+                                :key="co.id"
+                                :value="String(co.id)"
+                            >
+                                {{ co.name }}
+                            </option>
                         </select>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Location</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.location_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.location_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Location</option>
-                            <option v-for="loc in locations" :key="loc.id" :value="String(loc.id)">{{ loc.name }}</option>
+                            <option
+                                v-for="loc in locations"
+                                :key="loc.id"
+                                :value="String(loc.id)"
+                            >
+                                {{ loc.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddLocationModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddLocationModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Supplier</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.supplier_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.supplier_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select a Supplier</option>
-                            <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
+                            <option
+                                v-for="s in suppliers"
+                                :key="s.id"
+                                :value="String(s.id)"
+                            >
+                                {{ s.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddSupplierModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddSupplierModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Order Number</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.order_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.order_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Unit Cost</label>
-                    <div class="app-form-classic-input-group max-w-2xl flex items-center">
-                        <input v-model="form.purchase_cost" type="number" step="0.01" class="app-input-shell app-input-compact !rounded-r-none" :disabled="form.processing" />
-                        <span class="h-[38px] px-4 flex items-center bg-slate-50 border border-l-0 border-slate-200 rounded-r-lg text-xs font-bold text-slate-500">USD</span>
+                    <div
+                        class="app-form-classic-input-group flex max-w-2xl items-center"
+                    >
+                        <input
+                            v-model="form.purchase_cost"
+                            type="number"
+                            step="0.01"
+                            class="app-input-shell app-input-compact !rounded-r-none"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="flex h-[38px] items-center rounded-r-lg border border-l-0 border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-500"
+                            >USD</span
+                        >
                     </div>
                 </div>
             </template>
@@ -744,7 +1430,12 @@ const emit = defineEmits(['submit']);
             <div class="app-form-classic-row">
                 <label class="app-form-classic-label">Notes</label>
                 <div class="app-form-classic-input-group max-w-2xl">
-                    <textarea v-model="form.notes" rows="3" class="app-textarea-shell text-xs bg-white" :disabled="form.processing" />
+                    <textarea
+                        v-model="form.notes"
+                        rows="3"
+                        class="app-textarea-shell bg-white text-xs"
+                        :disabled="form.processing"
+                    />
                 </div>
             </div>
 
@@ -753,97 +1444,205 @@ const emit = defineEmits(['submit']);
                 <label class="app-form-classic-label">Upload Image</label>
                 <div class="app-form-classic-input-group max-w-2xl">
                     <div class="flex items-center gap-4">
-                        <label class="h-8 px-4 rounded-lg bg-primary text-white text-[10px] font-black uppercase tracking-widest cursor-pointer inline-flex items-center hover:bg-primary/90 transition-all shadow-sm">
+                        <label
+                            class="inline-flex h-8 cursor-pointer items-center rounded-lg bg-primary px-4 text-[10px] font-black tracking-widest text-white uppercase shadow-sm transition-all hover:bg-primary/90"
+                        >
                             Select File...
-                            <input type="file" class="hidden" @change="handleImageChange" accept="image/*" />
+                            <input
+                                type="file"
+                                class="hidden"
+                                @change="handleImageChange"
+                                accept="image/*"
+                            />
                         </label>
-                        <span v-if="form.image" class="text-[10px] font-black text-primary uppercase tracking-tighter">✓ File Ready</span>
+                        <span
+                            v-if="form.image"
+                            class="text-[10px] font-black tracking-tighter text-primary uppercase"
+                            >✓ File Ready</span
+                        >
                     </div>
-                    <p class="mt-1.5 text-[11px] text-muted-foreground">Accepted filetypes are jpg, webp, png, gif, svg, and avif. Max size 2M.</p>
+                    <p class="mt-1.5 text-[11px] text-muted-foreground">
+                        Accepted filetypes are jpg, webp, png, gif, svg, and
+                        avif. Max size 2M.
+                    </p>
                 </div>
             </div>
         </div>
 
         <template v-if="currentType === 'assets'">
-            <button type="button" class="app-form-classic-accordion border-t border-slate-50" @click="optionalOpen = !optionalOpen">
-                <ChevronDown class="size-4 text-slate-300 transition-transform" :class="{ '-rotate-90': !optionalOpen }" />
-                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Optional Information</span>
+            <button
+                type="button"
+                class="app-form-classic-accordion border-t border-slate-50"
+                @click="optionalOpen = !optionalOpen"
+            >
+                <ChevronDown
+                    class="size-4 text-slate-300 transition-transform"
+                    :class="{ '-rotate-90': !optionalOpen }"
+                />
+                <span
+                    class="text-[10px] font-black tracking-[0.2em] text-slate-400 uppercase"
+                    >Optional Information</span
+                >
             </button>
             <div v-show="optionalOpen" class="py-2">
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Asset Name</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.name" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.name"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Warranty</label>
-                    <div class="app-form-classic-input-group flex items-center gap-0 overflow-hidden rounded-lg max-w-[200px]">
-                        <input v-model="form.warranty_months" type="number" class="app-input-shell app-input-compact rounded-r-none border-r-0" :disabled="form.processing" />
-                        <span class="h-8 flex items-center bg-muted px-3 text-[11px] font-bold text-muted-foreground border border-border border-l-0">months</span>
+                    <div
+                        class="app-form-classic-input-group flex max-w-[200px] items-center gap-0 overflow-hidden rounded-lg"
+                    >
+                        <input
+                            v-model="form.warranty_months"
+                            type="number"
+                            class="app-input-shell app-input-compact rounded-r-none border-r-0"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="flex h-8 items-center border border-l-0 border-border bg-muted px-3 text-[11px] font-bold text-muted-foreground"
+                            >months</span
+                        >
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Expected Checkin</label>
+                    <label class="app-form-classic-label"
+                        >Expected Checkin</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.expected_checkin" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.expected_checkin"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
-                    <label class="app-form-classic-label">Next Audit Date</label>
+                    <label class="app-form-classic-label"
+                        >Next Audit Date</label
+                    >
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.next_audit_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.next_audit_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <div class="md:w-56" />
-                    <label class="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" v-model="form.byod" class="size-4 rounded border-border bg-background accent-primary" :disabled="form.processing" />
-                        <span class="text-xs font-bold text-muted-foreground group-hover:text-foreground transition-colors">BYOD (Bring Your Own Device)</span>
+                    <label class="group flex cursor-pointer items-center gap-3">
+                        <input
+                            type="checkbox"
+                            v-model="form.byod"
+                            class="size-4 rounded border-border bg-background accent-primary"
+                            :disabled="form.processing"
+                        />
+                        <span
+                            class="text-xs font-bold text-muted-foreground transition-colors group-hover:text-foreground"
+                            >BYOD (Bring Your Own Device)</span
+                        >
                     </label>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Asset EOL Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.asset_eol_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.asset_eol_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
             </div>
 
             <!-- HARDWARE ORDER INFO -->
-            <button type="button" class="app-form-classic-accordion border-t border-slate-50" @click="orderOpen = !orderOpen">
-                <ChevronDown class="size-4 text-slate-300 transition-transform" :class="{ '-rotate-90': !orderOpen }" />
-                <span class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Order Information</span>
+            <button
+                type="button"
+                class="app-form-classic-accordion border-t border-slate-50"
+                @click="orderOpen = !orderOpen"
+            >
+                <ChevronDown
+                    class="size-4 text-slate-300 transition-transform"
+                    :class="{ '-rotate-90': !orderOpen }"
+                />
+                <span
+                    class="text-[10px] font-black tracking-[0.2em] text-slate-400 uppercase"
+                    >Order Information</span
+                >
             </button>
             <div v-show="orderOpen" class="py-2">
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Supplier</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <select v-model="form.supplier_id" class="app-select-shell app-select-compact" :disabled="form.processing">
+                        <select
+                            v-model="form.supplier_id"
+                            class="app-select-shell app-select-compact"
+                            :disabled="form.processing"
+                        >
                             <option value="">Select Supplier</option>
-                            <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
+                            <option
+                                v-for="s in suppliers"
+                                :key="s.id"
+                                :value="String(s.id)"
+                            >
+                                {{ s.name }}
+                            </option>
                         </select>
                     </div>
                     <div class="hidden lg:block lg:w-32">
-                        <button type="button" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-primary hover:border-primary/30 transition-all shadow-sm" @click="openAddSupplierModal">New</button>
+                        <button
+                            type="button"
+                            class="h-7 rounded-md border border-slate-200 bg-white px-2 text-[9px] font-black tracking-widest text-slate-500 uppercase shadow-sm transition-all hover:border-primary/30 hover:text-primary"
+                            @click="openAddSupplierModal"
+                        >
+                            New
+                        </button>
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Order Number</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.order_number" type="text" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.order_number"
+                            type="text"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Cost</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_cost" type="number" step="0.01" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_cost"
+                            type="number"
+                            step="0.01"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
                 <div class="app-form-classic-row">
                     <label class="app-form-classic-label">Purchase Date</label>
                     <div class="app-form-classic-input-group max-w-2xl">
-                        <input v-model="form.purchase_date" type="date" class="app-input-shell app-input-compact" :disabled="form.processing" />
+                        <input
+                            v-model="form.purchase_date"
+                            type="date"
+                            class="app-input-shell app-input-compact"
+                            :disabled="form.processing"
+                        />
                     </div>
                 </div>
             </div>
@@ -857,3 +1656,14 @@ const emit = defineEmits(['submit']);
         />
     </div>
 </template>
+
+<style>
+.audit-read-only input,
+.audit-read-only select,
+.audit-read-only textarea {
+    pointer-events: none;
+    cursor: not-allowed;
+    background-color: rgb(248 250 252);
+    color: rgb(100 116 139);
+}
+</style>

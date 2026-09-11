@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm, Link, Head, usePage } from '@inertiajs/vue3';
+import { useForm, Link, Head, usePage, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     Check,
@@ -127,9 +127,21 @@ interface Props {
     metadata: Record<AssetType, TypeMetadata> & AssetMetadata;
     initialData?: InitialData;
     initialModelDetail?: ModelItem;
+    auditContext?: {
+        session_id: number;
+        item_id: number;
+        expected_location: string | null;
+        expected_user: string | null;
+    } | null;
+    auditPage?: boolean;
 }
 
 const props = defineProps<Props>();
+const auditStatus = ref<'Match' | 'Mismatch'>('Match');
+const auditPhysicalLocation = ref('');
+const auditPhysicalUser = ref('');
+const auditSubmitting = ref(false);
+const isAuditEdit = computed(() => Boolean(props.auditContext));
 const extraCategories = ref<Record<string, OptionItem[]>>({});
 
 // Pre-populate modelOptions; if PHP supplied full model detail (edit mode), inject it
@@ -588,10 +600,16 @@ watch(
 );
 
 const submit = () => {
+    if (isAuditEdit.value && auditStatus.value === 'Match') {
+        finalizeAudit();
+        return;
+    }
+
     if (isEditMode.value && props.assetId) {
         form.put(`/asset/${props.assetId}`, {
             preserveScroll: true,
             forceFormData: true,
+            onSuccess: () => finalizeAudit(),
         });
         return;
     }
@@ -601,6 +619,50 @@ const submit = () => {
         forceFormData: true,
     });
 };
+
+const finalizeAudit = async () => {
+    if (!props.auditContext || !props.assetId || auditSubmitting.value) return;
+
+    auditSubmitting.value = true;
+    try {
+        const selectedLocation = locations.value.find(
+            (location) => String(location.id) === String(form.location_id),
+        );
+        const physicalLocation =
+            selectedLocation?.name ||
+            props.auditContext.expected_location ||
+            '';
+
+        await axios.post(`/audit/${props.auditContext.session_id}/verify`, {
+            snipeit_asset_id: props.assetId,
+            asset_tag: form.asset_tag,
+            serial: form.serial,
+            physical_location: physicalLocation,
+            physical_user: auditPhysicalUser.value,
+            status: auditStatus.value,
+            note: form.notes,
+            expected_location: props.auditContext.expected_location,
+            expected_user: props.auditContext.expected_user,
+        });
+        router.visit(`/audit/${props.auditContext.session_id}`);
+    } catch (error: any) {
+        window.alert(
+            error.response?.data?.message || 'Hasil audit gagal disimpan.',
+        );
+    } finally {
+        auditSubmitting.value = false;
+    }
+};
+
+watch(
+    () => props.auditContext,
+    (context) => {
+        if (!context) return;
+        auditPhysicalLocation.value = context.expected_location || '';
+        auditPhysicalUser.value = context.expected_user || '';
+    },
+    { immediate: true },
+);
 
 const handleStockDocumentChange = (event: Event) => {
     const target = event.target as HTMLInputElement;
@@ -713,9 +775,9 @@ const extractApiError = (error: unknown, fallback: string): string => {
     return fallback;
 };
 
-const fetchModelDetail = async (
+async function fetchModelDetail(
     modelId: string | number,
-): Promise<ModelItem | null> => {
+): Promise<ModelItem | null> {
     try {
         const res = await axios.get(`/api/snipeit/models/${modelId}`);
         const fullModel = res.data?.model as ModelItem | undefined;
@@ -736,7 +798,7 @@ const fetchModelDetail = async (
         console.error('[DEBUG] fetchModelDetail failed:', e);
         return null;
     }
-};
+}
 
 const resetAddModelForm = () => {
     addModelError.value = '';
@@ -1011,37 +1073,116 @@ const submitAddStatus = async () => {
                 <div
                     class="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-xl"
                 >
-                    <AssetCreateMainFields
-                        :form="form"
-                        :current-type="currentType"
-                        :current-type-label="currentTypeLabel"
-                        :models="models"
-                        :statuses="statuses"
-                        :depreciations="depreciations"
-                        :is-edit-mode="isEditMode"
-                        :categories="categories"
-                        :companies="companies"
-                        :locations="locations"
-                        :manufacturers="manufacturers"
-                        :suppliers="suppliers"
-                        :users="metadata.users || []"
-                        :is-stock-type="isStockType"
-                        :selected-model="selectedModel"
-                        :open-add-model-modal="openAddModelModal"
-                        :open-add-category-modal="openAddCategoryModal"
-                        :open-add-manufacturer-modal="openAddManufacturerModal"
-                        :open-add-supplier-modal="openAddSupplierModal"
-                        :open-add-location-modal="openAddLocationModal"
-                        :open-add-status-modal="openAddStatusModal"
-                        :handle-stock-document-change="
-                            handleStockDocumentChange
-                        "
-                        :handle-image-change="handleImageChange"
-                        :serial-error="serialError"
-                        :checking-serial="checkingSerial"
-                        :custom-fields="customFields"
-                        @submit="submit"
-                    />
+                    <div
+                        v-if="isAuditEdit"
+                        class="border-b border-emerald-100 bg-emerald-50/70 px-8 py-5"
+                    >
+                        <div
+                            class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"
+                        >
+                            <div>
+                                <p
+                                    class="text-[10px] font-black tracking-[0.2em] text-emerald-700 uppercase"
+                                >
+                                    Stock Opname
+                                </p>
+                                <h2
+                                    class="mt-1 text-lg font-black text-slate-900"
+                                >
+                                    Stock Opname
+                                </h2>
+                                <p class="mt-1 text-xs text-slate-500">
+                                    Match mengunci form. Pilih Mismatch untuk
+                                    mengedit data sesuai kondisi lapangan.
+                                </p>
+                            </div>
+                            <div class="flex shrink-0 gap-2">
+                                <button
+                                    type="button"
+                                    class="flex h-9 items-center gap-1.5 rounded-lg border px-4 text-xs font-bold transition-colors"
+                                    :class="
+                                        auditStatus === 'Match'
+                                            ? 'border-emerald-600 bg-emerald-600 text-white'
+                                            : 'border-slate-200 bg-white text-slate-600'
+                                    "
+                                    @click="auditStatus = 'Match'"
+                                >
+                                    <Check class="size-3.5" /> Match
+                                </button>
+                                <button
+                                    type="button"
+                                    class="flex h-9 items-center gap-1.5 rounded-lg border px-4 text-xs font-bold transition-colors"
+                                    :class="
+                                        auditStatus === 'Mismatch'
+                                            ? 'border-amber-600 bg-amber-600 text-white'
+                                            : 'border-slate-200 bg-white text-slate-600'
+                                    "
+                                    @click="auditStatus = 'Mismatch'"
+                                >
+                                    <AlertCircle class="size-3.5" /> Mismatch
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <AssetCreateMainFields
+                            :form="form"
+                            :current-type="currentType"
+                            :current-type-label="currentTypeLabel"
+                            :models="models"
+                            :statuses="statuses"
+                            :depreciations="depreciations"
+                            :is-edit-mode="isEditMode"
+                            :categories="categories"
+                            :companies="companies"
+                            :locations="locations"
+                            :manufacturers="manufacturers"
+                            :suppliers="suppliers"
+                            :users="metadata.users || []"
+                            :is-stock-type="isStockType"
+                            :selected-model="selectedModel"
+                            :open-add-model-modal="openAddModelModal"
+                            :open-add-category-modal="openAddCategoryModal"
+                            :open-add-manufacturer-modal="
+                                openAddManufacturerModal
+                            "
+                            :open-add-supplier-modal="openAddSupplierModal"
+                            :open-add-location-modal="openAddLocationModal"
+                            :open-add-status-modal="openAddStatusModal"
+                            :handle-stock-document-change="
+                                handleStockDocumentChange
+                            "
+                            :handle-image-change="handleImageChange"
+                            :serial-error="serialError"
+                            :checking-serial="checkingSerial"
+                            :custom-fields="customFields"
+                            :audit-mode="isAuditEdit"
+                            :audit-read-only="
+                                isAuditEdit && auditStatus === 'Match'
+                            "
+                            @submit="submit"
+                        />
+                    </div>
+
+                    <div
+                        v-if="isAuditEdit"
+                        class="flex justify-end border-t border-slate-100 bg-slate-50/60 px-8 py-5"
+                    >
+                        <button
+                            type="button"
+                            class="flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-5 text-xs font-bold text-white shadow-lg shadow-slate-900/10 transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="auditSubmitting || form.processing"
+                            @click="submit"
+                        >
+                            <Check class="size-4" />
+                            {{
+                                auditStatus === 'Match'
+                                    ? 'Konfirmasi Match & Kembali'
+                                    : 'Simpan Asset & Konfirmasi Mismatch'
+                            }}
+                        </button>
+                    </div>
 
                     <div
                         v-if="!isEditMode && currentType === 'assets'"
@@ -1454,6 +1595,7 @@ const submitAddStatus = async () => {
 
                     <!-- Card Footer: Unified Action Bar -->
                     <div
+                        v-if="!isAuditEdit"
                         class="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/50 px-8 py-5"
                     >
                         <Link

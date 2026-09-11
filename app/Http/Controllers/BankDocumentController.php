@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Inspection;
+use App\Models\Peminjaman;
 use App\Models\Stb;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -103,7 +104,7 @@ class BankDocumentController extends Controller
     {
         $all = collect();
 
-        // 1. Fetch STB & Peminjaman from `stbs` table
+        // 1. Fetch STB documents from `stbs` table
         $stbQuery = Stb::with('items')
             ->when($filters['from_date'], fn($q) => $q->whereDate('created_at', '>=', $filters['from_date']))
             ->when($filters['to_date'], fn($q) => $q->whereDate('created_at', '<=', $filters['to_date']))
@@ -149,7 +150,47 @@ class BankDocumentController extends Controller
 
         $all = $all->concat($stbs);
 
-        // 2. Fetch Inspections from `inspections` table
+        // 2. Fetch Peminjaman documents from their dedicated table
+        if (in_array($filters['filter_type'], ['', 'peminjaman'], true)) {
+            $peminjamanQuery = Peminjaman::with('items')
+                ->when($filters['from_date'], fn($q) => $q->whereDate('created_at', '>=', $filters['from_date']))
+                ->when($filters['to_date'], fn($q) => $q->whereDate('created_at', '<=', $filters['to_date']))
+                ->when($filters['filter_status'] === 'completed', fn($q) => $q->whereNotNull('completed_pdf_path'))
+                ->when($filters['filter_status'] === 'pending', fn($q) => $q->whereNull('completed_pdf_path'))
+                ->where('document_type', 'loan')
+                ->latest('created_at');
+
+            $peminjamans = $peminjamanQuery->get()->map(function (Peminjaman $peminjaman) {
+                $hasPdf = !empty($peminjaman->completed_pdf_path)
+                    && Storage::disk('public')->exists($peminjaman->completed_pdf_path);
+
+                return [
+                    'id'             => $peminjaman->id,
+                    'doc_no'         => $this->resolveLoanDocNo($peminjaman),
+                    'raw_id'         => $peminjaman->id,
+                    'doc_type'       => 'peminjaman',
+                    'doc_type_label' => 'Peminjaman',
+                    'sub_type'       => $peminjaman->movement_type === 'return' ? 'Pengembalian' : 'Penyerahan',
+                    'user_name'      => $peminjaman->user_name ?: '-',
+                    'user_dept'      => $peminjaman->user_dept ?: '-',
+                    'user_company'   => $peminjaman->user_company ?: '-',
+                    'status'         => $peminjaman->cancelled_at ? 'cancelled' : ($hasPdf || $peminjaman->is_completed ? 'completed' : 'in_progress'),
+                    'status_label'   => $peminjaman->cancelled_at ? 'Dibatalkan' : ($hasPdf || $peminjaman->is_completed ? 'Selesai' : 'Dalam Proses'),
+                    'has_pdf'        => $hasPdf,
+                    'pdf_url'        => $hasPdf ? '/storage/' . ltrim($peminjaman->completed_pdf_path, '/') : null,
+                    'print_url'      => route('peminjaman.print', $peminjaman->id),
+                    'view_url'       => route('peminjaman.show', $peminjaman->id),
+                    'items_count'    => $peminjaman->items->count(),
+                    'remark'         => $peminjaman->remark,
+                    'created_at'     => $peminjaman->created_at?->format('Y-m-d H:i:s') ?? '-',
+                    'created_timestamp' => $peminjaman->created_at?->timestamp ?? 0,
+                ];
+            });
+
+            $all = $all->concat($peminjamans);
+        }
+
+        // 3. Fetch Inspections from `inspections` table
         if (in_array($filters['filter_type'], ['', 'inspection'], true)) {
             $inspectionQuery = Inspection::query()
                 ->when($filters['from_date'], fn($q) => $q->whereDate('created_at', '>=', $filters['from_date']))
@@ -208,10 +249,11 @@ class BankDocumentController extends Controller
     private function calculateStats(): array
     {
         $stbCount = Stb::where('document_type', '!=', 'loan')->count();
-        $peminjamanCount = Stb::where('document_type', 'loan')->count();
+        $peminjamanCount = Peminjaman::where('document_type', 'loan')->count();
         $inspectionCount = Inspection::count();
 
         $stbWithPdf = Stb::whereNotNull('completed_pdf_path')->count();
+        $peminjamanWithPdf = Peminjaman::whereNotNull('completed_pdf_path')->count();
         $inspectionWithPdf = Inspection::whereNotNull('completed_pdf_path')->count();
 
         return [
@@ -219,7 +261,7 @@ class BankDocumentController extends Controller
             'stb'        => $stbCount,
             'peminjaman' => $peminjamanCount,
             'inspection' => $inspectionCount,
-            'completed'  => $stbWithPdf + $inspectionWithPdf,
+            'completed'  => $stbWithPdf + $peminjamanWithPdf + $inspectionWithPdf,
         ];
     }
 
@@ -269,5 +311,17 @@ class BankDocumentController extends Controller
         $prefix = $stb->document_type === 'loan' ? 'LOAN' : 'STB';
 
         return "{$prefix}-{$locationCode}-{$dateCode}-{$sequence}";
+    }
+
+    private function resolveLoanDocNo(Peminjaman $peminjaman): string
+    {
+        $location = trim((string) ($peminjaman->location_name ?? ''));
+        $locationCode = $location !== '' && $location !== '-'
+            ? strtoupper(substr((string) explode(' ', $location)[0], 0, 3))
+            : 'ZGI';
+        $dateCode = $peminjaman->created_at?->format('ym') ?? now()->format('ym');
+        $sequence = sprintf('%04d', $peminjaman->id);
+
+        return "LOAN-{$locationCode}-{$dateCode}-{$sequence}";
     }
 }

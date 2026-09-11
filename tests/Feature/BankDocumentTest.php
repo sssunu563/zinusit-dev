@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Inspection;
+use App\Models\Peminjaman;
 use App\Models\Stb;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -82,6 +83,30 @@ class BankDocumentTest extends TestCase
             ->where('filters.filter_type', 'inspection')
             ->where('documents.total', 1)
             ->where('documents.data.0.doc_type', 'inspection'));
+    }
+
+    public function test_authenticated_users_can_see_peminjaman_documents(): void
+    {
+        $user = User::factory()->create();
+
+        Peminjaman::create([
+            'document_type' => 'loan',
+            'movement_type' => 'out',
+            'user_name' => 'Loan User',
+            'user_dept' => 'IT',
+            'user_company' => 'Zinus',
+            'location_name' => 'ZGI BGR F1',
+        ]);
+
+        $response = $this->actingAs($user)->get('/bank-documents?filter_type=peminjaman');
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->where('filters.filter_type', 'peminjaman')
+            ->where('stats.peminjaman', 1)
+            ->where('documents.total', 1)
+            ->where('documents.data.0.doc_type', 'peminjaman')
+            ->where('documents.data.0.user_name', 'Loan User'));
     }
 
     public function test_authenticated_users_can_export_bank_documents_csv(): void

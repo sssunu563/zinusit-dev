@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\Log;
 
 class ServerMonitorService
 {
+    public static function memoryFreeFromAvailablePercent(float|int $availablePercent): float
+    {
+        return round(max(0, min(100, $availablePercent)), 2);
+    }
+
     private const CPU_SENSORS = [
         ['id' => 4064, 'site' => 'F1 Bogor'],
         ['id' => 4797, 'site' => 'F1 Bogor'],
@@ -146,11 +151,11 @@ class ServerMonitorService
                 $data = $this->fetchSensorMetrics($s['id'], ['Percent Available Memory'], $sdate, $edate);
                 if ($data) {
                     $pid = $data['parent_id'];
-                    $usedMem = 100 - $data['metrics']['Percent Available Memory'];
+                    $freeMem = self::memoryFreeFromAvailablePercent($data['metrics']['Percent Available Memory']);
                     $deviceMetrics[$pid] = array_merge($deviceMetrics[$pid] ?? [], [
                         'device_name' => $data['device_name'], 'ip' => $data['ip'], 
                         'group' => $data['group'], 'site' => $s['site'],
-                        'memory' => $usedMem,
+                        'memory' => $freeMem,
                         'status' => $data['status']
                     ]);
                     $ok++;
@@ -188,7 +193,7 @@ class ServerMonitorService
                         'status' => $data['status']
                     ];
                     if (isset($data['metrics']['CPU Usage'])) $metrics['cpu'] = $data['metrics']['CPU Usage'];
-                    if (isset($data['metrics']['Percent Available Memory'])) $metrics['memory'] = 100 - $data['metrics']['Percent Available Memory'];
+                    if (isset($data['metrics']['Percent Available Memory'])) $metrics['memory'] = self::memoryFreeFromAvailablePercent($data['metrics']['Percent Available Memory']);
                     
                     $deviceMetrics[$pid] = array_merge($deviceMetrics[$pid] ?? [], $metrics);
                     $ok++;

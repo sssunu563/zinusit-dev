@@ -1,0 +1,1 @@
+.audit-read-only input,.audit-read-only select,.audit-read-only textarea{pointer-events:none;cursor:not-allowed;background-color:#f8fafc;color:#64748b}

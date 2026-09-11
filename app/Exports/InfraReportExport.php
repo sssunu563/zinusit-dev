@@ -13,7 +13,6 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Cell\Hyperlink;
 
 class InfraReportExport
 {
@@ -21,6 +20,36 @@ class InfraReportExport
     private string $to;
 
     private const SITES = ['F1 Bogor', 'F2 Karawang', 'F3 Tangerang'];
+
+    public static function weeklyUptimeHeaderLabels(string $from, string $to): array
+    {
+        $cursor = Carbon::parse($from);
+        $end = Carbon::parse($to);
+
+        $labels = [];
+        while ($cursor->lte($end) && count($labels) < 7) {
+            $labels[] = $cursor->format('d M Y');
+            $cursor->addDay();
+        }
+
+        $labels[] = 'Avg';
+
+        return $labels;
+    }
+
+    public static function weeklyBandwidthDateLabels(string $from, string $to): array
+    {
+        $cursor = Carbon::parse($from);
+        $end = Carbon::parse($to);
+
+        $labels = [];
+        while ($cursor->lte($end) && count($labels) < 7) {
+            $labels[] = $cursor->format('j/n/y');
+            $cursor->addDay();
+        }
+
+        return $labels;
+    }
 
     public function __construct(string $from, string $to)
     {
@@ -36,9 +65,6 @@ class InfraReportExport
     {
         $spreadsheet = $this->buildSpreadsheet();
 
-        // TODO: Sheet 2 (Raw data sheets) sementara di-disable untuk debugging format
-        // $this->addRawDataSheets($spreadsheet);
-
         $writer = new Xlsx($spreadsheet);
 
         return response()->streamDownload(function () use ($writer) {
@@ -50,94 +76,15 @@ class InfraReportExport
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Spreadsheet builder
+    // Main Spreadsheet Builder
     // ─────────────────────────────────────────────────────────────────────────
-
-    private function getUptimeColor(float $v): string
-    {
-        if ($v >= 90) return '1B5E20';
-        if ($v >= 80) return 'E65100';
-        return 'B71C1C';
-    }
-
-    private function getBandwidthColor(?float $usage, float $limit): string
-    {
-        if (!$usage || $limit <= 0) return '000000';
-        $pct = ($usage / $limit) * 100;
-        if ($pct >= 90) return 'B71C1C'; // Red (接近full)
-        if ($pct >= 75) return 'E65100'; // Yellow/Orange
-        return '1B5E20'; // Green
-    }
-
-    /**
-     * Get sheet name from label_g for hyperlink
-     */
-    private function getReferenceSheetName(string $labelG): ?string
-    {
-        return match ($labelG) {
-            'Network' => 'Network Uptime',
-            'NVR' => 'NVR Uptime',
-            'CCTV' => 'CCTV Uptime',
-            'Server' => 'Server Uptime',
-            'Bandwidth' => 'Bandwidth',
-            'Helpdesk' => 'Helpdesk',
-            default => null,
-        };
-    }
-
-    /**
-     * Safe merge helper — only merges if start != end (single-cell merges corrupt XLSX).
-     */
-    private function safeMerge(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $ws, string $range): void
-    {
-        [$start, $end] = explode(':', $range);
-        if ($start !== $end) {
-            $ws->mergeCells($range);
-        }
-    }
-
-    /**
-     * Format duration seperti di UI (17h52m, 4d22h18m53s)
-     */
-    private function formatDuration(?string $startedAt, ?string $resolvedAt): string
-    {
-        if (!$startedAt) {
-            return '-';
-        }
-
-        $start = Carbon::parse($startedAt);
-        $end   = $resolvedAt ? Carbon::parse($resolvedAt) : now();
-
-        $diffInSeconds = $start->diffInSeconds($end, false);
-
-        if ($diffInSeconds <= 0) {
-            return '-';
-        }
-
-        $days    = floor($diffInSeconds / 86400);
-        $hours   = floor(($diffInSeconds % 86400) / 3600);
-        $minutes = floor(($diffInSeconds % 3600) / 60);
-        $seconds = $diffInSeconds % 60;
-
-        $result = '';
-        if ($days > 0) {
-            $result .= $days . 'd';
-        }
-        if ($hours > 0 || $days > 0) {
-            $result .= str_pad($hours, 2, '0', STR_PAD_LEFT) . 'h';
-        }
-        if ($minutes > 0 || $hours > 0 || $days > 0) {
-            $result .= str_pad($minutes, 2, '0', STR_PAD_LEFT) . 'm';
-        }
-        if ($seconds > 0 || $result === '') {
-            $result .= str_pad($seconds, 2, '0', STR_PAD_LEFT) . 's';
-        }
-
-        return $result ?: '-';
-    }
 
     private function buildSpreadsheet(): Spreadsheet
     {
+        $spreadsheet = new Spreadsheet();
+        $spreadsheet->getDefaultStyle()->getFont()->setName('Segoe UI')->setSize(9.5);
+
+        // Fetch summarized data
         $rawNetwork   = $this->getUptimeReport(self::SITES, 'network');
         $rawNvr       = $this->getUptimeReport(self::SITES, 'nvr');
         $rawCctv      = $this->getUptimeReport(self::SITES, 'cctv');
@@ -145,59 +92,57 @@ class InfraReportExport
         $rawBandwidth = $this->getBandwidthReport(self::SITES);
         $rawHelpdesk  = $this->getHelpdeskReport(self::SITES);
 
-        $allFailedLogs = [];
-        $uptimeLogExtractor = function (array $row, string $category) use (&$allFailedLogs): array {
-            $failed = array_filter($row['failed_list'] ?? [], fn ($f) =>
-                isset($f['uptime_percent']) && $f['uptime_percent'] < 100
-            );
-            $failed = array_slice(array_values($failed), 0, 5);
+        // Sheet 1: Dashboard (Weekly Infra Report - Exact replica of reference layout)
+        $wsDashboard = $spreadsheet->getActiveSheet();
+        $wsDashboard->setTitle('Weekly Dashboard');
+        $this->buildDashboardSheet(
+            $wsDashboard,
+            $rawNetwork,
+            $rawNvr,
+            $rawCctv,
+            $rawServer,
+            $rawBandwidth,
+            $rawHelpdesk
+        );
 
-            foreach ($failed as $f) {
-                // Calculate duration from uptime_percent (1% downtime = 10.08 minutes in a week)
-                $uptimePercent = (float)($f['uptime_percent'] ?? 100);
-                $downtimePercent = 100 - $uptimePercent;
-                // Convert to seconds (7 days = 604800 seconds, 1% = 6048 seconds)
-                $downtimeSeconds = ($downtimePercent / 100) * 604800;
-                
-                $days = floor($downtimeSeconds / 86400);
-                $hours = floor(($downtimeSeconds % 86400) / 3600);
-                $minutes = floor(($downtimeSeconds % 3600) / 60);
-                $seconds = $downtimeSeconds % 60;
-                
-                $duration = '';
-                if ($days > 0) $duration .= $days . 'd';
-                if ($hours > 0 || $days > 0) $duration .= str_pad($hours, 2, '0', STR_PAD_LEFT) . 'h';
-                if ($minutes > 0 || $hours > 0 || $days > 0) $duration .= str_pad($minutes, 2, '0', STR_PAD_LEFT) . 'm';
-                if ($seconds > 0 || $duration === '') $duration .= str_pad($seconds, 2, '0', STR_PAD_LEFT) . 's';
-                
-                $allFailedLogs[] = [
-                    'category'    => $category,
-                    'location'    => $row['location'],
-                    'date'        => $f['report_date'] ?? '',
-                    'device_name' => $f['device_name'] ?? '',
-                    'ip_address'  => $f['ip_address'] ?? '',
-                    'duration'    => $duration ?: '-',
-                    'remark'      => $f['notes_maintenance_log'] ?? 'System Check',
-                ];
-            }
+        // Sheet 2: Network Devices (Full inventory & weekly uptime)
+        $this->buildNetworkSheet($spreadsheet);
 
-            // Return failed logs for display in Excel
-            return $failed;
-        };
+        // Sheet 3: NVR & CCTV Devices (Full inventory & weekly uptime)
+        $this->buildCctvSheet($spreadsheet);
 
-        $categories = [
-            $this->buildUptimeCategory('Infra. Operation Report', 'Network H/W Status Check', '90%', 'Failed Device List', 'Network Operation Check', $rawNetwork, fn($r)=>$uptimeLogExtractor($r, 'Network')),
-            $this->buildUptimeCategory('Infra. Operation Report', 'NVR Status', '90%', 'Failed Device List', 'NVR Operation Check', $rawNvr, fn($r)=>$uptimeLogExtractor($r, 'NVR')),
-            $this->buildUptimeCategory('Infra. Operation Report', 'CCTV Status Check', '90%', 'Failed Device List', 'CCTV Operation Check', $rawCctv, fn($r)=>$uptimeLogExtractor($r, 'CCTV')),
-            $this->buildBandwidthCategory($rawBandwidth),
-            $this->buildUptimeCategory('Infra. Operation Report', 'Server Check', '90%', 'Failed Device List', 'Server Operation Check', $rawServer, fn($r)=>$uptimeLogExtractor($r, 'Server')),
-            $this->buildHelpdeskCategory($rawHelpdesk),
-        ];
+        // Sheet 4: Server Devices (Full inventory & CPU/RAM/Disk stats)
+        $this->buildServerSheet($spreadsheet);
 
-        $spreadsheet = new Spreadsheet();
-        $ws = $spreadsheet->getActiveSheet();
-        $ws->setTitle(Carbon::parse($this->to)->format('d M Y'));
+        // Sheet 5: Bandwidth Traffic (Daily readings & SLA limits)
+        $this->buildBandwidthSheet($spreadsheet);
 
+        // Sheet 6: Helpdesk Tickets (All tickets handled in the period)
+        $this->buildHelpdeskSheet($spreadsheet);
+
+        // Sheet 7: Maintenance Logs (All incident/maintenance logs)
+        $this->buildMaintenanceSheet($spreadsheet);
+
+        // Set active sheet back to Sheet 1 (Dashboard)
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 1: Weekly Dashboard
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildDashboardSheet(
+        \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $ws,
+        array $rawNetwork,
+        array $rawNvr,
+        array $rawCctv,
+        array $rawServer,
+        array $rawBandwidth,
+        array $rawHelpdesk
+    ): void {
+        // Page setup: Landscape A4
         $ws->getPageSetup()
             ->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)
             ->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4)
@@ -205,863 +150,1057 @@ class InfraReportExport
             ->setFitToWidth(1)
             ->setFitToHeight(0);
         $ws->getPageMargins()->setTop(0.4)->setBottom(0.4)->setLeft(0.4)->setRight(0.4);
+        $ws->setShowGridLines(true);
 
-        $borderAll = [
-            'borders' => [
-                'allBorders' => [
-                    'borderStyle' => Border::BORDER_THIN,
-                    'color' => ['rgb' => '000000'],
-                ],
-            ],
+        // Set precise column widths matching reference layout
+        $widths = [
+            'A' => 3.5,  // Left gutter
+            'B' => 14,   // Branch / Location
+            'C' => 11,   // Network / Date
+            'D' => 11,   // NVR / Category
+            'E' => 11,   // CCTV / Device Name Part 1
+            'F' => 11,   // Server / Device Name Part 2
+            'G' => 4,    // GAP COLUMN between Branch Health & Bandwidth Snapshot
+            'H' => 14,   // Branch / IP Address Part 1
+            'I' => 12,   // ISP / IP Address Part 2
+            'J' => 11,   // Capacity / Downtime
+            'K' => 14,   // Down / Remark Part 1
+            'L' => 16,   // Up / Remark Part 2
+            'M' => 3.5,  // Right gutter
         ];
-        $alignCenter = [
-            'alignment' => [
-                'horizontal' => Alignment::HORIZONTAL_CENTER,
-                'vertical' => Alignment::VERTICAL_CENTER,
-                'wrapText' => true,
-            ],
-        ];
-        $alignLeftCenter = [
-            'alignment' => [
-                'horizontal' => Alignment::HORIZONTAL_LEFT,
-                'vertical' => Alignment::VERTICAL_CENTER,
-                'wrapText' => true,
-            ],
-        ];
-        $alignRightCenter = [
-            'alignment' => [
-                'horizontal' => Alignment::HORIZONTAL_RIGHT,
-                'vertical' => Alignment::VERTICAL_CENTER,
-                'wrapText' => true,
-            ],
-        ];
-
-        // Font
-        $spreadsheet->getDefaultStyle()->getFont()->setName('Calibri Light')->setSize(10);
-        $ws->getDefaultRowDimension()->setRowHeight(25);
-
-        // Header Rows
-        $ws->setCellValue('A2', "ZINUS IDN\nWeekly Infra Report");
-        $ws->mergeCells('A2:O2');
-        $ws->getRowDimension(2)->setRowHeight(75);
-        $ws->getStyle('A2:O2')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'font' => ['bold' => true, 'size' => 14],
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']],
-            'alignment' => [
-                'wrapText' => true,
-                'horizontal' => Alignment::HORIZONTAL_CENTER,
-                'vertical' => Alignment::VERTICAL_CENTER
-            ]
-        ]));
-
-        $period = Carbon::parse($this->from)->format('d M Y') . ' - ' . Carbon::parse($this->to)->format('d M Y');
-        $generatedAt = now()->format('d M Y H:i');
-
-        // Row 4 - Date/Period info dengan styling yang konsisten
-        $ws->setCellValue('A4', 'Date');
-        $ws->setCellValue('B4', $generatedAt);
-        $ws->setCellValue('C4', '');
-        $ws->setCellValue('D4', 'Period');
-        $ws->setCellValue('E4', $period);
-
-        // Merge cells untuk period
-        $ws->mergeCells('B4:C4');
-        $ws->mergeCells('E4:F4');
-        $ws->mergeCells('G4:O4');
-
-        // Apply styles ke row 4
-        $ws->getStyle('A4')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C5E0B4']]
-        ]));
-        $ws->getStyle('B4:C4')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C5E0B4']]
-        ]));
-        $ws->getStyle('D4')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2F0D9']]
-        ]));
-        $ws->getStyle('E4:F4')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'font' => ['bold' => true],
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2F0D9']]
-        ]));
-        $ws->getStyle('G4:O4')->applyFromArray(array_merge($borderAll, $alignCenter, [
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]
-        ]));
-
-        // Row 5 - Column Headers (semua kolom A-O)
-        $headers = [
-            'A' => 'Activity', 'B' => '##', 'C' => 'Item', 'D' => 'Target',
-            'E' => 'Location', 'F' => 'Qty / Detail', 'G' => 'Uptime / Value', 'H' => 'Category Label',
-            'I' => 'Location', 'J' => 'Date', 'K' => 'IP Address', 'L' => 'Device Name',
-            'M' => 'Duration', 'N' => 'Remark', 'O' => 'Sheet Link'
-        ];
-        $headerColors = [
-            'A' => 'FFF2CC', 'B' => 'FFF2CC', 'C' => 'FFF2CC', 'D' => 'FFF2CC',
-            'E' => 'FFF2CC', 'F' => 'FFF2CC', 'G' => 'EDEDED', 'H' => 'FFFFCC',
-            'I' => 'FFFFCC', 'J' => 'FFFFCC', 'K' => 'FFFFCC', 'L' => 'FFFFCC',
-            'M' => 'FFFFCC', 'N' => 'FFFFCC', 'O' => 'FFFFCC'
-        ];
-
-        foreach ($headers as $col => $text) {
-            $ws->setCellValue($col . '5', $text);
-            $ws->getStyle($col . '5')->applyFromArray(array_merge($borderAll, $alignCenter, [
-                'font' => ['bold' => true, 'size' => 10],
-                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $headerColors[$col]]]
-            ]));
-        }
-        // Set header row height lebih tinggi
-        $ws->getRowDimension(5)->setRowHeight(40);
-
-        $rowNum = 6;
-        $categoryIndex = 1;
-        $globalStartRow = $rowNum;
-
-        foreach ($categories as $cat) {
-            $catRows = $cat['total_category_rows'];
-            $gRowspan = $cat['has_average'] ? $catRows - 1 : $catRows;
-            
-            $startRowCat = $rowNum;
-            $endRowCat = $startRowCat + $catRows - 1;
-            
-            $isBandwidth = ($cat['type'] ?? '') === 'bandwidth';
-            $catCellsPrinted = false;
-            $itemNo = '1.' . $categoryIndex++;
-
-            if ($isBandwidth) {
-                foreach ($cat['locations'] as $locName => $locData) {
-                    $startRowLoc = $rowNum;
-                    $endRowLoc = $startRowLoc + $locData['rowspan'] - 1;
-
-                    foreach ($locData['providers'] as $providerIndex => $provider) {
-                        if (!$catCellsPrinted) {
-                            $ws->setCellValue("B{$startRowCat}", $itemNo);
-                            $ws->setCellValue("C{$startRowCat}", $cat['item']);
-                            $ws->setCellValue("D{$startRowCat}", $cat['target']);
-                            
-                            // For Bandwidth, column H is used for D/W and U/L labels per row, so we don't merge it vertically.
-                            
-                            $ws->setCellValue("O{$startRowCat}", $cat['reference_n']);
-
-                            // Sub-headers for Bandwidth detail
-                            $ws->setCellValue("I{$startRowCat}", 'Value');
-                            $ws->setCellValue("J{$startRowCat}", 'Failed Device List');
-                            $ws->setCellValue("K{$startRowCat}", 'IP Address');
-                            $ws->setCellValue("L{$startRowCat}", 'IP Address');
-                            $ws->setCellValue("M{$startRowCat}", 'Device Name');
-                            $ws->setCellValue("N{$startRowCat}", 'Remark');
-                            $ws->getStyle("H{$startRowCat}:N{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-
-                            $catCellsPrinted = true;
-                        }
-
-                        if ($providerIndex === 0) {
-                            $ws->setCellValue("E{$startRowLoc}", $locName);
-                        }
-
-                        $pStart = $rowNum;
-                        $pEnd   = $rowNum + 1;
-
-                        // F: provider name (spans 2 rows)
-                        $ws->setCellValue("F{$pStart}", $provider['name']);
-                        $this->safeMerge($ws, "F{$pStart}:F{$pEnd}");
-
-                        // G: total bandwidth (spans 2 rows)
-                        $ws->setCellValue("G{$pStart}", $provider['bandwidth']);
-                        $this->safeMerge($ws, "G{$pStart}:G{$pEnd}");
-
-                        // H: D/W label | I: download value  (row pStart)
-                        // H: U/L label | I: upload value    (row pEnd)
-                        $ws->setCellValue("H{$pStart}", 'D/W');
-                        $ws->setCellValue("I{$pStart}", $provider['dl']);
-                        $ws->setCellValue("H{$pEnd}",   'U/L');
-                        $ws->setCellValue("I{$pEnd}",   $provider['ul']);
-
-                        if (($provider['limit'] ?? 0) > 0) {
-                            $dlColor = $this->getBandwidthColor($provider['dl_raw'], $provider['limit']);
-                            $ulColor = $this->getBandwidthColor($provider['ul_raw'], $provider['limit']);
-                            $ws->getStyle("I{$pStart}")->getFont()->getColor()->setRGB($dlColor);
-                            $ws->getStyle("I{$pEnd}")->getFont()->getColor()->setRGB($ulColor);
-                        }
-
-                        // J:N — yellow empty cells, written per row (no cross-row merge)
-                        // Skip clearing for the first row of the category to preserve sub-headers
-                        foreach (['J','K','L','M','N'] as $c) {
-                            if ($pStart != $startRowCat) {
-                                $ws->setCellValue("{$c}{$pStart}", '');
-                            }
-                            $ws->setCellValue("{$c}{$pEnd}",   '');
-                        }
-
-                        $ws->getStyle("F{$pStart}:G{$pEnd}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]]));
-                        $ws->getStyle("H{$pStart}:I{$pEnd}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-                        $ws->getStyle("J{$pStart}:N{$pEnd}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']]]));
-
-                        $rowNum += 2;
-                    }
-
-                    $this->safeMerge($ws, "E{$startRowLoc}:E{$endRowLoc}");
-                    $ws->getStyle("E{$startRowLoc}:E{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]]));
-                }
-            } elseif (($cat['type'] ?? '') === 'helpdesk') {
-                foreach ($cat['locations'] as $locName => $locData) {
-                    $startRowLoc = $rowNum;
-                    $endRowLoc = $startRowLoc + $locData['rowspan'] - 1;
-
-                    if (!$catCellsPrinted) {
-                        $ws->setCellValue("B{$startRowCat}", $itemNo);
-                        $ws->setCellValue("C{$startRowCat}", $cat['item']);
-                        $ws->setCellValue("D{$startRowCat}", $cat['target']);
-                        
-                        $ws->setCellValue("G{$startRowCat}", $cat['label_g'] ?: 'Pending Ticket');
-                        $this->safeMerge($ws, "G{$startRowCat}:H{$startRowCat}");
-                        
-                        $ws->setCellValue("O{$startRowCat}", $cat['reference_n']);
-
-                        // Sub-headers for Helpdesk logs (Align with Row 5)
-                        $ws->setCellValue("I{$startRowCat}", 'Pending Ticket');
-                        $ws->setCellValue("J{$startRowCat}", 'Location');
-                        $ws->setCellValue("K{$startRowCat}", 'Date');
-                        $ws->setCellValue("L{$startRowCat}", 'Duration');
-                        $ws->setCellValue("M{$startRowCat}", 'Case');
-                        $ws->setCellValue("N{$startRowCat}", 'Remark');
-                        $ws->getStyle("I{$startRowCat}:N{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-
-                        // Tambahkan hyperlink ke sheet masing-masing
-                        $sheetName = $this->getReferenceSheetName($cat['label_g']);
-                        if ($sheetName) {
-                            $ws->getCell("O{$startRowCat}")->setHyperlink(new Hyperlink("#{$sheetName}!A1", 'Go to ' . $sheetName));
-                            $ws->getStyle("O{$startRowCat}")->getFont()->getColor()->setARGB('FF0000FF');
-                            $ws->getStyle("O{$startRowCat}")->getFont()->setUnderline(true);
-                        }
-
-                        $catCellsPrinted = true;
-                    }
-
-                    // E: location name — spans all rows for this location
-                    $ws->setCellValue("E{$startRowLoc}", $locName);
-                    $this->safeMerge($ws, "E{$startRowLoc}:E{$endRowLoc}");
-                    $ws->getStyle("E{$startRowLoc}:E{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]]));
-
-                    // Row 1 of location: "Case" label + total count
-                    $row1 = $startRowLoc;
-                    $row2 = $startRowLoc + 1;
-
-                    $ws->setCellValue("F{$row1}", 'Case');
-                    $ws->setCellValue("G{$row1}", ($locData['summary']['qty'] ?? 0) . ' Ticket');
-                    $this->safeMerge($ws, "G{$row1}:H{$row1}");
-
-                    // Row 2 of location: "Closed" label + closed count
-                    $ws->setCellValue("F{$row2}", 'Closed');
-                    $ws->setCellValue("G{$row2}", ($locData['summary']['uptime'] ?? 0) . ' Ticket');
-                    $this->safeMerge($ws, "G{$row2}:H{$row2}");
-
-                    // If rowspan > 2, extend F and G:H downward from row2
-                    if ($endRowLoc > $row2) {
-                        $this->safeMerge($ws, "F{$row2}:F{$endRowLoc}");
-                        $this->safeMerge($ws, "G{$row2}:H{$endRowLoc}");
-                    }
-
-                    $ws->getStyle("F{$row1}:F{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]]));
-                    $ws->getStyle("G{$row1}:H{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-                    // All log/aux columns I:N should be yellow for the whole location span
-                    $ws->getStyle("I{$row1}:N{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']]]));
-
-                    // Log rows always start at row2 (alongside the "Closed" row)
-                    $logRow = $row2;
-
-                    foreach ($locData['logs'] as $log) {
-                        if ($logRow > $endRowLoc) break; // safety guard
-                        if ($log !== null) {
-                            $ws->setCellValue("I{$logRow}", 'Pending Ticket');
-                            $ws->setCellValue("J{$logRow}", $log['location'] ?? '');
-                            $ws->setCellValue("K{$logRow}", $log['date'] ?? '');
-                            $ws->setCellValue("L{$logRow}", $log['duration'] ?? '-');
-                            $ws->setCellValue("M{$logRow}", ($log['ticket_no'] ? '[' . $log['ticket_no'] . '] ' : '') . ($log['case'] ?? ($log['title'] ?? '')));
-                            $ws->setCellValue("N{$logRow}", $log['remark'] ?? ($log['status'] ?? '-'));
-                        } else {
-                            $ws->setCellValue("I{$logRow}", '');
-                            $ws->setCellValue("J{$logRow}", '');
-                            $ws->setCellValue("K{$logRow}", '');
-                            $ws->setCellValue("L{$logRow}", '');
-                            $ws->setCellValue("M{$logRow}", '');
-                            $ws->setCellValue("N{$logRow}", '');
-                        }
-                        $ws->getStyle("I{$logRow}:N{$logRow}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']]]));
-                        $logRow++;
-                    }
-
-                    // Fill any remaining empty rows within this location's span
-                    while ($logRow <= $endRowLoc) {
-                        $ws->setCellValue("J{$logRow}", '');
-                        $ws->setCellValue("K{$logRow}", '');
-                        $ws->setCellValue("L{$logRow}", '');
-                        $ws->setCellValue("M{$logRow}", '');
-                        $ws->setCellValue("N{$logRow}", '');
-                        $ws->getStyle("J{$logRow}:N{$logRow}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']]]));
-                        $logRow++;
-                    }
-
-                    $rowNum = $endRowLoc + 1;
-                }
-            } else {
-                foreach ($cat['locations'] as $locName => $locData) {
-                    $startRowLoc = $rowNum;
-                    $endRowLoc = $startRowLoc + $locData['rowspan'] - 1;
-
-                    foreach ($locData['logs'] as $logIndex => $log) {
-                        if (!$catCellsPrinted) {
-                            $ws->setCellValue("B{$startRowCat}", $itemNo);
-                            $ws->setCellValue("C{$startRowCat}", $cat['item']);
-                            $ws->setCellValue("D{$startRowCat}", $cat['target']);
-                            
-                            $ws->setCellValue("H{$startRowCat}", $cat['label_g'] ?: 'Failed Device List');
-                            
-                            $ws->setCellValue("O{$startRowCat}", $cat['reference_n']);
-
-                            // Sub-headers for Uptime logs (Align with Row 5)
-                            $ws->setCellValue("I{$startRowCat}", 'Location');
-                            $ws->setCellValue("J{$startRowCat}", 'Date');
-                            $ws->setCellValue("K{$startRowCat}", 'IP Address');
-                            $ws->setCellValue("L{$startRowCat}", 'Device Name');
-                            $ws->setCellValue("M{$startRowCat}", 'Duration');
-                            $ws->setCellValue("N{$startRowCat}", 'Remark');
-                            
-                            $ws->getStyle("I{$startRowCat}:N{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-
-                            $catCellsPrinted = true;
-                        }
-
-                        if ($logIndex === 0) {
-                            $ws->setCellValue("E{$startRowLoc}", $locName);
-                            $ws->setCellValue("F{$startRowLoc}", $locData['summary']['qty']);
-                            
-                            $uptimeVal = $locData['summary']['uptime'] !== null ? ($locData['summary']['uptime'] / 100) : '-';
-                            if (is_numeric($uptimeVal)) {
-                                $ws->setCellValue("G{$startRowLoc}", $uptimeVal);
-                                $ws->getStyle("G{$startRowLoc}")->getNumberFormat()->setFormatCode('0.00%');
-                            } else {
-                                $ws->setCellValue("G{$startRowLoc}", $locData['summary']['uptime_fmt']);
-                            }
-                        }
-
-                        if ($log !== null) {
-                            // Back to 6-column style to align with Row 5
-                            $ws->setCellValue("I{$rowNum}", $locName);
-                            $ws->setCellValue("J{$rowNum}", $log['report_date'] ?? '');
-                            $ws->setCellValue("K{$rowNum}", $log['ip_address'] ?? '');
-                            $deviceName = $log['device_name'] ?? '';
-                            // Remove trailing parentheses like (10.62.1.11) since IP is already in Col K
-                            $deviceName = preg_replace('/\s*\([^)]*\)$/', '', $deviceName);
-                            $ws->setCellValue("L{$rowNum}", $deviceName);
-                            
-                            // Use pre-calculated duration from getUptimeReport
-                            $ws->setCellValue("M{$rowNum}", $log['duration'] ?? '-');
-                            $ws->setCellValue("N{$rowNum}", $log['notes_maintenance_log'] ?? ($log['remark'] ?? '-'));
-                        } else {
-                            $ws->setCellValue("I{$rowNum}", '');
-                            $ws->setCellValue("J{$rowNum}", '');
-                            $ws->setCellValue("K{$rowNum}", '');
-                            $ws->setCellValue("L{$rowNum}", '');
-                            $ws->setCellValue("M{$rowNum}", '');
-                            $ws->setCellValue("N{$rowNum}", '');
-                        }
-
-                        $ws->getStyle("I{$rowNum}:N{$rowNum}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']]]));
-
-                        $rowNum++;
-                    }
-
-                    if ($locData['rowspan'] > 1) {
-                        $this->safeMerge($ws, "E{$startRowLoc}:E{$endRowLoc}");
-                        $this->safeMerge($ws, "F{$startRowLoc}:F{$endRowLoc}");
-                        $this->safeMerge($ws, "G{$startRowLoc}:G{$endRowLoc}");
-                    }
-                    $ws->getStyle("E{$startRowLoc}:F{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F2F2F2']]]));
-                    $ws->getStyle("G{$startRowLoc}:G{$endRowLoc}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-                    
-                    if ($locData['summary']['uptime'] !== null) {
-                        $color = $this->getUptimeColor((float)$locData['summary']['uptime']);
-                        $ws->getStyle("G{$startRowLoc}")->getFont()->getColor()->setRGB($color);
-                    }
-                }
-            }
-
-            if ($cat['has_average']) {
-                $ws->setCellValue("E{$rowNum}", 'Average');
-                $this->safeMerge($ws, "E{$rowNum}:F{$rowNum}");
-
-                $avgVal = $cat['average_raw'] !== null ? ($cat['average_raw'] / 100) : '-';
-                if (is_numeric($avgVal)) {
-                    $ws->setCellValue("G{$rowNum}", $avgVal);
-                    $ws->getStyle("G{$rowNum}")->getNumberFormat()->setFormatCode('0.00%');
-                } else {
-                    $ws->setCellValue("G{$rowNum}", $cat['average']);
-                }
-
-                if ($cat['average_raw'] !== null) {
-                    $color = $this->getUptimeColor((float)$cat['average_raw']);
-                    if (!$isBandwidth) {
-                        $ws->getStyle("G{$rowNum}")->getFont()->getColor()->setRGB($color);
-                    } else {
-                        $ws->setCellValue("G{$rowNum}", '');
-                        $ws->setCellValue("H{$rowNum}", '');
-                        $ws->setCellValue("I{$rowNum}", $avgVal);
-                        $ws->getStyle("I{$rowNum}")->getNumberFormat()->setFormatCode('0.00%');
-                        $ws->getStyle("I{$rowNum}")->getFont()->getColor()->setRGB($color);
-                    }
-                }
-
-                $ws->setCellValue("H{$rowNum}", 'Target > 90%');
-                $this->safeMerge($ws, "H{$rowNum}:N{$rowNum}");
-
-                $ws->getStyle("E{$rowNum}:N{$rowNum}")->applyFromArray(array_merge($borderAll, $alignCenter, [
-                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF2CC']],
-                    'font' => ['bold' => true]
-                ]));
-                // Set "Target > 90%" alignment and color
-                $ws->getStyle("H{$rowNum}")->applyFromArray([
-                    'alignment' => [
-                        'horizontal' => Alignment::HORIZONTAL_RIGHT,
-                        'vertical' => Alignment::VERTICAL_CENTER,
-                    ],
-                    'font' => [
-                        'color' => ['rgb' => 'A6A6A6'],
-                        'bold' => true
-                    ]
-                ]);
-                $ws->getStyle("E{$rowNum}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
-                $ws->getStyle("G{$rowNum}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $ws->getStyle("I{$rowNum}:N{$rowNum}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-
-                $rowNum++;
-            }
-
-            if ($catRows > 1) {
-                $this->safeMerge($ws, "B{$startRowCat}:B{$endRowCat}");
-                $this->safeMerge($ws, "C{$startRowCat}:C{$endRowCat}");
-                $this->safeMerge($ws, "D{$startRowCat}:D{$endRowCat}");
-                $this->safeMerge($ws, "O{$startRowCat}:O{$endRowCat}");
-            }
-            $ws->getStyle("B{$startRowCat}:D{$endRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-            $ws->getStyle("O{$startRowCat}:O{$endRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-
-            $endRowH = $startRowCat + $gRowspan - 1;
-            // Bandwidth uses col H for D/W / U/L labels — do NOT merge H for bandwidth
-            if ($isBandwidth) {
-                if ($gRowspan > 1) {
-                    $this->safeMerge($ws, "J{$startRowCat}:K{$endRowH}");
-                    $ws->getStyle("J{$startRowCat}:K{$endRowH}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                } else {
-                    $this->safeMerge($ws, "J{$startRowCat}:K{$startRowCat}");
-                    $ws->getStyle("J{$startRowCat}:K{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                }
-            } else {
-                if ($gRowspan > 1) {
-                    if (($cat['type'] ?? '') === 'helpdesk') {
-                        $this->safeMerge($ws, "I{$startRowCat}:I{$endRowH}");
-                        $ws->getStyle("I{$startRowCat}:I{$endRowH}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                    } else {
-                        $this->safeMerge($ws, "H{$startRowCat}:H{$endRowH}");
-                        $ws->getStyle("H{$startRowCat}:H{$endRowH}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                    }
-                } else {
-                    if (($cat['type'] ?? '') === 'helpdesk') {
-                        $ws->getStyle("I{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                    } else {
-                        $ws->getStyle("H{$startRowCat}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFCC']], 'font' => ['bold' => true]]));
-                    }
-                }
-            }
-        }
-
-        // Merge Activity (Col A) for all categories
-        $globalEndRow = $rowNum - 1;
-        $ws->setCellValue("A{$globalStartRow}", "Infra. Operation Report");
-        $this->safeMerge($ws, "A{$globalStartRow}:A{$globalEndRow}");
-        $ws->getStyle("A{$globalStartRow}:A{$globalEndRow}")->applyFromArray(array_merge($borderAll, $alignCenter, ['fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFFFFF']]]));
-
-        $colWidths = [
-            'A' => 15, 'B' => 5, 'C' => 20, 'D' => 15, 'E' => 15,
-            'F' => 12, 'G' => 15, 'H' => 12, 'I' => 20, 'J' => 15,
-            'K' => 18, 'L' => 30, 'M' => 25, 'N' => 60, 'O' => 20
-        ];
-        foreach ($colWidths as $col => $w) {
+        foreach ($widths as $col => $w) {
             $ws->getColumnDimension($col)->setWidth($w);
         }
 
-        // Set explicit row heights at the end to prevent overrides
-        for ($r = 1; $r <= $rowNum; $r++) {
-            if ($r === 2 || $r === 5) continue;
-            $ws->getRowDimension($r)->setRowHeight(40);
-        }
-
-        return $spreadsheet;
-    }
-
-    /**
-     * Builds the nested structure for uptime-based categories.
-     *
-     * KEY GUARANTEE: every location always has at least [null] in 'logs'
-     * so the grid never collapses. rowspan is always >= 1.
-     *
-     * total_category_rows = sum(location rowspans) + 1  (the +1 is the avg row)
-     */
-    private function buildUptimeCategory(
-        string   $activity,
-        string   $item,
-        string   $target,
-        string   $labelG,
-        string   $referenceN,
-        array    $siteRows,
-        callable $logExtractor,
-    ): array {
-        $locations = [];
-        $uptimeSum = 0.0;
-        $siteCount = 0;
-
-        foreach ($siteRows as $row) {
-            $logs = $logExtractor($row);
-
-            // CRITICAL: guarantee at least one row so the grid never collapses
-            if (empty($logs)) {
-                $logs = [null];
-            }
-
-            $rowspan = count($logs); // always >= 1
-
-            $locations[$row['location']] = [
-                'summary' => [
-                    'qty'        => $row['qty'],
-                    'uptime'     => (float) $row['uptime'],
-                    'uptime_fmt' => number_format((float) $row['uptime'], 2) . '%',
+        // Shared border style
+        $borderThin = [
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'D0D5DD'],
                 ],
-                'rowspan' => $rowspan,
-                'logs'    => $logs,
-            ];
+            ],
+        ];
 
-            $uptimeSum += (float) $row['uptime'];
-            $siteCount++;
+        // ── 1. TITLE HEADER ─────────────────────────────────────────────────
+        $ws->getRowDimension(2)->setRowHeight(26);
+        $ws->setCellValue('B2', 'ZINUS IDN | WEEKLY INFRA REPORT');
+        $ws->getStyle('B2')->getFont()->setSize(16)->setBold(true)->getColor()->setRGB('0B1E33');
+
+        $fromFormatted = Carbon::parse($this->from)->format('d M y');
+        $toFormatted   = Carbon::parse($this->to)->format('d M y');
+        $ws->getRowDimension(4)->setRowHeight(16);
+        $ws->setCellValue('B4', "Infrastructure health & incident overview • {$fromFormatted} – {$toFormatted}");
+        $ws->getStyle('B4')->getFont()->setSize(9)->setItalic(true)->getColor()->setRGB('64748B');
+
+        // ── 2. CALCULATE KPI METRICS ─────────────────────────────────────────
+        $sites = ['Bogor', 'Karawang', 'Tangerang'];
+        $matrix = [];
+        foreach ($sites as $site) {
+            $matrix[$site] = [
+                'network' => $this->findUptimeForSite($rawNetwork, $site),
+                'nvr'     => $this->findUptimeForSite($rawNvr, $site),
+                'cctv'    => $this->findUptimeForSite($rawCctv, $site),
+                'server'  => $this->findUptimeForSite($rawServer, $site),
+            ];
         }
 
-        // +1 for the average row
-        $totalRows = array_sum(array_column($locations, 'rowspan')) + 1;
-        $avgUptime = $siteCount > 0 ? round($uptimeSum / $siteCount, 2) : 0.0;
+        $avgNetwork = $this->calcAverage(array_column($matrix, 'network'));
+        $avgNvr     = $this->calcAverage(array_column($matrix, 'nvr'));
+        $avgCctv    = $this->calcAverage(array_column($matrix, 'cctv'));
+        $avgServer  = $this->calcAverage(array_column($matrix, 'server'));
+        $overallUptime = round(($avgNetwork + $avgNvr + $avgCctv + $avgServer) / 4, 1);
 
-        return [
-            'activity'            => $activity,
-            'item'                => $item,
-            'target'              => $target,
-            'label_g'             => $labelG,
-            'reference_n'         => $referenceN,
-            'has_average'         => true,
-            'average'             => number_format($avgUptime, 2) . '%',
-            'average_raw'         => $avgUptime,
-            'total_category_rows' => $totalRows,
-            'locations'           => $locations,
-        ];
-    }
-
-    /**
-     * Builds the bandwidth/internet category.
-     *
-     * Each location gets a 'providers' sub-array (split by provider).
-     * rowspan = number of providers for that location (min 1).
-     * Col E = qty of providers, Col F = bandwidth check label.
-     * The blade renders this with a dedicated provider loop.
-     *
-     * No average row. Bandwidth has no uptime metric.
-     */
-    private function buildBandwidthCategory(array $rawBandwidth): array
-    {
-        $locations = [];
-
+        // Bandwidth Snapshot Rows with default SLA capacity fallback
+        $bwRows = [];
+        $dlValues = [];
+        $ulValues = [];
         foreach ($rawBandwidth as $b) {
-            $rawProviders = $b['providers'];
-            $providers    = [];
+            $cleanLoc = $this->cleanLocation($b['location']);
+            foreach ($b['providers'] as $p) {
+                $limit = $p['bandwidth_limit'] ?? null;
+                if (!$limit || $limit <= 0) {
+                    $limit = $this->getDefaultCapacity($cleanLoc, $p['provider']);
+                }
 
-            $providerCapacityMap = [
-                'Bogor'     => ['180 Mbps', '100 Mbps'],
-                'Karawang'  => ['180 Mbps', '80 Mbps'],
-                'Tangerang' => ['240 Mbps', '100 Mbps'],
-            ];
-            $currentSite = $b['location'];
-            $siteKey = str_replace(' Bogor', '', $currentSite);
-            $siteKey = str_replace(' Karawang', '', $siteKey);
-            $siteKey = str_replace(' Tangerang', '', $siteKey);
-            
-            foreach ($rawProviders as $idx => $p) {
-                $limit = (float)($p['bandwidth_limit'] ?? 0);
-                $targetCapacity = ($limit > 0 ? $limit : 100) . ' Mbps';
-                $providers[] = [
-                    'name'      => $p['provider'],
-                    'target'    => $targetCapacity,
-                    'limit'     => $limit,
-                    'dl_raw'    => $p['avg_download'],
-                    'ul_raw'    => $p['avg_upload'],
-                    'bandwidth' => ($p['avg_download'] !== null
-                        ? number_format($p['avg_download'] + ($p['avg_upload'] ?? 0), 0)
-                        : '-') . ' Mbps',
-                    'dl'        => $p['avg_download'] !== null
-                        ? number_format($p['avg_download'], 2) . ' Mbps'
-                        : 'N/A',
-                    'ul'        => $p['avg_upload'] !== null
-                        ? number_format($p['avg_upload'], 2) . ' Mbps'
-                        : 'N/A',
+                $dl = isset($p['avg_download']) && is_numeric($p['avg_download']) ? (float) $p['avg_download'] : null;
+                $ul = isset($p['avg_upload']) && is_numeric($p['avg_upload']) ? (float) $p['avg_upload'] : null;
+
+                if ($dl !== null && $dl > 0) $dlValues[] = $dl;
+                if ($ul !== null && $ul > 0) $ulValues[] = $ul;
+
+                $bwRows[] = [
+                    'branch'   => $cleanLoc,
+                    'isp'      => $p['provider'],
+                    'capacity' => $limit ? number_format($limit, 1) : '-',
+                    'down'     => $dl !== null ? number_format($dl, 1) . ' Mbps' : '-',
+                    'up'       => $ul !== null ? number_format($ul, 1) . ' Mbps' : '-',
                 ];
             }
-
-            // Guarantee at least one row (empty provider placeholder)
-            if (empty($providers)) {
-                $providers = [[
-                    'name'      => '-',
-                    'target'    => '100 Mbps',
-                    'bandwidth' => '-',
-                    'dl'        => 'N/A',
-                    'ul'        => 'N/A',
-                ]];
-            }
-
-            $rowspan = count($providers) * 2;
-
-            $locations[$b['location']] = [
-                'item'    => '90%', // Using Target column for bandwidth max
-                'summary' => [
-                    'qty'        => count($providers),
-                    'uptime'     => null,
-                    'uptime_fmt' => 'Bandwidth Check',
-                ],
-                'rowspan'   => $rowspan,
-                'providers' => $providers,
-                // logs kept empty — the blade uses 'providers' for this type
-                'logs'      => [],
-            ];
         }
 
-        $totalRows = array_sum(array_column($locations, 'rowspan'));
+        $avgDl = count($dlValues) ? round(array_sum($dlValues) / count($dlValues), 1) : 0;
+        $avgUl = count($ulValues) ? round(array_sum($ulValues) / count($ulValues), 1) : 0;
 
-        return [
-            'activity'            => 'Infra. Operation Report',
-            'item'                => 'Internet Usage',
-            'target'              => 'Bandwidth Usage Check',
-            'label_g'             => 'Failed Device List', // Matching the bizarre copy paste in Excel
-            'reference_n'         => 'Inet Operation Check',
-            'has_average'         => true,
-            'average'             => '100.0%',
-            'average_raw'         => 100.0,
-            'total_category_rows' => $totalRows + 1, // +1 for the average row
-            'locations'           => $locations,
-            'type'                => 'bandwidth',
-        ];
-    }
+        // PC Issues Resolved
+        $totalIssues  = array_sum(array_map('intval', array_column($rawHelpdesk, 'case')));
+        $closedIssues = array_sum(array_map('intval', array_column($rawHelpdesk, 'closed')));
 
-    /**
-     * Builds the helpdesk category.
-     *
-     * Each pending ticket becomes one log row.
-     * Col E = total case count, Col F = performance %.
-     */
-    private function buildHelpdeskCategory(array $rawHelpdesk): array
-    {
-        $locations = [];
-        $perfSum   = 0.0;
-        $siteCount = 0;
-
-        foreach ($rawHelpdesk as $h) {
-            $tickets = [];
-
-            foreach ($h['pending_list'] as $t) {
-                $tickets[] = [
-                    'location'    => $h['location'],
-                    'date'        => $t['created_at'] ?? '',
-                    'device_name' => $t['title'] ?? '',
-                    'ip_address'  => '#' . ($t['ticket_no'] ?? ''),
-                    'downtime'    => '-',
-                    'remark'      => strtoupper($t['status'] ?? ''),
-                ];
+        // Failed Devices: Group by device to avoid duplicate daily rows
+        $failedDevicesMap = [];
+        $gatherFailed = function (array $report, string $category) use (&$failedDevicesMap) {
+            foreach ($report as $siteItem) {
+                $cleanSite = $this->cleanLocation($siteItem['location']);
+                foreach ($siteItem['failed_list'] ?? [] as $f) {
+                    if (($f['uptime_percent'] ?? 100) < 100) {
+                        $key = $category . '_' . ($f['ip_address'] ?? '') . '_' . ($f['device_name'] ?? '');
+                        if (!isset($failedDevicesMap[$key])) {
+                            $failedDevicesMap[$key] = [
+                                'location'    => $cleanSite,
+                                'date'        => isset($f['report_date']) ? Carbon::parse($f['report_date'])->format('d-M-y') : '-',
+                                'category'    => $category,
+                                'device_name' => $f['device_name'] ?? '-',
+                                'ip_address'  => $f['ip_address'] ?? '-',
+                                'duration'    => $f['duration'] ?? '-',
+                                'remark'      => $f['notes_maintenance_log'] ?? $f['remark'] ?? '-',
+                            ];
+                        } else {
+                            if (isset($f['report_date'])) {
+                                $failedDevicesMap[$key]['date'] = Carbon::parse($f['report_date'])->format('d-M-y');
+                            }
+                            if (($failedDevicesMap[$key]['remark'] === '-' || empty($failedDevicesMap[$key]['remark'])) && !empty($f['notes_maintenance_log'])) {
+                                $failedDevicesMap[$key]['remark'] = $f['notes_maintenance_log'];
+                            }
+                        }
+                    }
+                }
             }
+        };
+        $gatherFailed($rawNetwork, 'Network');
+        $gatherFailed($rawNvr, 'NVR');
+        $gatherFailed($rawCctv, 'CCTV');
+        $gatherFailed($rawServer, 'Server');
 
-            // Each location needs at least 2 rows: one for "Case" label, one for "Closed" label.
-            // Ticket log rows are written alongside the Closed row and beyond.
-            // rowspan = max(2, count(tickets) + 1) so there's always room for both labels.
-            $rowspan = max(2, count($tickets) + 1);
+        $failedDevices = array_values($failedDevicesMap);
+        $failedCount = count($failedDevices);
 
-            // Guarantee at least one null log entry so the grid never collapses
-            if (empty($tickets)) {
-                $tickets = [null];
-            }
+        // ── 3. TOP KPI CARDS (Rows 6-7) ─────────────────────────────────────
+        // Card labels (Row 6)
+        $ws->mergeCells('B6:D6');
+        $ws->setCellValue('B6', 'SYSTEM UPTIME');
+        $ws->mergeCells('E6:G6');
+        $ws->setCellValue('E6', 'AVG BANDWIDTH (Mbps)');
+        $ws->mergeCells('H6:J6');
+        $ws->setCellValue('H6', 'PC ISSUES RESOLVED');
+        $ws->mergeCells('K6:L6');
+        $ws->setCellValue('K6', 'FAILED DEVICES');
 
-            $locations[$h['location']] = [
-                'summary' => [
-                    'qty'        => $h['case'],    // Total cases
-                    'uptime'     => $h['closed'],  // Closed cases (raw number)
-                    'uptime_fmt' => number_format((float) $h['performance'], 2) . '%',
+        // Card values (Row 7)
+        $ws->mergeCells('B7:D7');
+        $ws->setCellValue('B7', number_format($overallUptime, 1) . '%');
+        $ws->mergeCells('E7:G7');
+        $ws->setCellValue('E7', "{$avgDl} ↓ / {$avgUl} ↑");
+        $ws->mergeCells('H7:J7');
+        $ws->setCellValue('H7', "{$closedIssues} / {$totalIssues}");
+        $ws->mergeCells('K7:L7');
+        $ws->setCellValue('K7', $failedCount);
+
+        // Styling KPI Box
+        $ws->getRowDimension(6)->setRowHeight(18);
+        $ws->getRowDimension(7)->setRowHeight(34);
+
+        $ws->getStyle('B6:L7')->applyFromArray([
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8FAFC']],
+        ]);
+
+        $ws->getStyle('B6:L7')->applyFromArray([
+            'borders' => [
+                'outline' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'CBD5E1'],
                 ],
-                'rowspan' => $rowspan,
-                'logs'    => $tickets,
-            ];
+            ],
+        ]);
 
-            $perfSum   += (float) $h['performance'];
-            $siteCount++;
+        $ws->getStyle('B6:L6')->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 8.5, 'color' => ['rgb' => '64748B']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+
+        $ws->getStyle('B7:L7')->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 17],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+
+        // Colors for KPI values
+        $ws->getStyle('B7')->getFont()->getColor()->setRGB('00875A');
+        $ws->getStyle('E7')->getFont()->getColor()->setRGB('00875A');
+        $ws->getStyle('H7')->getFont()->getColor()->setRGB('00875A');
+        $ws->getStyle('K7')->getFont()->getColor()->setRGB($failedCount > 0 ? 'D92D20' : '00875A');
+
+        // ── 4. MIDDLE SECTION: 2 SIDE-BY-SIDE TABLES (Rows 10+) ──────────────
+        // Banner Headers (Row 10)
+        $ws->getRowDimension(10)->setRowHeight(24);
+        $ws->mergeCells('B10:F10');
+        $ws->setCellValue('B10', 'BRANCH HEALTH');
+
+        $ws->mergeCells('H10:L10');
+        $ws->setCellValue('H10', 'BANDWIDTH SNAPSHOT');
+
+        $darkGreenBanner = [
+            'font'      => ['bold' => true, 'size' => 9.5, 'color' => ['rgb' => 'FFFFFF']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'indent' => 1],
+        ];
+        $ws->getStyle('B10:F10')->applyFromArray($darkGreenBanner);
+        $ws->getStyle('H10:L10')->applyFromArray($darkGreenBanner);
+
+        // Subheaders (Row 11) - Warm Golden Amber Background
+        $ws->getRowDimension(11)->setRowHeight(20);
+        $amberHeader = [
+            'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C88528']],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+        ];
+
+        // Left Table Headers (B to F)
+        $ws->setCellValue('B11', 'Branch');
+        $ws->setCellValue('C11', 'Network');
+        $ws->setCellValue('D11', 'NVR');
+        $ws->setCellValue('E11', 'CCTV');
+        $ws->setCellValue('F11', 'Server');
+        $ws->getStyle('B11:F11')->applyFromArray(array_merge($borderThin, $amberHeader));
+        $ws->getStyle('B11')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $ws->getStyle('C11:F11')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        // Right Table Headers (H to L)
+        $ws->setCellValue('H11', 'Branch');
+        $ws->setCellValue('I11', 'ISP');
+        $ws->setCellValue('J11', 'Capacity');
+        $ws->setCellValue('K11', 'Down');
+        $ws->setCellValue('L11', 'Up');
+        $ws->getStyle('H11:L11')->applyFromArray(array_merge($borderThin, $amberHeader));
+        $ws->getStyle('H11:I11')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $ws->getStyle('J11')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $ws->getStyle('K11:L11')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        // Left Table Rows (Bogor, Karawang, Tangerang)
+        $rowL = 12;
+        foreach ($sites as $site) {
+            $ws->getRowDimension($rowL)->setRowHeight(20);
+            $ws->setCellValue("B{$rowL}", $site);
+            $ws->setCellValue("C{$rowL}", number_format($matrix[$site]['network'], 1) . '%');
+            $ws->setCellValue("D{$rowL}", number_format($matrix[$site]['nvr'], 1) . '%');
+            $ws->setCellValue("E{$rowL}", number_format($matrix[$site]['cctv'], 1) . '%');
+            $ws->setCellValue("F{$rowL}", number_format($matrix[$site]['server'], 1) . '%');
+
+            $ws->getStyle("B{$rowL}")->getFont()->setBold(true);
+            $ws->getStyle("B{$rowL}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
+            $ws->getStyle("C{$rowL}:F{$rowL}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+            $ws->getStyle("B{$rowL}:F{$rowL}")->applyFromArray($borderThin);
+            $rowL++;
         }
 
-        $totalRows = array_sum(array_column($locations, 'rowspan')) + 1; // +1 for average row
-        $avgPerf   = $siteCount > 0 ? round($perfSum / $siteCount, 2) : 0.0;
+        // Left Table: Average Row
+        $ws->getRowDimension($rowL)->setRowHeight(20);
+        $ws->setCellValue("B{$rowL}", 'Average');
+        $ws->setCellValue("C{$rowL}", number_format($avgNetwork, 1) . '%');
+        $ws->setCellValue("D{$rowL}", number_format($avgNvr, 1) . '%');
+        $ws->setCellValue("E{$rowL}", number_format($avgCctv, 1) . '%');
+        $ws->setCellValue("F{$rowL}", number_format($avgServer, 1) . '%');
 
-        return [
-            'activity'            => 'Infra. Operation Report',
-            'item'                => 'End User PC Issue handling',
-            'target'              => 'Helpdesk Daily',
-            'label_g'             => 'Pending Ticket',
-            'reference_n'         => 'Helpdesk Operation',
-            'has_average'         => true,
-            'average'             => number_format($avgPerf, 2) . '%',
-            'average_raw'         => $avgPerf,
-            'total_category_rows' => $totalRows,
-            'locations'           => $locations,
-            'type'                => 'helpdesk',
+        $ws->getStyle("B{$rowL}:F{$rowL}")->applyFromArray(array_merge($borderThin, [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8FAFC']],
+        ]));
+        $ws->getStyle("B{$rowL}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
+        $ws->getStyle("C{$rowL}:F{$rowL}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+        $rowL++;
+
+        // Right Table Rows (Bandwidth items H to L)
+        $rowR = 12;
+        foreach ($bwRows as $bw) {
+            $ws->getRowDimension($rowR)->setRowHeight(20);
+            $ws->setCellValue("H{$rowR}", $bw['branch']);
+            $ws->setCellValue("I{$rowR}", $bw['isp']);
+            $ws->setCellValue("J{$rowR}", $bw['capacity']);
+            $ws->setCellValue("K{$rowR}", $bw['down']);
+            $ws->setCellValue("L{$rowR}", $bw['up']);
+
+            $ws->getStyle("H{$rowR}")->getFont()->setBold(true);
+            $ws->getStyle("H{$rowR}:I{$rowR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
+            $ws->getStyle("J{$rowR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+            $ws->getStyle("K{$rowR}:L{$rowR}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT)->setVertical(Alignment::VERTICAL_CENTER);
+            $ws->getStyle("H{$rowR}:L{$rowR}")->applyFromArray($borderThin);
+            $rowR++;
+        }
+
+        if (empty($bwRows)) {
+            $ws->mergeCells("H{$rowR}:L{$rowR}");
+            $ws->setCellValue("H{$rowR}", 'Belum ada data bandwidth');
+            $ws->getStyle("H{$rowR}:L{$rowR}")->applyFromArray(array_merge($borderThin, [
+                'font' => ['italic' => true, 'color' => ['rgb' => '888888']],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            ]));
+            $rowR++;
+        }
+
+        // Blank spacer row between sections
+        $startActionRow = max($rowL, $rowR) + 1;
+        $ws->getRowDimension($startActionRow - 1)->setRowHeight(12);
+
+        // ── 5. BOTTOM SECTION: ACTION REQUIRED • FAILED DEVICES ─────────────
+        $ws->getRowDimension($startActionRow)->setRowHeight(24);
+        $ws->mergeCells("B{$startActionRow}:L{$startActionRow}");
+        $ws->setCellValue("B{$startActionRow}", 'ACTION REQUIRED • FAILED DEVICES');
+        $ws->getStyle("B{$startActionRow}:L{$startActionRow}")->applyFromArray($darkGreenBanner);
+
+        // Subheaders (Crimson Red Banner)
+        $subHRow = $startActionRow + 1;
+        $ws->getRowDimension($subHRow)->setRowHeight(20);
+        $redHeader = [
+            'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '991B1B']],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
         ];
+
+        $ws->setCellValue("B{$subHRow}", 'Location');
+        $ws->setCellValue("C{$subHRow}", 'Date');
+        $ws->setCellValue("D{$subHRow}", 'Category');
+        $ws->mergeCells("E{$subHRow}:F{$subHRow}");
+        $ws->setCellValue("E{$subHRow}", 'Device Name');
+        $ws->mergeCells("G{$subHRow}:H{$subHRow}");
+        $ws->setCellValue("G{$subHRow}", 'IP Address');
+        $ws->setCellValue("I{$subHRow}", 'Downtime');
+        $ws->mergeCells("J{$subHRow}:L{$subHRow}");
+        $ws->setCellValue("J{$subHRow}", 'Remark');
+
+        $ws->getStyle("B{$subHRow}:L{$subHRow}")->applyFromArray(array_merge($borderThin, $redHeader));
+        $ws->getStyle("B{$subHRow}:F{$subHRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $ws->getStyle("G{$subHRow}:I{$subHRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $ws->getStyle("J{$subHRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        // Data Rows for Failed Devices
+        $curRow = $subHRow + 1;
+        if (!empty($failedDevices)) {
+            foreach ($failedDevices as $dev) {
+                $ws->getRowDimension($curRow)->setRowHeight(20);
+                $ws->setCellValue("B{$curRow}", $dev['location']);
+                $ws->setCellValue("C{$curRow}", $dev['date']);
+                $ws->setCellValue("D{$curRow}", $dev['category']);
+                $ws->mergeCells("E{$curRow}:F{$curRow}");
+                $ws->setCellValue("E{$curRow}", $dev['device_name']);
+                $ws->mergeCells("G{$curRow}:H{$curRow}");
+                $ws->setCellValue("G{$curRow}", $dev['ip_address']);
+                $ws->setCellValue("I{$curRow}", $dev['duration']);
+                $ws->mergeCells("J{$curRow}:L{$curRow}");
+                $ws->setCellValue("J{$curRow}", $dev['remark']);
+
+                $ws->getStyle("B{$curRow}")->getFont()->setBold(true);
+                $ws->getStyle("B{$curRow}:F{$curRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
+                $ws->getStyle("G{$curRow}:I{$curRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_CENTER);
+                $ws->getStyle("J{$curRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
+                $ws->getStyle("B{$curRow}:L{$curRow}")->applyFromArray($borderThin);
+                $curRow++;
+            }
+        } else {
+            // No failed devices state
+            $ws->getRowDimension($curRow)->setRowHeight(26);
+            $ws->mergeCells("B{$curRow}:L{$curRow}");
+            $ws->setCellValue("B{$curRow}", 'Semua Perangkat Normal (100% Uptime)');
+            $ws->getStyle("B{$curRow}:L{$curRow}")->applyFromArray(array_merge($borderThin, [
+                'font' => ['bold' => true, 'color' => ['rgb' => '00875A']],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            ]));
+            $curRow++;
+        }
+
+        // ── 6. FOOTER CAPTION ────────────────────────────────────────────────
+        $footerRow = $curRow + 1;
+        $ws->getRowDimension($footerRow)->setRowHeight(16);
+        $ws->mergeCells("B{$footerRow}:L{$footerRow}");
+        $ws->setCellValue("B{$footerRow}", 'Source: Weekly Infra Report data • Dashboard is linked to the Data sheet.');
+        $ws->getStyle("B{$footerRow}")->getFont()->setSize(8.5)->setItalic(true)->getColor()->setRGB('888888');
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Raw data fetchers
+    // SHEET 2: Network Devices (Full inventory & status)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildNetworkSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('Network Devices');
+        $ws->setShowGridLines(true);
+
+        $headers = array_merge(
+            ['No', 'Site', 'Location', 'Host Group', 'Device Name', 'IP Address'],
+            self::weeklyUptimeHeaderLabels($this->from, $this->to),
+            ['Status', 'Downtime', 'Remark']
+        );
+        $this->writeHeaderRow($ws, $headers);
+
+        $devices = NetworkDevice::where('is_active', true)
+            ->where('is_excluded', false)
+            ->orderBy('site')
+            ->orderBy('device_name')
+            ->get();
+
+        $row = 2;
+        $no = 1;
+        foreach ($devices as $dev) {
+            $rows = DB::table('network_uptime_daily')
+                ->where('device_id', $dev->id)
+                ->whereBetween('report_date', [$this->from, $this->to])
+                ->orderBy('report_date')
+                ->get();
+
+            $dailyMap = $rows->keyBy('report_date');
+            $uptimes = [];
+            $cursor = Carbon::parse($this->from);
+            $end = Carbon::parse($this->to);
+            while ($cursor->lte($end) && count($uptimes) < 7) {
+                $dateKey = $cursor->toDateString();
+                $uptime = $dailyMap->get($dateKey)?->uptime_percent;
+                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1) . '%' : '-';
+                $cursor->addDay();
+            }
+
+            $values = $rows->pluck('uptime_percent')
+                ->filter(fn ($v) => $v !== null && is_numeric($v))
+                ->map(fn ($v) => (float) $v)
+                ->all();
+            $avgUptime = count($values) > 0 ? round(array_sum($values) / count($values), 2) : 100.0;
+
+            $log = DB::table('network_maintenance_logs')
+                ->where('device_id', $dev->id)
+                ->whereBetween(DB::raw('DATE(started_at)'), [$this->from, $this->to])
+                ->latest('started_at')
+                ->first();
+
+            $duration = $this->formatDuration($log?->started_at, $log?->resolved_at);
+            $statusText = $avgUptime >= 99 ? 'Normal' : ($avgUptime >= 90 ? 'Warning' : 'Critical');
+
+            $rowValues = [
+                $no++,
+                $this->cleanLocation($dev->site),
+                $dev->location ?? '-',
+                $dev->host_group ?? '-',
+                $dev->device_name,
+                $dev->ip_address,
+            ];
+            $rowValues = array_merge($rowValues, $uptimes, [
+                number_format($avgUptime, 1) . '%',
+                $statusText,
+                $duration,
+                $log?->notes ?? '-',
+            ]);
+
+            $ws->fromArray($rowValues, null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, count($headers), $avgUptime < 100);
+            $row++;
+        }
+
+        $this->autoSizeColumns($ws, count($headers));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 3: NVR & CCTV Devices
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildCctvSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('NVR & CCTV');
+        $ws->setShowGridLines(true);
+
+        $headers = array_merge(
+            ['No', 'Site', 'Type', 'Location', 'Device Name', 'IP Address'],
+            self::weeklyUptimeHeaderLabels($this->from, $this->to),
+            ['Status', 'Downtime', 'Remark']
+        );
+        $this->writeHeaderRow($ws, $headers);
+
+        $devices = CctvDevice::where('is_active', true)
+            ->where('is_excluded', false)
+            ->orderBy('site')
+            ->orderBy('device_type')
+            ->orderBy('device_name')
+            ->get();
+
+        $row = 2;
+        $no = 1;
+        foreach ($devices as $dev) {
+            $rows = DB::table('cctv_uptime_daily')
+                ->where('device_id', $dev->id)
+                ->whereBetween('report_date', [$this->from, $this->to])
+                ->orderBy('report_date')
+                ->get();
+
+            $dailyMap = $rows->keyBy('report_date');
+            $uptimes = [];
+            $cursor = Carbon::parse($this->from);
+            $end = Carbon::parse($this->to);
+            while ($cursor->lte($end) && count($uptimes) < 7) {
+                $dateKey = $cursor->toDateString();
+                $uptime = $dailyMap->get($dateKey)?->uptime_percent;
+                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1) . '%' : '-';
+                $cursor->addDay();
+            }
+
+            $values = $rows->pluck('uptime_percent')
+                ->filter(fn ($v) => $v !== null && is_numeric($v))
+                ->map(fn ($v) => (float) $v)
+                ->all();
+            $avgUptime = count($values) > 0 ? round(array_sum($values) / count($values), 2) : 100.0;
+
+            $log = DB::table('cctv_maintenance_logs')
+                ->where('device_id', $dev->id)
+                ->whereBetween(DB::raw('DATE(started_at)'), [$this->from, $this->to])
+                ->latest('started_at')
+                ->first();
+
+            $duration = $this->formatDuration($log?->started_at, $log?->resolved_at);
+            $statusText = $avgUptime >= 99 ? 'Normal' : ($avgUptime >= 90 ? 'Warning' : 'Critical');
+
+            $rowValues = [
+                $no++,
+                $this->cleanLocation($dev->site),
+                $dev->device_type,
+                $dev->location ?? '-',
+                $dev->device_name,
+                $dev->ip_address,
+            ];
+            $rowValues = array_merge($rowValues, $uptimes, [
+                number_format($avgUptime, 1) . '%',
+                $statusText,
+                $duration,
+                $log?->notes ?? '-',
+            ]);
+
+            $ws->fromArray($rowValues, null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, count($headers), $avgUptime < 100);
+            $row++;
+        }
+
+        $this->autoSizeColumns($ws, count($headers));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 4: Server Devices
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildServerSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('Servers');
+        $ws->setShowGridLines(true);
+
+        $headers = ['No', 'Site', 'Location', 'Host / Device Name', 'IP Address', 'Avg CPU %', 'Avg RAM %', 'Disk Free', 'Uptime %', 'Status'];
+        $this->writeHeaderRow($ws, $headers);
+
+        $devices = ServerDevice::where('is_active', true)
+            ->where('is_excluded', false)
+            ->orderBy('site')
+            ->orderBy('device_name')
+            ->get();
+
+        $daysCount = Carbon::parse($this->from)->diffInDays(Carbon::parse($this->to)) + 1;
+
+        $row = 2;
+        $no = 1;
+        foreach ($devices as $dev) {
+            $resRows = DB::table('server_resource_daily')
+                ->where('host_id', $dev->source_id)
+                ->whereBetween('report_date', [$this->from, $this->to])
+                ->get();
+
+            $avgCpu = null;
+            $avgRam = null;
+            if ($resRows->isNotEmpty()) {
+                $cpuVals = $resRows->pluck('cpu_usage_percent')
+                    ->filter(fn($v) => $v !== null && is_numeric($v))
+                    ->map(fn($v) => (float) $v);
+                $ramVals = $resRows->pluck('memory_usage_percent')
+                    ->filter(fn($v) => $v !== null && is_numeric($v))
+                    ->map(fn($v) => (float) $v);
+
+                if ($cpuVals->isNotEmpty()) {
+                    $avgCpu = round((float) $cpuVals->avg(), 1);
+                }
+                if ($ramVals->isNotEmpty()) {
+                    $avgRam = round((float) $ramVals->avg(), 1);
+                }
+            }
+
+            $latestHdd = $resRows->last()?->hdd_free_percent ?? '-';
+
+            $uptime = min(100.0, round(($resRows->count() / max(1, $daysCount)) * 100, 1));
+            $statusText = $uptime >= 99 ? 'Normal' : ($uptime >= 90 ? 'Warning' : 'Critical');
+
+            $ws->fromArray([
+                $no++,
+                $this->cleanLocation($dev->site),
+                $dev->location ?? '-',
+                $dev->device_name,
+                $dev->ip_address,
+                $avgCpu !== null ? number_format($avgCpu, 1) . '%' : '-',
+                $avgRam !== null ? number_format($avgRam, 1) . '%' : '-',
+                $latestHdd ?: '-',
+                number_format($uptime, 1) . '%',
+                $statusText,
+            ], null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, 10, $uptime < 100);
+            $row++;
+        }
+
+        $this->autoSizeColumns($ws, 10);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 5: Bandwidth Traffic Detail
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildBandwidthSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('Bandwidth Traffic');
+        $ws->setShowGridLines(true);
+
+        $dateLabels = self::weeklyBandwidthDateLabels($this->from, $this->to);
+        $headers = array_merge(
+            ['No', 'Site', 'Provider', 'Description', 'SLA Capacity (Mbps)'],
+            $dateLabels,
+            ['Avg (Mbps)', 'Remark']
+        );
+        $this->writeHeaderRow($ws, $headers);
+
+        $records = DB::table('bandwidth_daily')
+            ->whereBetween('report_date', [$this->from, $this->to])
+            ->orderBy('location')
+            ->orderBy('provider')
+            ->orderBy('description')
+            ->orderBy('report_date')
+            ->get();
+
+        $contracts = DB::table('isp_sla_contracts')->get();
+
+        $groups = $records->groupBy(fn ($record) => implode('|', [
+            $record->location,
+            $record->provider,
+            $record->description ?? '-',
+        ]));
+
+        $row = 2;
+        $no = 1;
+        foreach ($groups as $group) {
+            $first = $group->first();
+            $cleanLoc = $this->cleanLocation($first->location);
+            $matchedContract = $contracts->first(function ($c) use ($first, $cleanLoc) {
+                return stripos($c->provider, $first->provider) !== false
+                    && stripos($c->location, $cleanLoc) !== false;
+            });
+
+            $limit = $matchedContract ? (float) $matchedContract->bandwidth : $this->getDefaultCapacity($cleanLoc, $first->provider);
+            $dailyMap = $group->keyBy('report_date');
+            $dailyValues = [];
+            $dailyDates = [];
+            $cursor = Carbon::parse($this->from);
+            $end = Carbon::parse($this->to);
+
+            while ($cursor->lte($end) && count($dailyDates) < 7) {
+                $dateKey = $cursor->toDateString();
+                $value = $dailyMap->get($dateKey)?->value_mbps;
+                $dailyDates[] = $value !== null ? number_format((float) $value, 2) : '-';
+                if ($value !== null && is_numeric($value)) {
+                    $dailyValues[] = (float) $value;
+                }
+                $cursor->addDay();
+            }
+
+            $avg = count($dailyValues) > 0 ? array_sum($dailyValues) / count($dailyValues) : null;
+
+            $rowValues = [
+                $no++,
+                $cleanLoc,
+                $first->provider,
+                $first->description ?? '-',
+                $limit ? number_format($limit, 1) : '-',
+            ];
+            $rowValues = array_merge($rowValues, $dailyDates, [
+                $avg !== null ? number_format($avg, 2) : '-',
+                $first->remark ?? '-',
+            ]);
+
+            $ws->fromArray($rowValues, null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, count($headers), false);
+            $row++;
+        }
+
+        if ($records->isEmpty()) {
+            $ws->mergeCells('A2:' . $this->columnLetter(count($headers)) . '2');
+            $ws->setCellValue('A2', 'Tidak ada data bandwidth harian untuk periode ini');
+            $ws->getStyle('A2')->getFont()->setItalic(true);
+        }
+
+        $this->autoSizeColumns($ws, count($headers));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 6: Helpdesk Tickets
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildHelpdeskSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('Helpdesk Tickets');
+        $ws->setShowGridLines(true);
+
+        $headers = ['No', 'Ticket ID', 'Location', 'Requester', 'Department', 'Issue Description', 'Action Taken', 'Created At', 'Date Closed', 'Status'];
+        $this->writeHeaderRow($ws, $headers);
+
+        $tickets = Ticket::whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $row = 2;
+        $no = 1;
+        foreach ($tickets as $t) {
+            $ws->fromArray([
+                $no++,
+                '#' . $t->id,
+                $t->location ?? '-',
+                $t->requester ?? '-',
+                $t->department ?? '-',
+                $t->issue_description ?? '-',
+                $t->action_taken ?? '-',
+                $t->created_at ? $t->created_at->format('Y-m-d H:i') : '-',
+                $t->date_closed ? Carbon::parse($t->date_closed)->format('Y-m-d H:i') : '-',
+                strtoupper($t->status ?? 'OPEN'),
+            ], null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, 10, false);
+            $row++;
+        }
+
+        if ($tickets->isEmpty()) {
+            $ws->mergeCells('A2:J2');
+            $ws->setCellValue('A2', 'Tidak ada tiket helpdesk pada periode ini');
+            $ws->getStyle('A2')->getFont()->setItalic(true);
+        }
+
+        $this->autoSizeColumns($ws, 10);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHEET 7: Maintenance Logs (All categories merged)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function buildMaintenanceSheet(Spreadsheet $spreadsheet): void
+    {
+        $ws = $spreadsheet->createSheet();
+        $ws->setTitle('Maintenance Logs');
+        $ws->setShowGridLines(true);
+
+        $headers = ['No', 'Category', 'Site', 'Device Name', 'IP Address', 'Event Type', 'Status', 'Started At', 'Resolved At', 'Duration', 'Notes / Remark'];
+        $this->writeHeaderRow($ws, $headers);
+
+        $allLogs = [];
+
+        // Network logs
+        $netLogs = DB::table('network_maintenance_logs')
+            ->join('network_devices', 'network_maintenance_logs.device_id', '=', 'network_devices.id')
+            ->whereBetween(DB::raw('DATE(network_maintenance_logs.started_at)'), [$this->from, $this->to])
+            ->select('network_devices.site', 'network_devices.device_name', 'network_devices.ip_address', 'network_maintenance_logs.*')
+            ->get();
+        foreach ($netLogs as $l) {
+            $allLogs[] = array_merge((array) $l, ['category' => 'Network']);
+        }
+
+        // CCTV logs
+        $cctvLogs = DB::table('cctv_maintenance_logs')
+            ->join('cctv_devices', 'cctv_maintenance_logs.device_id', '=', 'cctv_devices.id')
+            ->whereBetween(DB::raw('DATE(cctv_maintenance_logs.started_at)'), [$this->from, $this->to])
+            ->select('cctv_devices.site', 'cctv_devices.device_name', 'cctv_devices.ip_address', 'cctv_devices.device_type', 'cctv_maintenance_logs.*')
+            ->get();
+        foreach ($cctvLogs as $l) {
+            $cat = !empty($l->device_type) ? strtoupper($l->device_type) : 'CCTV';
+            $allLogs[] = array_merge((array) $l, ['category' => $cat]);
+        }
+
+        // Server logs
+        $serverLogs = DB::table('server_maintenance_logs')
+            ->join('server_devices', 'server_maintenance_logs.device_id', '=', 'server_devices.id')
+            ->whereBetween(DB::raw('DATE(server_maintenance_logs.started_at)'), [$this->from, $this->to])
+            ->select('server_devices.site', 'server_devices.device_name', 'server_devices.ip_address', 'server_maintenance_logs.*')
+            ->get();
+        foreach ($serverLogs as $l) {
+            $allLogs[] = array_merge((array) $l, ['category' => 'Server']);
+        }
+
+        usort($allLogs, fn($a, $b) => strcmp($b['started_at'] ?? '', $a['started_at'] ?? ''));
+
+        $row = 2;
+        $no = 1;
+        foreach ($allLogs as $log) {
+            $duration = $this->formatDuration($log['started_at'] ?? null, $log['resolved_at'] ?? null);
+
+            $ws->fromArray([
+                $no++,
+                $log['category'],
+                $this->cleanLocation($log['site'] ?? '-'),
+                $log['device_name'] ?? '-',
+                $log['ip_address'] ?? '-',
+                strtoupper($log['event_type'] ?? 'MAINTENANCE'),
+                strtoupper($log['status'] ?? 'CLOSED'),
+                $log['started_at'] ?? '-',
+                $log['resolved_at'] ?? '-',
+                $duration,
+                $log['notes'] ?? '-',
+            ], null, "A{$row}");
+
+            $this->applyDataRowStyle($ws, $row, 11, false);
+            $row++;
+        }
+
+        if (empty($allLogs)) {
+            $ws->mergeCells('A2:K2');
+            $ws->setCellValue('A2', 'Tidak ada log maintenance / downtime pada periode ini');
+            $ws->getStyle('A2')->getFont()->setItalic(true);
+        }
+
+        $this->autoSizeColumns($ws, 11);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Formatting & Helper Methods
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private function writeHeaderRow(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $ws, array $headers): void
+    {
+        $ws->fromArray($headers, null, 'A1');
+        $ws->getRowDimension(1)->setRowHeight(24);
+
+        $endCol = chr(64 + count($headers));
+        $ws->getStyle("A1:{$endCol}1")->applyFromArray([
+            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 9],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D0D5DD']]],
+        ]);
+    }
+
+    private function applyDataRowStyle(
+        \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $ws,
+        int $row,
+        int $colCount,
+        bool $isWarning
+    ): void {
+        $endCol = chr(64 + $colCount);
+        $ws->getRowDimension($row)->setRowHeight(20);
+
+        $style = [
+            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+        ];
+
+        if ($isWarning) {
+            $style['fill'] = ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF1F2']];
+        } elseif ($row % 2 === 0) {
+            $style['fill'] = ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8FAFC']];
+        }
+
+        $ws->getStyle("A{$row}:{$endCol}{$row}")->applyFromArray($style);
+    }
+
+    private function autoSizeColumns(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $ws, int $colCount): void
+    {
+        for ($i = 1; $i <= $colCount; $i++) {
+            $col = chr(64 + $i);
+            $ws->getColumnDimension($col)->setAutoSize(true);
+        }
+    }
+
+    private function columnLetter(int $column): string
+    {
+        $letter = '';
+        while ($column > 0) {
+            $column--;
+            $letter = chr(65 + ($column % 26)) . $letter;
+            $column = intdiv($column, 26);
+        }
+
+        return $letter;
+    }
+
+    private function cleanLocation(?string $loc): string
+    {
+        if (!$loc) return '-';
+        return trim(preg_replace('/^F\d+\s+/i', '', $loc));
+    }
+
+    private function getDefaultCapacity(string $location, string $provider): ?float
+    {
+        $loc = strtoupper($location);
+        $p   = strtoupper($provider);
+
+        if (str_contains($loc, 'BOGOR')) {
+            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) return 180.0;
+            if (str_contains($p, 'TGG')) return 100.0;
+        } elseif (str_contains($loc, 'KARAWANG')) {
+            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) return 180.0;
+            if (str_contains($p, 'TGG')) return 80.0;
+        } elseif (str_contains($loc, 'TANGERANG')) {
+            if (str_contains($p, 'BIZNET')) return 240.0;
+            if (str_contains($p, 'TGG')) return 100.0;
+        }
+        return null;
+    }
+
+    private function findUptimeForSite(array $report, string $site): float
+    {
+        foreach ($report as $r) {
+            if (stripos($r['location'], $site) !== false) {
+                return (float) ($r['uptime'] ?? 100.0);
+            }
+        }
+        return 100.0;
+    }
+
+    private function calcAverage(array $numbers): float
+    {
+        if (empty($numbers)) return 100.0;
+        return round(array_sum($numbers) / count($numbers), 1);
+    }
+
+    private function formatDuration(?string $startedAt, ?string $resolvedAt): string
+    {
+        if (!$startedAt) return '-';
+        $start = Carbon::parse($startedAt);
+        $end   = $resolvedAt ? Carbon::parse($resolvedAt) : now();
+
+        $diff = $start->diff($end);
+        $parts = [];
+        if ($diff->d > 0) $parts[] = "{$diff->d}d";
+        if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
+        if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
+
+        return empty($parts) ? '0s' : implode(' ', $parts);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Legacy / Compatible Data Fetchers (kept for test compatibility)
     // ─────────────────────────────────────────────────────────────────────────
 
     private function getUptimeReport(array $sites, string $type): array
     {
         $results = [];
+
         foreach ($sites as $site) {
             if ($type === 'network') {
-                $devices = NetworkDevice::where('site', $site)->where('is_active', true)->get();
+                $devices = NetworkDevice::where('site', $site)->where('is_active', true)->where('is_excluded', false)->get();
             } elseif ($type === 'server') {
-                $devices = ServerDevice::where('site', $site)->where('is_active', true)->get();
+                $devices = ServerDevice::where('site', $site)->where('is_active', true)->where('is_excluded', false)->get();
             } else {
                 $devices = CctvDevice::where('site', $site)
                     ->where('device_type', strtoupper($type))
-                    ->where('is_active', true)->get();
+                    ->where('is_active', true)
+                    ->where('is_excluded', false)
+                    ->get();
             }
 
             $deviceIds = $devices->pluck('id');
             $qty       = $deviceIds->count();
 
             if ($qty === 0) {
-                $results[] = ['location' => $site, 'qty' => 0, 'uptime' => 100.0, 'failed_list' => []];
+                $results[] = [
+                    'location'    => $site,
+                    'qty'         => 0,
+                    'uptime'      => 100.0,
+                    'failed_list' => [],
+                ];
                 continue;
             }
 
             if ($type === 'server') {
-                $sourceIds  = $devices->pluck('source_id');
-                $rows       = DB::table('server_resource_daily')
+                $sourceIds = $devices->pluck('source_id');
+                $daysCount = Carbon::parse($this->from)->diffInDays(Carbon::parse($this->to)) + 1;
+                $rows = DB::table('server_resource_daily')
                     ->whereIn('host_id', $sourceIds)
-                    ->whereBetween('report_date', [$this->from, $this->to])->get();
-                $totalDays  = (Carbon::parse($this->from)->diffInDays(Carbon::parse($this->to)) + 1);
-                $totalSlots = $qty * $totalDays;
-                
-                // Group by host_id dan count berapa hari setiap host lapor
-                $hostDays = $rows->groupBy('host_id')->map(fn($group) => $group->pluck('report_date')->unique()->count());
-                $totalReportedDays = $hostDays->sum();
-                
-                $avgUptime = $totalSlots > 0 ? round(($totalReportedDays / $totalSlots) * 100, 2) : 100.0;
-                $presentIds = $rows->pluck('host_id')->unique();
-                $failedList = $devices->filter(fn ($d) => !$presentIds->contains($d->source_id))
-                    ->map(fn ($d) => [
-                        'device_name'    => $d->device_name,
-                        'ip_address'     => $d->ip_address,
-                        'report_date'    => $this->from . ' ~ ' . $this->to,
-                        'uptime_percent' => 0,
-                    ])->values()->toArray();
+                    ->whereBetween('report_date', [$this->from, $this->to])
+                    ->get();
 
+                $totalExpectedSlots = $qty * $daysCount;
+                $actualSlots        = $rows->count();
+                $avgUptime          = $totalExpectedSlots > 0 ? ($actualSlots / $totalExpectedSlots) * 100 : 100;
+                $avgUptime          = min(100.0, round($avgUptime, 2));
+
+                $failedList = [];
             } elseif ($type === 'network') {
-                $avgUptime  = DB::table('network_uptime_daily')
+                $avgUptime = DB::table('network_uptime_daily')
                     ->whereIn('device_id', $deviceIds)
                     ->whereBetween('report_date', [$this->from, $this->to])
                     ->avg('uptime_percent') ?? 100.0;
 
                 $failedList = DB::table('network_uptime_daily')
                     ->join('network_devices', 'network_uptime_daily.device_id', '=', 'network_devices.id')
-                    ->leftJoin('network_maintenance_logs', function($join) {
+                    ->leftJoin('network_maintenance_logs', function ($join) {
                         $join->on('network_uptime_daily.device_id', '=', 'network_maintenance_logs.device_id')
-                             ->on('network_uptime_daily.report_date', '=', DB::raw('DATE(network_maintenance_logs.started_at)'));
+                             ->where(function ($q) {
+                                 $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
+                                   ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
+                             });
                     })
                     ->whereIn('network_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('network_uptime_daily.report_date', [$this->from, $this->to])
                     ->where('network_uptime_daily.uptime_percent', '<', 100)
                     ->select(
-                        'network_devices.device_name', 
+                        'network_devices.device_name',
                         'network_devices.ip_address',
-                        'network_uptime_daily.report_date', 
+                        'network_uptime_daily.report_date',
                         'network_uptime_daily.uptime_percent',
                         'network_maintenance_logs.started_at',
                         'network_maintenance_logs.resolved_at',
                         'network_maintenance_logs.notes as notes_maintenance_log'
                     )
-                    ->orderBy('network_uptime_daily.report_date')
+                    ->orderBy('network_uptime_daily.report_date', 'desc')
                     ->get()
-                    ->map(function ($r) {
-                        $arr = (array) $r;
-                        $start = $r->started_at ? Carbon::parse($r->started_at) : Carbon::parse($r->report_date);
-                        $end   = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
-                        
-                        if ($end) {
-                            $diff = $start->diff($end);
-                            $parts = [];
-                            if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                            if ($diff->h > 0) $parts[] = "{$diff->h}h";
-                            if ($diff->i > 0) $parts[] = "{$diff->i}m";
-                            if ($diff->s > 0) $parts[] = "{$diff->s}s";
-                            $arr['duration'] = empty($parts) ? '0s' : implode('', $parts);
-                        } else {
-                            $arr['duration'] = '-';
-                        }
-                        return $arr;
-                    })
+                    ->map(fn($r) => (array) $r)
                     ->toArray();
-
             } else {
-                // cctv / nvr
-                $avgUptime  = DB::table('cctv_uptime_daily')
+                $avgUptime = DB::table('cctv_uptime_daily')
                     ->whereIn('device_id', $deviceIds)
                     ->whereBetween('report_date', [$this->from, $this->to])
                     ->avg('uptime_percent') ?? 100.0;
 
                 $failedList = DB::table('cctv_uptime_daily')
                     ->join('cctv_devices', 'cctv_uptime_daily.device_id', '=', 'cctv_devices.id')
-                    ->leftJoin('cctv_maintenance_logs', function($join) {
+                    ->leftJoin('cctv_maintenance_logs', function ($join) {
                         $join->on('cctv_uptime_daily.device_id', '=', 'cctv_maintenance_logs.device_id')
-                             ->on('cctv_uptime_daily.report_date', '=', DB::raw('DATE(cctv_maintenance_logs.started_at)'));
+                             ->where(function ($q) {
+                                 $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
+                                   ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
+                             });
                     })
                     ->whereIn('cctv_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('cctv_uptime_daily.report_date', [$this->from, $this->to])
                     ->where('cctv_uptime_daily.uptime_percent', '<', 100)
                     ->select(
-                        'cctv_devices.device_name', 
+                        'cctv_devices.device_name',
                         'cctv_devices.ip_address',
-                        'cctv_uptime_daily.report_date', 
+                        'cctv_uptime_daily.report_date',
                         'cctv_uptime_daily.uptime_percent',
                         'cctv_maintenance_logs.started_at',
                         'cctv_maintenance_logs.resolved_at',
                         'cctv_maintenance_logs.notes as notes_maintenance_log'
                     )
-                    ->orderBy('cctv_uptime_daily.report_date')
+                    ->orderBy('cctv_uptime_daily.report_date', 'desc')
                     ->get()
-                    ->map(function ($r) {
-                        $arr = (array) $r;
-                        $start = $r->started_at ? Carbon::parse($r->started_at) : Carbon::parse($r->report_date);
-                        $end   = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
-                        
-                        if ($end) {
-                            $diff = $start->diff($end);
-                            $parts = [];
-                            if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                            if ($diff->h > 0) $parts[] = "{$diff->h}h";
-                            if ($diff->i > 0) $parts[] = "{$diff->i}m";
-                            if ($diff->s > 0) $parts[] = "{$diff->s}s";
-                            $arr['duration'] = empty($parts) ? '0s' : implode('', $parts);
-                        } else {
-                            $arr['duration'] = '-';
-                        }
-                        return $arr;
-                    })
+                    ->map(fn($r) => (array) $r)
                     ->toArray();
             }
 
@@ -1072,6 +1211,7 @@ class InfraReportExport
                 'failed_list' => $failedList,
             ];
         }
+
         return $results;
     }
 
@@ -1079,19 +1219,40 @@ class InfraReportExport
     {
         $results = [];
         foreach ($sites as $site) {
+            $cleanSite = str_ireplace(['F1 ', 'F2 ', 'F3 '], '', $site);
+            $fct = '';
+            if (str_starts_with($site, 'F1')) $fct = 'F1';
+            elseif (str_starts_with($site, 'F2')) $fct = 'F2';
+            elseif (str_starts_with($site, 'F3')) $fct = 'F3';
+
             $rows = DB::table('bandwidth_daily')
-                ->where('location', $site)
+                ->where('location', 'like', "%$cleanSite%")
                 ->whereBetween('report_date', [$this->from, $this->to])
-                ->select('provider', 'description', DB::raw('AVG(value_mbps) as avg_mbps'))
-                ->groupBy('provider', 'description')
+                ->select('provider', 'description', 'remark', DB::raw('AVG(value_mbps) as avg_mbps'))
+                ->groupBy('provider', 'description', 'remark')
                 ->orderBy('provider')
                 ->get();
+
+            $contractsQuery = DB::table('isp_sla_contracts')
+                ->where('location', 'like', "%$cleanSite%");
+            if ($fct) {
+                $contractsQuery->where('fct', $fct);
+            }
+            $contracts = $contractsQuery->get()->keyBy(fn($c) => strtoupper($c->provider));
 
             $providers = [];
             foreach ($rows as $row) {
                 $p = $row->provider;
+                $pKey = strtoupper($p);
                 if (!isset($providers[$p])) {
-                    $providers[$p] = ['provider' => $p, 'avg_download' => null, 'avg_upload' => null];
+                    $limit = isset($contracts[$pKey]) ? (float) $contracts[$pKey]->bandwidth : $this->getDefaultCapacity($cleanSite, $p);
+                    $providers[$p] = [
+                        'provider'        => $p,
+                        'remark'          => $row->remark ?? '-',
+                        'avg_download'    => null,
+                        'avg_upload'      => null,
+                        'bandwidth_limit' => $limit,
+                    ];
                 }
                 if (str_contains(strtolower($row->description ?? ''), 'download')) {
                     $providers[$p]['avg_download'] = round($row->avg_mbps, 2);
@@ -1099,7 +1260,11 @@ class InfraReportExport
                     $providers[$p]['avg_upload'] = round($row->avg_mbps, 2);
                 }
             }
-            $results[] = ['location' => $site, 'providers' => array_values($providers)];
+
+            $results[] = [
+                'location'  => $site,
+                'providers' => array_values($providers),
+            ];
         }
         return $results;
     }
@@ -1108,379 +1273,23 @@ class InfraReportExport
     {
         $results = [];
         foreach ($sites as $site) {
-            $total  = Ticket::where('location', 'like', "%$site%")
-                ->whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59'])
-                ->count();
-            $closed = Ticket::where('location', 'like', "%$site%")
-                ->whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59'])
-                ->whereIn('status', ['closed', 'resolved'])->count();
-            $pending = Ticket::where('location', 'like', "%$site%")
-                ->whereIn('status', ['open', 'on-progress', 'pending'])
-                ->select('id as ticket_no', 'issue_description', 'created_at', 'status', 'date_closed', 'action_taken')
-                ->orderByDesc('created_at')->limit(20)->get()
-                ->map(function ($t) {
-                    $start = Carbon::parse($t->created_at);
-                    $end   = ($t->status === 'closed' || $t->status === 'resolved' || $t->date_closed) 
-                             ? Carbon::parse($t->date_closed ?? $t->updated_at) 
-                             : now();
-                    
-                    $diff = $start->diff($end);
-                    $parts = [];
-                    if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                    if ($diff->h > 0) $parts[] = "{$diff->h}h";
-                    if ($diff->i > 0) $parts[] = "{$diff->i}m";
-                    if ($diff->s > 0) $parts[] = "{$diff->s}s";
-                    $duration = empty($parts) ? '0s' : implode('', $parts);
+            $siteKey = str_replace([' Bogor', ' Karawang', ' Tangerang'], '', $site);
 
-                    return [
-                        'ticket_no'  => $t->ticket_no,
-                        'title'      => $t->issue_description,
-                        'status'     => $t->status,
-                        'duration'   => $duration,
-                        'remark'     => $t->action_taken ?? '-',
-                        'date'       => $t->created_at?->toDateString(),
-                    ];
-                });
+            $query = Ticket::where(function ($q) use ($site, $siteKey) {
+                $q->where('location', 'like', "%$site%")
+                  ->orWhere('location', 'like', "%$siteKey%");
+            })->whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59']);
+
+            $total  = (clone $query)->count();
+            $closed = (clone $query)->whereIn('status', ['closed', 'resolved'])->count();
+
             $results[] = [
-                'location'     => $site,
-                'case'         => $total,
-                'closed'       => $closed,
-                'performance'  => $total > 0 ? round(($closed / $total) * 100, 2) : 100.0,
-                'pending_list' => $pending,
+                'location'    => $site,
+                'case'        => $total,
+                'closed'      => $closed,
+                'performance' => $total > 0 ? round(($closed / $total) * 100, 2) : 100.0,
             ];
         }
         return $results;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Extra sheets: raw data per category
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private function addRawDataSheets(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet): void
-    {
-        $borderAll = [
-            'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
-        ];
-        $hdrStyle = [
-            'font'      => ['bold' => true],
-            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2EFDA']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
-        ];
-        $dataStyle = [
-            'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
-        ];
-
-        // ── 1. Network Uptime ─────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('Network Uptime');
-        $ws->fromArray(['Location', 'Qty', 'Uptime %', 'Device Name', 'IP Address', 'Date', 'Downtime %', 'Remark'], null, 'A1');
-        $ws->getStyle('A1:H1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getUptimeReport(self::SITES, 'network') as $site) {
-            if (empty($site['failed_list'])) {
-                $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], '-', '-', '-', '-', 'No Issues'], null, "A{$row}");
-                $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            } else {
-                foreach ($site['failed_list'] as $f) {
-                    $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], $f['device_name'], $f['ip_address'], $f['report_date'], number_format(100 - $f['uptime_percent'], 2) . '%', 'System Check'], null, "A{$row}");
-                    $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                    $row++;
-                }
-            }
-        }
-        foreach (range('A', 'H') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-
-        // ── 2. NVR Uptime ─────────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('NVR Uptime');
-        $ws->fromArray(['Location', 'Qty', 'Uptime %', 'Device Name', 'IP Address', 'Date', 'Downtime %', 'Remark'], null, 'A1');
-        $ws->getStyle('A1:H1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getUptimeReport(self::SITES, 'nvr') as $site) {
-            if (empty($site['failed_list'])) {
-                $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], '-', '-', '-', '-', 'No Issues'], null, "A{$row}");
-                $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            } else {
-                foreach ($site['failed_list'] as $f) {
-                    $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], $f['device_name'], $f['ip_address'], $f['report_date'], number_format(100 - $f['uptime_percent'], 2) . '%', 'System Check'], null, "A{$row}");
-                    $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                    $row++;
-                }
-            }
-        }
-        foreach (range('A', 'H') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-
-        // ── 3. CCTV Uptime ────────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('CCTV Uptime');
-        $ws->fromArray(['Location', 'Qty', 'Uptime %', 'Device Name', 'IP Address', 'Date', 'Downtime %', 'Remark'], null, 'A1');
-        $ws->getStyle('A1:H1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getUptimeReport(self::SITES, 'cctv') as $site) {
-            if (empty($site['failed_list'])) {
-                $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], '-', '-', '-', '-', 'No Issues'], null, "A{$row}");
-                $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            } else {
-                foreach ($site['failed_list'] as $f) {
-                    $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], $f['device_name'], $f['ip_address'], $f['report_date'], number_format(100 - $f['uptime_percent'], 2) . '%', 'System Check'], null, "A{$row}");
-                    $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                    $row++;
-                }
-            }
-        }
-        foreach (range('A', 'H') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-
-        // ── 4. Server Uptime ──────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('Server Uptime');
-        $ws->fromArray(['Location', 'Qty', 'Uptime %', 'Device Name', 'IP Address', 'Date', 'Downtime %', 'Remark'], null, 'A1');
-        $ws->getStyle('A1:H1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getUptimeReport(self::SITES, 'server') as $site) {
-            if (empty($site['failed_list'])) {
-                $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], '-', '-', '-', '-', 'No Issues'], null, "A{$row}");
-                $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            } else {
-                foreach ($site['failed_list'] as $f) {
-                    $ws->fromArray([$site['location'], $site['qty'], $site['uptime'], $f['device_name'], $f['ip_address'], $f['report_date'], number_format(100 - $f['uptime_percent'], 2) . '%', 'System Check'], null, "A{$row}");
-                    $ws->getStyle("A{$row}:H{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                    $row++;
-                }
-            }
-        }
-        foreach (range('A', 'H') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-
-        // ── 5. Bandwidth ──────────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('Bandwidth');
-        $ws->fromArray(['Location', 'Provider', 'Avg Download (Mbps)', 'Avg Upload (Mbps)'], null, 'A1');
-        $ws->getStyle('A1:D1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getBandwidthReport(self::SITES) as $b) {
-            foreach ($b['providers'] as $p) {
-                $ws->fromArray([$b['location'], $p['provider'], $p['avg_download'] ?? 'N/A', $p['avg_upload'] ?? 'N/A'], null, "A{$row}");
-                $ws->getStyle("A{$row}:D{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            }
-            if (empty($b['providers'])) {
-                $ws->fromArray([$b['location'], 'No Data', '-', '-'], null, "A{$row}");
-                $ws->getStyle("A{$row}:D{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            }
-        }
-        foreach (range('A', 'D') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-
-        // ── 6. Helpdesk ───────────────────────────────────────────────────
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('Helpdesk');
-        $ws->fromArray(['Location', 'Total Case', 'Closed', 'Open', 'Resolution %', 'Ticket#', 'Title', 'Status', 'Created At'], null, 'A1');
-        $ws->getStyle('A1:I1')->applyFromArray(array_merge($borderAll, $hdrStyle));
-        $row = 2;
-        foreach ($this->getHelpdeskReport(self::SITES) as $h) {
-            $open = $h['case'] - $h['closed'];
-            $totalCases = $h['case'] ?? 0 ;
-            $closedCases = $h['closed'] ?? 0;
-            $openCases = $open > 0 ? $open : 0;
-            $resolution = $h['performance'] ?? 0;
-            
-            if (empty($h['pending_list']) || $h['pending_list']->isEmpty()) {
-                $ws->fromArray([$h['location'], $totalCases, $closedCases, $openCases, $resolution . '%', '-', '-', '-', '-'], null, "A{$row}");
-                $ws->getStyle("A{$row}:I{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                $row++;
-            } else {
-                $first = true;
-                foreach ($h['pending_list'] as $t) {
-                    $ws->fromArray([
-                        $first ? $h['location'] : '',
-                        $first ? $totalCases : '',
-                        $first ? $closedCases : '',
-                        $first ? $openCases : '',
-                        $first ? $h['performance'] . '%' : '',
-                        '#' . $t['ticket_no'],
-                        $t['title'],
-                        strtoupper($t['status']),
-                        $t['created_at'],
-                    ], null, "A{$row}");
-                    $ws->getStyle("A{$row}:I{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-                    $first = false;
-                    $row++;
-                }
-            }
-        }
-        foreach (range('A', 'I') as $col) { $ws->getColumnDimension($col)->setAutoSize(true); }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Extra sheet: Maintenance Log (last sheet)
-    // Queries network_maintenance_logs, cctv_maintenance_logs, server_maintenance_logs
-    // for records where started_at falls within the report period.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private function addMaintenanceLogSheet(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet): void
-    {
-        $ws = $spreadsheet->createSheet();
-        $ws->setTitle('Maintenance Log');
-
-        $borderAll = [
-            'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
-        ];
-        $hdrStyle = [
-            'font'      => ['bold' => true],
-            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE4D6']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
-        ];
-        $dataStyle = [
-            'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
-        ];
-
-        // Title
-        $ws->setCellValue('A1', 'Maintenance Log — ' . Carbon::parse($this->from)->format('d M Y') . ' to ' . Carbon::parse($this->to)->format('d M Y'));
-        $ws->mergeCells('A1:J1');
-        $ws->getStyle('A1:J1')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 12],
-            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE4D6']],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => '000000']]],
-        ]);
-
-        // Headers
-        $headers = ['Category', 'Location', 'Device Name', 'IP Address', 'Status', 'Event Type', 'Started At', 'Resolved At', 'Duration', 'Notes'];
-        $ws->fromArray($headers, null, 'A2');
-        $ws->getStyle('A2:J2')->applyFromArray(array_merge($borderAll, $hdrStyle));
-
-        $row = 3;
-
-        // ── Network maintenance logs ──────────────────────────────────────
-        $networkLogs = DB::table('network_maintenance_logs')
-            ->join('network_devices', 'network_maintenance_logs.device_id', '=', 'network_devices.id')
-            ->whereBetween('network_maintenance_logs.started_at', [$this->from, $this->to])
-            ->select(
-                'network_devices.device_name',
-                'network_devices.ip_address',
-                'network_devices.site',
-                'network_maintenance_logs.status',
-                'network_maintenance_logs.event_type',
-                'network_maintenance_logs.started_at',
-                'network_maintenance_logs.resolved_at',
-                'network_maintenance_logs.notes'
-            )
-            ->orderBy('network_maintenance_logs.started_at')
-            ->get();
-
-        foreach ($networkLogs as $log) {
-            $duration = $this->formatDuration($log->started_at, $log->resolved_at);
-            $ws->fromArray([
-                'Network',
-                $log->site ?? '',
-                $log->device_name ?? '',
-                $log->ip_address ?? '',
-                strtoupper($log->status ?? ''),
-                $log->event_type ?? '',
-                $log->started_at ?? '',
-                $log->resolved_at ?? '-',
-                $duration,
-                $log->notes ?? '',
-            ], null, "A{$row}");
-            $ws->getStyle("A{$row}:J{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-            $row++;
-        }
-
-        // ── CCTV maintenance logs (covers NVR + CCTV) ────────────────────
-        $cctvLogs = DB::table('cctv_maintenance_logs')
-            ->join('cctv_devices', 'cctv_maintenance_logs.device_id', '=', 'cctv_devices.id')
-            ->whereBetween('cctv_maintenance_logs.started_at', [$this->from, $this->to])
-            ->select(
-                'cctv_devices.device_name',
-                'cctv_devices.ip_address',
-                'cctv_devices.site',
-                'cctv_devices.device_type',
-                'cctv_maintenance_logs.status',
-                'cctv_maintenance_logs.event_type',
-                'cctv_maintenance_logs.started_at',
-                'cctv_maintenance_logs.resolved_at',
-                'cctv_maintenance_logs.notes'
-            )
-            ->orderBy('cctv_maintenance_logs.started_at')
-            ->get();
-
-        foreach ($cctvLogs as $log) {
-            $duration = $this->formatDuration($log->started_at, $log->resolved_at);
-            $category = match (strtoupper($log->device_type ?? '')) {
-                'NVR'  => 'NVR',
-                'CCTV' => 'CCTV',
-                default => 'CCTV/NVR',
-            };
-            $ws->fromArray([
-                $category,
-                $log->site ?? '',
-                $log->device_name ?? '',
-                $log->ip_address ?? '',
-                strtoupper($log->status ?? ''),
-                $log->event_type ?? '',
-                $log->started_at ?? '',
-                $log->resolved_at ?? '-',
-                $duration,
-                $log->notes ?? '',
-            ], null, "A{$row}");
-            $ws->getStyle("A{$row}:J{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-            $row++;
-        }
-
-        // ── Server maintenance logs ───────────────────────────────────────
-        $serverLogs = DB::table('server_maintenance_logs')
-            ->join('server_devices', 'server_maintenance_logs.device_id', '=', 'server_devices.id')
-            ->whereBetween('server_maintenance_logs.started_at', [$this->from, $this->to])
-            ->select(
-                'server_devices.device_name',
-                'server_devices.ip_address',
-                'server_devices.site',
-                'server_maintenance_logs.status',
-                'server_maintenance_logs.event_type',
-                'server_maintenance_logs.started_at',
-                'server_maintenance_logs.resolved_at',
-                'server_maintenance_logs.notes'
-            )
-            ->orderBy('server_maintenance_logs.started_at')
-            ->get();
-
-        foreach ($serverLogs as $log) {
-            $start    = Carbon::parse($log->started_at);
-            $end      = $log->resolved_at ? Carbon::parse($log->resolved_at) : null;
-            $duration = $end ? number_format($start->diffInDays($end), 2) . ' day(s)' : 'Ongoing';
-            $ws->fromArray([
-                'Server',
-                $log->site ?? '',
-                $log->device_name ?? '',
-                $log->ip_address ?? '',
-                strtoupper($log->status ?? ''),
-                $log->event_type ?? '',
-                $log->started_at ?? '',
-                $log->resolved_at ?? '-',
-                $duration,
-                $log->notes ?? '',
-            ], null, "A{$row}");
-            $ws->getStyle("A{$row}:J{$row}")->applyFromArray(array_merge($borderAll, $dataStyle));
-            $row++;
-        }
-
-        // Empty state
-        if ($row === 3) {
-            $ws->setCellValue('A3', 'No maintenance logs found for this period.');
-            $ws->mergeCells('A3:J3');
-            $ws->getStyle('A3:J3')->applyFromArray([
-                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
-                'font'      => ['italic' => true, 'color' => ['rgb' => '888888']],
-                'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'CCCCCC']]],
-            ]);
-        }
-
-        foreach (range('A', 'J') as $col) {
-            $ws->getColumnDimension($col)->setAutoSize(true);
-        }
-        $ws->getDefaultRowDimension()->setRowHeight(25);
     }
 }

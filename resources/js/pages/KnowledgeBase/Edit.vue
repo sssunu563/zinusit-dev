@@ -8,6 +8,9 @@ import {
     Save,
     Sparkles,
     Trash2,
+    Image as ImageIcon,
+    Loader2,
+    UploadCloud,
 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import AppConfirmDialog from '@/components/AppConfirmDialog.vue';
@@ -117,6 +120,125 @@ const insertFormat = (tag: string) => {
     }, 50);
 };
 
+const fileInput = ref<HTMLInputElement | null>(null);
+const isUploadingImage = ref(false);
+const uploadError = ref('');
+
+const getXsrfToken = () => {
+    const match = document.cookie.match(new RegExp('(^|;\\s*)XSRF-TOKEN=([^;]+)'));
+    return match ? decodeURIComponent(match[2]) : '';
+};
+
+const insertImageMarkdown = (alt: string, url: string) => {
+    const textarea = document.getElementById(
+        'article-content',
+    ) as HTMLTextAreaElement | null;
+    const markdown = `\n\n![${alt || 'Gambar Panduan'}](${url})\n\n`;
+
+    if (!textarea) {
+        form.content += markdown;
+        return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    form.content =
+        form.content.substring(0, start) +
+        markdown +
+        form.content.substring(end);
+
+    setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(
+            start + markdown.length,
+            start + markdown.length,
+        );
+    }, 50);
+};
+
+const uploadImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+        uploadError.value =
+            'Hanya file gambar (PNG, JPG, WebP, GIF, SVG) yang didukung.';
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        uploadError.value = 'Ukuran gambar maksimal 5MB.';
+        return;
+    }
+
+    isUploadingImage.value = true;
+    uploadError.value = '';
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+        const response = await fetch('/kb/upload-image', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': getXsrfToken(),
+            },
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.message || 'Gagal mengunggah gambar.');
+        }
+
+        const data = await response.json();
+        const cleanName = file.name.replace(/\.[^/.]+$/, '');
+        insertImageMarkdown(cleanName, data.url);
+    } catch (err: any) {
+        uploadError.value =
+            err.message || 'Terjadi kesalahan saat mengunggah gambar.';
+    } finally {
+        isUploadingImage.value = false;
+        if (fileInput.value) {
+            fileInput.value.value = '';
+        }
+    }
+};
+
+const triggerImageUpload = () => {
+    uploadError.value = '';
+    fileInput.value?.click();
+};
+
+const onFileChange = (e: Event) => {
+    const input = e.target as HTMLInputElement;
+    if (input.files && input.files[0]) {
+        uploadImageFile(input.files[0]);
+    }
+};
+
+const onTextareaPaste = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+            const file = items[i].getAsFile();
+            if (file) {
+                e.preventDefault();
+                uploadImageFile(file);
+                break;
+            }
+        }
+    }
+};
+
+const onTextareaDrop = (e: DragEvent) => {
+    if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+            e.preventDefault();
+            uploadImageFile(file);
+        }
+    }
+};
+
 const renderPreview = (content: string) => {
     if (!content) return '<p class="text-slate-400 italic">Belum ada konten untuk ditampilkan.</p>';
 
@@ -128,6 +250,13 @@ const renderPreview = (content: string) => {
     html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold text-slate-800 mt-6 mb-2">$1</h3>');
     html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-black text-slate-900 mt-8 mb-3 border-b border-slate-100 pb-2">$1</h2>');
     html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-black text-slate-900 mt-8 mb-4">$1</h1>');
+
+    // Images (Markdown: ![alt](url))
+    html = html.replace(
+        /!\[(.*?)\]\((.*?)\)/gim,
+        '<figure class="my-6 text-center"><img src="$2" alt="$1" class="rounded-2xl max-w-full h-auto border border-slate-200/80 shadow-xs mx-auto object-contain max-h-[480px]" /><figcaption class="text-center text-xs text-slate-400 mt-2 italic">$1</figcaption></figure>',
+    );
+
     html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
     html = html.replace(/^\> (.*$)/gim, '<blockquote class="border-l-4 border-emerald-600 bg-emerald-50/60 p-4 rounded-r-xl my-4 text-slate-700">$1</blockquote>');
@@ -328,6 +457,30 @@ const deleteArticle = () => {
                                     >
                                         Note
                                     </button>
+
+                                    <span class="h-4 w-px bg-slate-200 mx-1"></span>
+
+                                    <!-- Image Upload Button -->
+                                    <button
+                                        type="button"
+                                        :disabled="isUploadingImage"
+                                        title="Sisipkan Gambar (Pilih file komputer, drag & drop, atau paste screenshot Ctrl+V)"
+                                        class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50 cursor-pointer"
+                                        @click="triggerImageUpload"
+                                    >
+                                        <Loader2 v-if="isUploadingImage" class="size-3.5 animate-spin text-emerald-700" />
+                                        <ImageIcon v-else class="size-3.5 text-emerald-700" />
+                                        <span>{{ isUploadingImage ? 'Mengunggah...' : 'Gambar' }}</span>
+                                    </button>
+
+                                    <!-- Hidden File Input -->
+                                    <input
+                                        ref="fileInput"
+                                        type="file"
+                                        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                                        class="hidden"
+                                        @change="onFileChange"
+                                    />
                                 </div>
 
                                 <!-- View Toggle -->
@@ -336,7 +489,7 @@ const deleteArticle = () => {
                                         type="button"
                                         :class="[
                                             'flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-all',
-                                            activeTab === 'write'
+                                             activeTab === 'write'
                                                 ? 'bg-white text-slate-800 shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-700',
                                         ]"
@@ -360,15 +513,52 @@ const deleteArticle = () => {
                             </div>
 
                             <!-- Editor Textarea -->
-                            <div v-show="activeTab === 'write'">
-                                <textarea
-                                    id="article-content"
-                                    v-model="form.content"
-                                    rows="16"
-                                    placeholder="Tuliskan isi artikel..."
-                                    class="w-full font-mono text-sm leading-relaxed rounded-2xl border-slate-200 p-4 text-slate-800 placeholder:text-slate-400 focus:border-[#003628] focus:ring-[#003628]"
-                                    required
-                                ></textarea>
+                            <div v-show="activeTab === 'write'" class="space-y-2">
+                                <div
+                                    v-if="uploadError"
+                                    class="flex items-center justify-between p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium"
+                                >
+                                    <span>{{ uploadError }}</span>
+                                    <button
+                                        type="button"
+                                        class="text-rose-500 hover:text-rose-800 font-bold ml-2 cursor-pointer"
+                                        @click="uploadError = ''"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+
+                                <div class="relative">
+                                    <textarea
+                                        id="article-content"
+                                        v-model="form.content"
+                                        rows="16"
+                                        placeholder="Tuliskan isi panduan di sini. Mendukung pemformatan Markdown seperti ## Judul, **tebal**, daftar, dan kode...&#10;&#10;💡 Tips Gambar: Anda dapat langsung klik tombol 'Gambar', drag & drop file ke sini, atau tekan Ctrl+V untuk paste screenshot!"
+                                        class="w-full font-mono text-sm leading-relaxed rounded-2xl border-slate-200 p-4 text-slate-800 placeholder:text-slate-400 focus:border-[#003628] focus:ring-[#003628]"
+                                        required
+                                        @paste="onTextareaPaste"
+                                        @drop="onTextareaDrop"
+                                        @dragover.prevent
+                                    ></textarea>
+
+                                    <!-- Loading overlay when uploading -->
+                                    <div
+                                        v-if="isUploadingImage"
+                                        class="absolute inset-0 bg-white/80 backdrop-blur-[1px] rounded-2xl flex flex-col items-center justify-center gap-2 z-10"
+                                    >
+                                        <Loader2 class="size-7 animate-spin text-emerald-700" />
+                                        <p class="text-xs font-bold text-slate-700">Mengunggah gambar ke server...</p>
+                                    </div>
+                                </div>
+
+                                <div class="flex flex-wrap items-center justify-between text-[11px] text-slate-400 px-1 gap-2">
+                                    <span class="flex items-center gap-1.5">
+                                        <UploadCloud class="size-3.5 text-emerald-600" />
+                                        Drag & drop gambar ke sini atau tekan <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">Ctrl + V</kbd> untuk paste screenshot.
+                                    </span>
+                                    <span>Maks. 5MB (PNG, JPG, WebP, GIF)</span>
+                                </div>
+
                                 <p v-if="form.errors.content" class="mt-1 text-xs text-rose-500 font-medium">
                                     {{ form.errors.content }}
                                 </p>

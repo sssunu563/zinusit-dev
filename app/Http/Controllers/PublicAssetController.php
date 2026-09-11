@@ -28,7 +28,29 @@ class PublicAssetController extends Controller
             }
         }
 
-        // 2. Search Snipe-IT Hardware:
+        // Fallback to STB if still not found and numeric
+        if (is_numeric($serial)) {
+            $stb = Stb::find((int) $serial);
+            if ($stb) {
+                return $this->handleStbPublic($request, $stb);
+            }
+        }
+
+        // Redirect directly to unified CheckAssets portal with tag param
+        return redirect()->route('public.check-assets', ['tag' => $serial]);
+    }
+
+    /**
+     * Search and format asset data by serial, asset_tag, search string or ID.
+     */
+    public function findAsset(string $serial): ?array
+    {
+        $serial = trim($serial);
+        if ($serial === '') {
+            return null;
+        }
+
+        // Search Snipe-IT Hardware:
         $assetData = null;
 
         // A. By Asset Tag (e.g. test111)
@@ -61,16 +83,8 @@ class PublicAssetController extends Controller
             }
         }
 
-        // E. Fallback to STB if still not found and numeric
-        if (!$assetData && is_numeric($serial)) {
-            $stb = Stb::find((int) $serial);
-            if ($stb) {
-                return $this->handleStbPublic($request, $stb);
-            }
-        }
-
         if (!$assetData) {
-            abort(404, 'Asset/Document not found');
+            return null;
         }
 
         $assetId = $assetData['id'];
@@ -92,34 +106,32 @@ class PublicAssetController extends Controller
             }
         }
 
-        return Inertia::render('Public/AssetShow', [
-            'asset' => [
-                'id'              => $assetData['id'],
-                'name'            => $assetData['name'] ?? $assetData['model']['name'] ?? 'Hardware Asset',
-                'asset_tag'       => $assetData['asset_tag'] ?? '-',
-                'serial'          => $assetData['serial'] ?? '-',
-                'model'           => $assetData['model']['name'] ?? '-',
-                'model_number'    => $assetData['model_number'] ?? null,
-                'category'        => $assetData['category']['name'] ?? 'Hardware',
-                'manufacturer'    => $assetData['manufacturer']['name'] ?? null,
-                'image'           => $assetData['image'] ?? null,
-                'status'          => $assetData['status_label']['name'] ?? 'Active',
-                'status_type'     => $assetData['status_label']['status_type'] ?? 'deployable',
-                'assigned_to'     => $assetData['assigned_to']['name'] ?? 'Available / In Stock',
-                'assigned_email'  => $assetData['assigned_to']['email'] ?? null,
-                'location'        => $assetData['location']['name'] ?? ($assetData['rtd_location']['name'] ?? 'Warehouse'),
-                'company'         => $assetData['company']['name'] ?? 'Zinus Global Indonesia',
-                'purchase_date'   => $assetData['purchase_date']['formatted'] ?? null,
-                'warranty_months' => $assetData['warranty_months'] ?? null,
-                'notes'           => $assetData['notes'] ?? null,
-                'components'      => array_map(fn($c) => [
-                    'name'     => $c['name'],
-                    'category' => $c['category']['name'] ?? null,
-                    'qty'      => $c['qty'] ?? 1,
-                ], $components),
-                'custom_fields'   => $customFields,
-            ]
-        ]);
+        return [
+            'id'              => $assetData['id'],
+            'name'            => $assetData['name'] ?? $assetData['model']['name'] ?? 'Hardware Asset',
+            'asset_tag'       => $assetData['asset_tag'] ?? '-',
+            'serial'          => $assetData['serial'] ?? '-',
+            'model'           => $assetData['model']['name'] ?? '-',
+            'model_number'    => $assetData['model_number'] ?? null,
+            'category'        => $assetData['category']['name'] ?? 'Hardware',
+            'manufacturer'    => $assetData['manufacturer']['name'] ?? null,
+            'image'           => $assetData['image'] ?? null,
+            'status'          => $assetData['status_label']['name'] ?? 'Active',
+            'status_type'     => $assetData['status_label']['status_type'] ?? 'deployable',
+            'assigned_to'     => $assetData['assigned_to']['name'] ?? 'Available / In Stock',
+            'assigned_email'  => $assetData['assigned_to']['email'] ?? null,
+            'location'        => $assetData['location']['name'] ?? ($assetData['rtd_location']['name'] ?? 'Warehouse'),
+            'company'         => $assetData['company']['name'] ?? 'Zinus Global Indonesia',
+            'purchase_date'   => $assetData['purchase_date']['formatted'] ?? null,
+            'warranty_months' => $assetData['warranty_months'] ?? null,
+            'notes'           => $assetData['notes'] ?? null,
+            'components'      => array_map(fn($c) => [
+                'name'     => $c['name'],
+                'category' => $c['category']['name'] ?? null,
+                'qty'      => $c['qty'] ?? 1,
+            ], $components),
+            'custom_fields'   => $customFields,
+        ];
     }
 
     protected function handleStbPublic(Request $request, Stb $stb)
@@ -167,7 +179,40 @@ class PublicAssetController extends Controller
      */
     public function checkAssets(Request $request)
     {
-        return Inertia::render('Public/CheckAssets');
+        $tag = $request->query('tag') ?? $request->query('serial') ?? $request->query('q');
+        $initialAsset = null;
+        $initialError = null;
+
+        if (!empty($tag)) {
+            $initialAsset = $this->findAsset($tag);
+            if (!$initialAsset) {
+                $initialError = "Aset dengan nomor tag atau serial '{$tag}' tidak ditemukan.";
+            }
+        }
+
+        return Inertia::render('Public/CheckAssets', [
+            'initialTag'   => $tag,
+            'initialAsset' => $initialAsset,
+            'initialError' => $initialError,
+        ]);
+    }
+
+    /**
+     * Search single asset by tag/serial for instant frontend lookup.
+     */
+    public function lookupAsset(Request $request)
+    {
+        $tag = $request->query('tag') ?? $request->query('serial') ?? $request->query('q');
+        if (empty($tag)) {
+            return response()->json(['message' => 'Parameter tag atau serial diperlukan.'], 400);
+        }
+
+        $asset = $this->findAsset($tag);
+        if (!$asset) {
+            return response()->json(['message' => "Aset '{$tag}' tidak ditemukan di sistem manajemen aset."], 404);
+        }
+
+        return response()->json(['asset' => $asset]);
     }
 
     /**

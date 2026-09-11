@@ -53,6 +53,12 @@ Route::post('a/{id}/verify', [\App\Http\Controllers\PublicAssetController::class
 Route::get('check-assets', [\App\Http\Controllers\PublicAssetController::class, 'checkAssets'])
     ->name('public.check-assets');
 Route::post('check-assets', [\App\Http\Controllers\PublicAssetController::class, 'fetchAssetsByEmail']);
+Route::get('check-assets/lookup', [\App\Http\Controllers\PublicAssetController::class, 'lookupAsset'])
+    ->name('public.check-assets.lookup');
+
+// Public Help Center / Knowledge Base routes (for general users)
+Route::get('help', [\App\Http\Controllers\PublicHelpController::class, 'index'])->name('public.help.index');
+Route::get('help/{article:slug}', [\App\Http\Controllers\PublicHelpController::class, 'show'])->name('public.help.show');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     // Force password change (must run before any other auth page)
@@ -166,10 +172,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('audit', [\App\Http\Controllers\AuditController::class, 'index'])->name('audit.index');
     Route::post('audit', [\App\Http\Controllers\AuditController::class, 'store'])->name('audit.store');
     Route::get('audit/{session}', [\App\Http\Controllers\AuditController::class, 'show'])->name('audit.show');
+    Route::delete('audit/{session}', [\App\Http\Controllers\AuditController::class, 'destroy'])->name('audit.destroy');
     Route::post('audit/{session}/scan', [\App\Http\Controllers\AuditController::class, 'scan'])->name('audit.scan');
+    Route::get('audit/{session}/asset/{item}/edit', [\App\Http\Controllers\AssetController::class, 'auditEdit'])->name('audit.asset.edit');
+    Route::put('audit/{session}/asset/{item}', [\App\Http\Controllers\AuditController::class, 'updateAsset'])->name('audit.asset.update');
     Route::post('audit/{session}/verify', [\App\Http\Controllers\AuditController::class, 'verify'])->name('audit.verify');
     Route::post('audit/{session}/complete', [\App\Http\Controllers\AuditController::class, 'complete'])->name('audit.complete');
     Route::get('audit/{session}/export', [\App\Http\Controllers\AuditController::class, 'export'])->name('audit.export');
+    Route::get('audit/{session}/export-pdf', [\App\Http\Controllers\AuditController::class, 'exportPdf'])->name('audit.export-pdf');
     Route::post('audit/{session}/sync-item/{item}', [\App\Http\Controllers\AuditController::class, 'syncItem'])->name('audit.sync-item');
 
     // Inspection menu route (different from resource)
@@ -205,10 +215,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('audit/{session}/complete', [\App\Http\Controllers\AuditController::class, 'complete'])->name('audit.complete');
     Route::get('audit/{session}/export', [\App\Http\Controllers\AuditController::class, 'export'])->name('audit.export');
 
-    // Knowledge Base routes
+    // Knowledge Base routes (Staff / Admin IT only)
     Route::get('kb', [\App\Http\Controllers\KnowledgeBaseController::class, 'index'])->name('kb.index');
     Route::get('kb/create', [\App\Http\Controllers\KnowledgeBaseController::class, 'create'])->name('kb.create');
     Route::post('kb', [\App\Http\Controllers\KnowledgeBaseController::class, 'store'])->name('kb.store');
+    Route::post('kb/upload-image', [\App\Http\Controllers\KnowledgeBaseController::class, 'uploadImage'])->name('kb.upload-image');
     Route::get('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'show'])->name('kb.show');
     Route::get('kb/{article:slug}/edit', [\App\Http\Controllers\KnowledgeBaseController::class, 'edit'])->name('kb.edit');
     Route::put('kb/{article:slug}', [\App\Http\Controllers\KnowledgeBaseController::class, 'update'])->name('kb.update');
@@ -223,7 +234,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('reports/stats', [ReportController::class, 'getStats'])->name('reports.stats');
     Route::get('infra-report', [\App\Http\Controllers\Report\InfraReportController::class, 'index'])->name('infra-report.index');
-    Route::post('/infra-report/data', [App\Http\Controllers\Report\InfraReportController::class, 'data'])->name('infra-report.data');
+    Route::get('infra-report/device-settings', [\App\Http\Controllers\Report\InfraReportController::class, 'deviceSettings'])->name('infra-report.device-settings');
+    Route::put('infra-report/device-settings/{type}/{id}', [\App\Http\Controllers\Report\InfraReportController::class, 'updateDeviceSetting'])->name('infra-report.device-settings.update');
+    Route::post('infra-report/device-settings/batch', [\App\Http\Controllers\Report\InfraReportController::class, 'batchUpdateDeviceSettings'])->name('infra-report.device-settings.batch');
+    Route::post('infra-report/bandwidth-capacity', [\App\Http\Controllers\Report\InfraReportController::class, 'updateBandwidthCapacity'])->name('infra-report.bandwidth-capacity');
+    Route::post('infra-report/maintenance-log', [\App\Http\Controllers\Report\InfraReportController::class, 'saveMaintenanceLog'])->name('infra-report.maintenance-log.save');
+    Route::delete('infra-report/maintenance-log/{type}/{id}', [\App\Http\Controllers\Report\InfraReportController::class, 'deleteMaintenanceLog'])->name('infra-report.maintenance-log.delete');
+    Route::match(['get', 'post'], '/infra-report/data', [App\Http\Controllers\Report\InfraReportController::class, 'data'])->name('infra-report.data');
     Route::get('/infra-report/export', [App\Http\Controllers\Report\InfraReportController::class, 'export'])->name('infra-report.export');
     Route::post('/infra-report/bandwidth/remark', [App\Http\Controllers\Report\InfraReportController::class, 'updateBandwidthRemark'])->name('infra-report.bandwidth.remark');
     Route::post('/infra-report/helpdesk/remark', [App\Http\Controllers\Report\InfraReportController::class, 'updateHelpdeskRemark'])->name('infra-report.helpdesk.remark');

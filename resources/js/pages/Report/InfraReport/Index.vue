@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import {
@@ -14,6 +14,7 @@ import {
     AlertCircle,
     ChevronLeft,
     ChevronRight,
+    Settings,
 } from 'lucide-vue-next';
 import TabWeekly from './TabWeekly.vue';
 import TabMonthly from './TabMonthly.vue';
@@ -28,12 +29,14 @@ const formatDate = (d: Date) => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
-const today = new Date();
+const yesterday = new Date();
+yesterday.setDate(yesterday.getDate() - 1);
 const sevenDaysAgo = new Date();
-sevenDaysAgo.setDate(today.getDate() - 6);
+sevenDaysAgo.setDate(yesterday.getDate() - 6);
 
 const weeklyFrom = ref(formatDate(sevenDaysAgo));
-const weeklyTo = ref(formatDate(today));
+const weeklyTo = ref(formatDate(yesterday));
+const maxDate = formatDate(yesterday); // H-1 (kemarin)
 
 // Flag to prevent recursive watch updates
 let isAdjusting = false;
@@ -70,6 +73,7 @@ watch(weeklyTo, (newVal, oldVal) => {
 });
 
 // --- Monthly Logic ---
+const today = new Date();
 const currentMonth = today.getMonth(); // 0-11
 const currentYear = today.getFullYear();
 
@@ -241,6 +245,7 @@ const periodLabel = computed(() => {
                                                 <input
                                                     v-model="weeklyFrom"
                                                     type="date"
+                                                    :max="maxDate"
                                                     class="h-9 w-full rounded-xl border border-slate-100 bg-slate-50 px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-[#003628]/20 focus:outline-none"
                                                     @keydown.up.down.prevent
                                                 />
@@ -253,6 +258,7 @@ const periodLabel = computed(() => {
                                                 <input
                                                     v-model="weeklyTo"
                                                     type="date"
+                                                    :max="maxDate"
                                                     class="h-9 w-full rounded-xl border border-slate-100 bg-slate-50 px-3 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-[#003628]/20 focus:outline-none"
                                                     @keydown.up.down.prevent
                                                 />
@@ -325,6 +331,12 @@ const periodLabel = computed(() => {
                         </div>
 
                         <!-- Export -->
+                        <Link
+                            href="/infra-report/device-settings"
+                            class="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black tracking-widest text-slate-500 uppercase transition-all hover:text-[#003628]"
+                        >
+                            <Settings class="size-3.5" /> Settings
+                        </Link>
                         <button
                             @click="doExport"
                             class="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black tracking-widest text-slate-500 uppercase transition-all hover:bg-white hover:text-[#003628]"

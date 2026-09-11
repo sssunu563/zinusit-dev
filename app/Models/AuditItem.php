@@ -15,11 +15,14 @@ class AuditItem extends Model
         'snipeit_asset_id',
         'asset_tag',
         'serial',
+        'asset_name',
         'status',
         'physical_location',
         'physical_user',
         'notes',
+        'is_synced',
         'expected_location',
+        'expected_department',
         'expected_user',
         'verified_by',
         'verified_at',
@@ -27,6 +30,7 @@ class AuditItem extends Model
 
     protected $casts = [
         'verified_at' => 'datetime',
+        'is_synced' => 'boolean',
     ];
 
     public function session(): BelongsTo

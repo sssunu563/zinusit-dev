@@ -4,7 +4,6 @@ import {
     ArrowLeft,
     Bookmark,
     Check,
-    Clock,
     Copy,
     Cpu,
     Edit3,
@@ -14,7 +13,6 @@ import {
     HelpCircle,
     ShieldCheck,
     ThumbsUp,
-    User,
 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -92,6 +90,13 @@ const formatContent = (content: string) => {
     html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold text-slate-900 mt-6 mb-2">$1</h3>');
     html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-black text-slate-900 mt-8 mb-3 border-b border-slate-100 pb-2">$1</h2>');
     html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-black text-slate-900 mt-8 mb-4">$1</h1>');
+
+    // Images (Markdown: ![alt](url))
+    html = html.replace(
+        /!\[(.*?)\]\((.*?)\)/gim,
+        '<figure class="my-6 text-center"><img src="$2" alt="$1" class="rounded-2xl max-w-full h-auto border border-slate-200/80 shadow-xs mx-auto object-contain max-h-[540px]" loading="lazy" /><figcaption class="text-center text-xs text-slate-400 mt-2 italic">$1</figcaption></figure>',
+    );
+
     html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
     html = html.replace(/^\> (.*$)/gim, '<blockquote class="border-l-4 border-[#003628] bg-emerald-50/70 p-4 rounded-r-2xl my-4 text-slate-700 text-sm">$1</blockquote>');
@@ -150,47 +155,46 @@ const formatDate = (dateStr: string) => {
 
             <!-- Main Article Card -->
             <article
-                class="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-xs"
+                class="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xs"
             >
                 <!-- Hero Header -->
                 <div class="border-b border-slate-100 p-6 sm:p-10">
                     <div class="mb-4 flex flex-wrap items-center gap-2">
                         <span
-                            class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3.5 py-1 text-xs font-black uppercase tracking-wider text-emerald-800"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-semibold uppercase tracking-wider"
                         >
                             <component :is="getCategoryIcon(article.category)" class="size-3.5" />
                             {{ article.category }}
                         </span>
+                        <span class="text-slate-300">·</span>
+                        <span class="text-xs text-slate-400">
+                            Diperbarui {{ formatDate(article.created_at) }}
+                        </span>
+                        <span class="text-slate-300">·</span>
+                        <span class="text-xs text-slate-400 flex items-center gap-1">
+                            <Eye class="size-3.5" />
+                            {{ article.view_count }} kali dilihat
+                        </span>
                     </div>
 
                     <h1
-                        class="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight leading-snug mb-6"
+                        class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-tight mb-4"
                     >
                         {{ article.title }}
                     </h1>
 
                     <div
-                        class="flex flex-wrap items-center gap-y-2 gap-x-6 text-xs text-slate-500 font-medium"
+                        class="flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-slate-500 font-medium"
                     >
-                        <div class="flex items-center gap-2">
+                        <div v-if="article.author" class="flex items-center gap-2">
                             <div
-                                class="flex size-7 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs"
+                                class="flex size-6 items-center justify-center rounded-full bg-slate-100 text-slate-600 font-bold text-[10px]"
                             >
-                                <User class="size-3.5" />
+                                {{ (article.author?.name || 'IT').charAt(0).toUpperCase() }}
                             </div>
-                            <span class="font-semibold text-slate-800">
-                                {{ article.author?.name || 'Tim IT Zinus' }}
+                            <span class="font-semibold text-slate-700">
+                                Ditulis oleh {{ article.author?.name || 'Tim IT Zinus' }}
                             </span>
-                        </div>
-
-                        <div class="flex items-center gap-1.5">
-                            <Clock class="size-4 text-slate-400" />
-                            <span>{{ formatDate(article.created_at) }}</span>
-                        </div>
-
-                        <div class="flex items-center gap-1.5">
-                            <Eye class="size-4 text-slate-400" />
-                            <span>{{ article.view_count }} kali dilihat</span>
                         </div>
                     </div>
                 </div>
@@ -205,13 +209,13 @@ const formatDate = (dateStr: string) => {
 
                 <!-- Article Feedback Bar -->
                 <div
-                    class="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/50 p-6 sm:p-8"
+                    class="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/40 p-6 sm:p-8"
                 >
                     <div>
-                        <p class="text-sm font-black text-slate-900">
+                        <p class="text-xs font-bold text-slate-800">
                             Apakah panduan ini membantu Anda?
                         </p>
-                        <p class="text-xs text-slate-400 mt-0.5">
+                        <p class="text-[11px] text-slate-400 mt-0.5">
                             Masukan Anda membantu kami menyempurnakan dokumentasi IT.
                         </p>
                     </div>
@@ -219,23 +223,26 @@ const formatDate = (dateStr: string) => {
                     <div class="flex items-center gap-2">
                         <button
                             type="button"
+                            :disabled="helpful !== null"
                             :class="[
-                                'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition-all',
+                                'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition-all disabled:opacity-70',
                                 helpful === true
-                                    ? 'border-emerald-600 bg-emerald-50 text-emerald-800 shadow-xs'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300',
+                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-emerald-300',
                             ]"
                             @click="helpful = true"
                         >
-                            <ThumbsUp class="size-4" /> Ya, Membantu
+                            <ThumbsUp class="size-4" />
+                            {{ helpful === true ? 'Terima Kasih!' : 'Ya, Membantu' }}
                         </button>
                         <button
                             type="button"
+                            :disabled="helpful !== null"
                             :class="[
-                                'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition-all',
+                                'inline-flex items-center gap-1.5 rounded-xl border px-4 py-2 text-xs font-bold transition-all disabled:opacity-70',
                                 helpful === false
-                                    ? 'border-rose-600 bg-rose-50 text-rose-800 shadow-xs'
-                                    : 'border-slate-200 bg-white text-slate-700 hover:border-rose-300',
+                                    ? 'border-rose-300 bg-rose-50 text-rose-800'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-rose-300',
                             ]"
                             @click="helpful = false"
                         >

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditItem;
 use App\Models\AssetStockHistory;
 use App\Models\Stb;
 use App\Models\User;
@@ -76,7 +77,26 @@ class AssetController extends Controller
             }
         }
 
-        return Inertia::render('Asset/Create', [
+        $auditContext = null;
+        $auditSessionId = (int) $request->query('audit_session', 0);
+        $auditItemId = (int) $request->query('audit_item', 0);
+        if ($auditSessionId > 0 && $auditItemId > 0) {
+            $auditItem = AuditItem::where('id', $auditItemId)
+                ->where('audit_session_id', $auditSessionId)
+                ->where('snipeit_asset_id', $assetId)
+                ->first();
+
+            if ($auditItem) {
+                $auditContext = [
+                    'session_id' => $auditSessionId,
+                    'item_id' => $auditItem->id,
+                    'expected_location' => $auditItem->expected_location,
+                    'expected_user' => $auditItem->expected_user,
+                ];
+            }
+        }
+
+        return Inertia::render($request->boolean('audit_page') ? 'Audit/AssetEdit' : 'Asset/Create', [
             'mode' => 'edit',
             'assetId' => $assetId,
             'initialType' => $type,
@@ -84,7 +104,25 @@ class AssetController extends Controller
             'metadata' => $metadata,
             'initialData' => $this->mapAssetRecordToFormData($type, $record, $metadata),
             'initialModelDetail' => $initialModelDetail,
+            'auditContext' => $auditContext,
+            'auditPage' => $request->boolean('audit_page'),
         ]);
+    }
+
+    public function auditEdit(int $sessionId, int $itemId)
+    {
+        $auditItem = AuditItem::where('id', $itemId)
+            ->where('audit_session_id', $sessionId)
+            ->firstOrFail();
+
+        $request = request()->merge([
+            'type' => 'assets',
+            'audit_session' => $sessionId,
+            'audit_item' => $itemId,
+            'audit_page' => true,
+        ]);
+
+        return $this->edit($request, (int) $auditItem->snipeit_asset_id);
     }
 
     public function show(Request $request, int $assetId)

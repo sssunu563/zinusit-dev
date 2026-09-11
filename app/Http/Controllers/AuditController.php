@@ -4,8 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditItem;
 use App\Models\AuditSession;
+use App\Models\ActionLog;
+use App\Models\User;
 use App\Services\SnipeItService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class AuditController extends Controller
@@ -31,18 +35,46 @@ class AuditController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        $session = AuditSession::create([
-            'name' => $validated['name'],
-            'description' => $validated['description'],
-            'status' => 'Open',
-            'created_by' => $request->user()->id,
-        ]);
+        $assets = $this->fetchAuditAssets();
+
+        if ($assets->isEmpty()) {
+            return back()->withErrors([
+                'name' => 'Daftar aset aktif tidak tersedia dari Snipe-IT. Sesi audit belum dibuat.',
+            ]);
+        }
+
+        $session = DB::transaction(function () use ($validated, $request, $assets): AuditSession {
+            $session = AuditSession::create([
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+                'status' => 'Open',
+                'created_by' => $request->user()->id,
+            ]);
+
+            $session->items()->createMany($assets->map(fn (array $asset) => [
+                'snipeit_asset_id' => (int) $asset['id'],
+                'asset_tag' => (string) ($asset['asset_tag'] ?? ''),
+                'serial' => (string) ($asset['serial'] ?? ''),
+                'asset_name' => (string) ($asset['name'] ?? data_get($asset, 'model.name', 'Hardware Asset')),
+                'status' => 'Missing',
+                'expected_location' => (string) (data_get($asset, 'location.name') ?? ''),
+                'expected_department' => $this->resolveAssetDepartment($asset),
+                'expected_user' => (string) (data_get($asset, 'assigned_to.name') ?? 'Available'),
+            ])->all());
+
+            return $session;
+        });
 
         return redirect()->route('audit.show', $session->id);
     }
 
     public function show(AuditSession $session)
     {
+        if ($session->status === 'Open' && !$session->items()->exists()) {
+            $this->seedSessionItems($session);
+            $session->refresh();
+        }
+
         // Load relationships and order items by latest
         $session->load([
             'creator:id,name,email',
@@ -54,6 +86,19 @@ class AuditController extends Controller
         return Inertia::render('Audit/Show', [
             'session' => $session,
         ]);
+    }
+
+    public function destroy(AuditSession $session)
+    {
+        abort_unless($session->status === 'Open', 422, 'Hanya sesi audit yang masih Open yang dapat dibatalkan.');
+
+        if ($session->items()->whereNotNull('verified_at')->exists()) {
+            abort(422, 'Sesi audit tidak dapat dibatalkan karena sudah memiliki aktivitas.');
+        }
+
+        $session->delete();
+
+        return redirect()->route('audit.index')->with('success', 'Sesi audit berhasil dibatalkan.');
     }
 
     public function scan(Request $request, AuditSession $session)
@@ -92,13 +137,46 @@ class AuditController extends Controller
         }
 
         if (empty($assetResponse['rows'])) {
-            return response()->json(['message' => 'Asset tidak ditemukan di Snipe-IT.'], 404);
+            return response()->json(['message' => 'Asset tidak tersedia atau tidak ditemukan di Snipe-IT.'], 422);
         }
 
         $asset = $assetResponse['rows'][0];
+        $assetId = (int) ($asset['id'] ?? data_get($asset, 'rows.0.id', 0));
+
+        $asset = $this->snipe->getHardware($assetId) ?: $asset;
+        $assetId = (int) ($asset['id'] ?? data_get($asset, 'rows.0.id', $assetId));
+
+        if ($assetId <= 0) {
+            return response()->json(['message' => 'Asset tidak memiliki ID yang valid.'], 422);
+        }
+
+        if ($this->isExcludedAsset($asset)) {
+            return response()->json(['message' => 'Asset berstatus Broken dan tidak termasuk dalam sesi Stock Opname.'], 422);
+        }
+
+        $sessionItem = $session->items()
+            ->with('verifier:id,name')
+            ->where('snipeit_asset_id', $assetId)
+            ->first();
+
+        if (!$sessionItem) {
+            return response()->json(['message' => 'Asset tidak termasuk dalam daftar sesi Stock Opname ini.'], 422);
+        }
+
+        if ($sessionItem->verified_at) {
+            $verifiedBy = $sessionItem->verifier?->name ?? 'user lain';
+            $verifiedAt = $sessionItem->verified_at->format('d/m/Y H:i');
+
+            return response()->json([
+                'message' => "Asset sudah diaudit oleh {$verifiedBy} pada {$verifiedAt}.",
+                'already_audited' => true,
+                'verified_by' => $verifiedBy,
+                'verified_at' => $sessionItem->verified_at->toIso8601String(),
+            ], 422);
+        }
 
         $assetData = [
-            'id'          => $asset['id'],
+            'id'          => $assetId,
             'name'        => $asset['name'] ?? $asset['model']['name'] ?? 'Hardware Asset',
             'asset_tag'   => $asset['asset_tag'] ?? '',
             'tag'         => $asset['asset_tag'] ?? '',
@@ -110,6 +188,14 @@ class AuditController extends Controller
             'user'        => $asset['assigned_to']['name'] ?? 'Available',
             'image'       => $asset['image'] ?? null,
             'status'      => $asset['status_label']['name'] ?? 'Deployable',
+            'session_item_id' => $sessionItem->id,
+            'department'  => data_get($asset, 'assigned_to.department.name') ?? data_get($asset, 'assigned_to.department') ?? '',
+            'model'        => data_get($asset, 'model.name', '-'),
+            'category'     => data_get($asset, 'category.name', '-'),
+            'company'      => data_get($asset, 'company.name', '-'),
+            'notes'        => $asset['notes'] ?? '',
+            'location_id'  => data_get($asset, 'location.id') ?? data_get($asset, 'rtd_location.id'),
+            'status_id'    => data_get($asset, 'status_label.id'),
         ];
 
         return response()->json([
@@ -118,13 +204,70 @@ class AuditController extends Controller
         ]);
     }
 
+    public function updateAsset(Request $request, AuditSession $session, AuditItem $item)
+    {
+        if ($item->audit_session_id !== $session->id) {
+            return response()->json(['message' => 'Asset tidak termasuk dalam sesi audit ini.'], 404);
+        }
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'asset_tag' => 'required|string|max:255',
+            'serial' => 'nullable|string|max:255',
+            'location' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+        ]);
+
+        $payload = collect([
+            'name' => $validated['name'],
+            'asset_tag' => $validated['asset_tag'],
+            'serial' => $validated['serial'] ?? '',
+            'notes' => $validated['notes'] ?? '',
+        ])->when($validated['location'] ?? null, function ($fields) use ($validated) {
+            $locationResponse = $this->snipe->request('locations', [
+                'search' => $validated['location'],
+            ], true);
+            $location = collect($locationResponse['rows'] ?? [])->first(
+                fn (array $row) => strcasecmp((string) ($row['name'] ?? ''), $validated['location']) === 0
+            );
+
+            if (!$location) {
+                abort(response()->json([
+                    'message' => "Lokasi '{$validated['location']}' tidak ditemukan di Snipe-IT.",
+                ], 422));
+            }
+
+            return $fields->put('location_id', (int) $location['id']);
+        })->all();
+
+        $response = $this->snipe->updateRecord('hardware', $item->snipeit_asset_id, $payload);
+
+        if (($response['status'] ?? 'error') !== 'success') {
+            return response()->json([
+                'message' => 'Data asset gagal diperbarui di Snipe-IT.',
+            ], 422);
+        }
+
+        $item->update([
+            'asset_tag' => $validated['asset_tag'],
+            'serial' => $validated['serial'] ?? '',
+            'asset_name' => $validated['name'],
+            'physical_location' => $validated['location'] ?? $item->physical_location,
+            'notes' => $validated['notes'] ?? $item->notes,
+        ]);
+
+        $this->snipe->flushCacheForAsset('assets', $item->snipeit_asset_id);
+
+        return response()->json(['success' => true, 'item' => $item->fresh()]);
+    }
+
     public function verify(Request $request, AuditSession $session)
     {
         $validated = $request->validate([
             'snipeit_asset_id'  => 'required|integer',
             'asset_tag'         => 'required|string',
             'serial'            => 'nullable|string',
-            'status'            => 'required|string', // Match, Mismatch, Missing
+            'status'            => 'required|in:Match,Mismatch',
             'physical_location' => 'nullable|string',
             'physical_user'     => 'nullable|string',
             'note'              => 'nullable|string',
@@ -133,21 +276,56 @@ class AuditController extends Controller
         ]);
 
         $validated['serial'] = $validated['serial'] ?? '';
+        $sessionItem = $session->items()->where('snipeit_asset_id', $validated['snipeit_asset_id'])->first();
 
-        $item = $session->items()->updateOrCreate(
-            ['snipeit_asset_id' => $validated['snipeit_asset_id']],
-            array_merge($validated, [
-                'verified_by' => $request->user()->id,
-                'verified_at' => now(),
-            ])
-        );
-
-        // If status is "Match", update Snipe-IT last audit date
-        if ($validated['status'] === 'Match') {
-            $this->snipe->updateRecord('hardware', $validated['snipeit_asset_id'], [
-                'last_audit_date' => now()->toDateString(),
-            ]);
+        if (!$sessionItem) {
+            return response()->json(['message' => 'Asset tidak termasuk dalam daftar sesi Stock Opname ini.'], 422);
         }
+
+        $validated['expected_location'] = $sessionItem->expected_location;
+        $validated['expected_department'] = $sessionItem->expected_department;
+        $validated['expected_user'] = $sessionItem->expected_user;
+
+        if ($validated['status'] === 'Mismatch'
+            && trim((string) $validated['physical_location']) === trim((string) $validated['expected_location'])
+            && trim((string) $validated['physical_user']) === trim((string) $validated['expected_user'])) {
+            return response()->json(['message' => 'Mismatch harus memiliki perubahan lokasi atau pengguna fisik.'], 422);
+        }
+
+        $item = $sessionItem->fill([
+            'asset_tag' => $validated['asset_tag'],
+            'serial' => $validated['serial'],
+            'status' => $validated['status'],
+            'physical_location' => $validated['physical_location'],
+            'physical_user' => $validated['physical_user'],
+            'notes' => $validated['note'] ?? null,
+            'expected_location' => $validated['expected_location'],
+            'expected_department' => $validated['expected_department'],
+            'expected_user' => $validated['expected_user'],
+            'verified_by' => $request->user()->id,
+            'verified_at' => now(),
+        ]);
+        $item->save();
+
+        ActionLog::create([
+            'user_id' => $request->user()->id,
+            'action_type' => 'audit_verified',
+            'item_type' => AuditItem::class,
+            'item_id' => $item->id,
+            'target_type' => AuditSession::class,
+            'target_id' => $session->id,
+            'snipeit_id' => $item->snipeit_asset_id,
+            'snipeit_type' => 'assets',
+            'note' => "Stock Opname {$validated['status']}: {$item->asset_tag}",
+            'log_meta' => [
+                'audit_session_id' => $session->id,
+                'audit_session_name' => $session->name,
+                'status' => $item->status,
+                'verified_at' => $item->verified_at?->toIso8601String(),
+                'physical_location' => $item->physical_location,
+                'physical_user' => $item->physical_user,
+            ],
+        ]);
 
         return response()->json([
             'success' => true,
@@ -157,6 +335,10 @@ class AuditController extends Controller
 
     public function syncItem(Request $request, AuditSession $session, AuditItem $item)
     {
+        if ($item->audit_session_id !== $session->id) {
+            return response()->json(['message' => 'Item tidak termasuk dalam sesi audit ini.'], 404);
+        }
+
         if (!$item->snipeit_asset_id || !$item->physical_location) {
             return response()->json(['message' => 'Data item tidak lengkap untuk sinkronisasi.'], 422);
         }
@@ -189,68 +371,316 @@ class AuditController extends Controller
 
     public function complete(AuditSession $session)
     {
+        abort_unless($session->status === 'Open', 422, 'Sesi audit ini sudah selesai.');
+
+        $missingCount = $session->items()->where('status', 'Missing')->whereNull('verified_at')->count();
+        $totalUnverified = $session->items()->whereNull('verified_at')->count();
+
+        // Block only if there are unverified items that are NOT "Missing" default status
+        // (i.e. items that have been scanned/touched but verification was not completed)
+        // Missing items with no verified_at are legitimately "not found" — allow completion.
+        // However if ALL items are unverified (nothing scanned at all), block.
+        $verifiedCount = $session->items()->whereNotNull('verified_at')->count();
+        if ($verifiedCount === 0 && $session->items()->exists()) {
+            return back()->withErrors([
+                'audit' => 'Belum ada asset yang diproses. Lakukan scan minimal satu asset sebelum menyelesaikan audit.',
+            ]);
+        }
+
         $session->update([
-            'status' => 'Completed',
+            'status'       => 'Completed',
             'completed_at' => now(),
         ]);
 
         return redirect()->route('audit.index')->with('success', 'Sesi Audit berhasil diselesaikan.');
+
     }
 
     public function export(AuditSession $session)
     {
-        $session->load(['items', 'creator']);
-        
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        
-        // Header
-        $headers = [
-            'ID', 'Asset Tag', 'Serial', 'Asset Name', 
-            'Expected Location', 'Physical Location', 
-            'Expected User', 'Physical User', 
-            'Status', 'Verifier', 'Date Verified', 'Notes'
-        ];
-        
-        foreach ($headers as $index => $header) {
-            $sheet->setCellValueByColumnAndRow($index + 1, 1, $header);
-        }
-        
-        // Style Header
-        $sheet->getStyle('A1:L1')->getFont()->setBold(true);
-        $sheet->getStyle('A1:L1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FF003628');
-        $sheet->getStyle('A1:L1')->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_WHITE);
+        $session->load(['items' => fn($q) => $q->with('verifier:id,name')->orderBy('expected_location'), 'creator']);
 
-        // Data
+        $items      = $session->items;
+        $total      = $items->count();
+        $matchCount = $items->where('status', 'Match')->count();
+        $mismatchCount = $items->where('status', 'Mismatch')->count();
+        $missingCount  = $items->where('status', 'Missing')->count();
+        $verifiedCount = $items->whereNotNull('verified_at')->count();
+        $completionPct = $total > 0 ? round(($verifiedCount / $total) * 100, 1) : 0;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $fill   = \PhpOffice\PhpSpreadsheet\Style\Fill::class;
+        $color  = \PhpOffice\PhpSpreadsheet\Style\Color::class;
+        $border = \PhpOffice\PhpSpreadsheet\Style\Border::class;
+        $align  = \PhpOffice\PhpSpreadsheet\Style\Alignment::class;
+        $coord  = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::class;
+
+        // ── Sheet 1: Summary ─────────────────────────────────
+        $summary = $spreadsheet->getActiveSheet()->setTitle('Ringkasan');
+
+        // Title block
+        $summary->mergeCells('A1:F1');
+        $summary->setCellValue('A1', 'LAPORAN STOCK OPNAME — ' . strtoupper($session->name));
+        $summary->getStyle('A1')->applyFromArray([
+            'font' => ['bold' => true, 'size' => 14, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => $fill::FILL_SOLID, 'startColor' => ['argb' => 'FF003628']],
+            'alignment' => ['horizontal' => $align::HORIZONTAL_CENTER],
+        ]);
+        $summary->getRowDimension(1)->setRowHeight(24);
+
+        // Info rows
+        $infoRows = [
+            ['Nama Sesi',       $session->name],
+            ['Status',          $session->status],
+            ['Dibuat Oleh',     $session->creator?->name ?? 'System'],
+            ['Tanggal Dibuat',  $session->created_at->format('d M Y H:i')],
+            ['Tanggal Selesai', $session->completed_at?->format('d M Y H:i') ?? '-'],
+            ['Dicetak Pada',    now()->format('d M Y H:i')],
+        ];
+        $r = 2;
+        foreach ($infoRows as [$label, $value]) {
+            $summary->setCellValue("A{$r}", $label);
+            $summary->setCellValue("B{$r}", $value);
+            $summary->getStyle("A{$r}")->getFont()->setBold(true);
+            $summary->getStyle("A{$r}")->getFill()->setFillType($fill::FILL_SOLID)->getStartColor()->setARGB('FFF0FDF4');
+            $r++;
+        }
+
+        // Spacer
+        $r++;
+
+        // Stats table header
+        $statHeaders = ['Statistik', 'Jumlah', 'Persentase'];
+        foreach ($statHeaders as $ci => $h) {
+            $summary->setCellValue($coord::stringFromColumnIndex($ci + 1) . $r, $h);
+        }
+        $summary->getStyle("A{$r}:C{$r}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => $fill::FILL_SOLID, 'startColor' => ['argb' => 'FF003628']],
+            'alignment' => ['horizontal' => $align::HORIZONTAL_CENTER],
+        ]);
+        $r++;
+
+        // Stats rows
+        $statRows = [
+            ['Total Aset',          $total,         '100%',                   'FFF0FDF4'],
+            ['Match (Sesuai)',       $matchCount,    $total > 0 ? round($matchCount / $total * 100, 1) . '%' : '0%',      'FFD1FAE5'],
+            ['Mismatch (Beda)',      $mismatchCount, $total > 0 ? round($mismatchCount / $total * 100, 1) . '%' : '0%',   'FFFEF9C3'],
+            ['Missing (Belum Scan)', $missingCount,  $total > 0 ? round($missingCount / $total * 100, 1) . '%' : '0%',   'FFFFE4E6'],
+            ['Completion Rate',      "{$verifiedCount}/{$total}", "{$completionPct}%",                                   'FFEFF6FF'],
+        ];
+        foreach ($statRows as [$label, $count, $pct, $bg]) {
+            $summary->setCellValue("A{$r}", $label);
+            $summary->setCellValue("B{$r}", $count);
+            $summary->setCellValue("C{$r}", $pct);
+            $summary->getStyle("A{$r}:C{$r}")->getFill()->setFillType($fill::FILL_SOLID)->getStartColor()->setARGB($bg);
+            $summary->getStyle("B{$r}:C{$r}")->getAlignment()->setHorizontal($align::HORIZONTAL_CENTER);
+            $r++;
+        }
+
+        // Add border to stats
+        $summary->getStyle('A' . ($r - count($statRows) - 1) . ':C' . ($r - 1))->applyFromArray([
+            'borders' => [
+                'allBorders' => ['borderStyle' => $border::BORDER_THIN, 'color' => ['argb' => 'FFD1D5DB']],
+            ],
+        ]);
+
+        // Department breakdown
+        $r += 2;
+        $summary->mergeCells("A{$r}:E{$r}");
+        $summary->setCellValue("A{$r}", 'BREAKDOWN PER DEPARTEMEN');
+        $summary->getStyle("A{$r}")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => $fill::FILL_SOLID, 'startColor' => ['argb' => 'FF003628']],
+        ]);
+        $r++;
+        foreach (['Departemen', 'Total', 'Match', 'Mismatch', 'Missing'] as $ci => $h) {
+            $summary->setCellValue($coord::stringFromColumnIndex($ci + 1) . $r, $h);
+        }
+        $summary->getStyle("A{$r}:E{$r}")->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => $fill::FILL_SOLID, 'startColor' => ['argb' => 'FFECFDF5']],
+            'alignment' => ['horizontal' => $align::HORIZONTAL_CENTER],
+        ]);
+        $r++;
+
+        $byDept = $items->whereNotNull('verified_at')
+            ->groupBy(fn($i) => $i->expected_department ?: 'Tidak Ada Departemen')
+            ->sortKeys();
+
+        foreach ($byDept as $dept => $deptItems) {
+            $summary->setCellValue("A{$r}", $dept);
+            $summary->setCellValue("B{$r}", $deptItems->count());
+            $summary->setCellValue("C{$r}", $deptItems->where('status', 'Match')->count());
+            $summary->setCellValue("D{$r}", $deptItems->where('status', 'Mismatch')->count());
+            $summary->setCellValue("E{$r}", $deptItems->where('status', 'Missing')->count());
+            $summary->getStyle("B{$r}:E{$r}")->getAlignment()->setHorizontal($align::HORIZONTAL_CENTER);
+            $r++;
+        }
+
+        foreach (range(1, 6) as $col) {
+            $summary->getColumnDimension($coord::stringFromColumnIndex($col))->setAutoSize(true);
+        }
+
+        // ── Sheet 2: Detail ───────────────────────────────────
+        $detail = $spreadsheet->createSheet()->setTitle('Detail Audit');
+
+        $detailHeaders = [
+            'No', 'Asset Tag', 'Serial', 'Nama Aset', 'Departemen',
+            'Lok. Expected', 'Lok. Fisik', 'User Expected', 'User Fisik',
+            'Status', 'Is Synced', 'Verifikator', 'Tgl Verifikasi', 'Catatan',
+        ];
+        foreach ($detailHeaders as $ci => $h) {
+            $detail->setCellValue($coord::stringFromColumnIndex($ci + 1) . '1', $h);
+        }
+        $detail->getStyle('A1:N1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill' => ['fillType' => $fill::FILL_SOLID, 'startColor' => ['argb' => 'FF003628']],
+            'alignment' => ['horizontal' => $align::HORIZONTAL_CENTER],
+        ]);
+
+        $statusColors = [
+            'Match'    => 'FFD1FAE5',
+            'Mismatch' => 'FFFEF3C7',
+            'Missing'  => 'FFFFE4E6',
+        ];
+
         $row = 2;
-        foreach ($session->items as $item) {
-            $sheet->setCellValueByColumnAndRow(1, $row, $item->id);
-            $sheet->setCellValueByColumnAndRow(2, $row, $item->asset_tag);
-            $sheet->setCellValueByColumnAndRow(3, $row, $item->serial);
-            $sheet->setCellValueByColumnAndRow(4, $row, $item->asset_name);
-            $sheet->setCellValueByColumnAndRow(5, $row, $item->expected_location);
-            $sheet->setCellValueByColumnAndRow(6, $row, $item->physical_location);
-            $sheet->setCellValueByColumnAndRow(7, $row, $item->expected_user);
-            $sheet->setCellValueByColumnAndRow(8, $row, $item->physical_user);
-            $sheet->setCellValueByColumnAndRow(9, $row, $item->status);
-            $sheet->setCellValueByColumnAndRow(10, $row, $item->verifier?->name);
-            $sheet->setCellValueByColumnAndRow(11, $row, $item->verified_at);
-            $sheet->setCellValueByColumnAndRow(12, $row, $item->note);
+        $no = 1;
+        foreach ($items as $item) {
+            $detail->setCellValue('A' . $row, $no++);
+            $detail->setCellValue('B' . $row, $item->asset_tag);
+            $detail->setCellValue('C' . $row, $item->serial);
+            $detail->setCellValue('D' . $row, $item->asset_name);
+            $detail->setCellValue('E' . $row, $item->expected_department);
+            $detail->setCellValue('F' . $row, $item->expected_location);
+            $detail->setCellValue('G' . $row, $item->physical_location);
+            $detail->setCellValue('H' . $row, $item->expected_user);
+            $detail->setCellValue('I' . $row, $item->physical_user);
+            $detail->setCellValue('J' . $row, $item->status);
+            $detail->setCellValue('K' . $row, $item->is_synced ? 'Ya' : 'Tidak');
+            $detail->setCellValue('L' . $row, $item->verifier?->name);
+            $detail->setCellValue('M' . $row, $item->verified_at?->format('d/m/Y H:i'));
+            $detail->setCellValue('N' . $row, $item->notes);
+
+            $rowBg = $statusColors[$item->status] ?? 'FFFFFFFF';
+            $detail->getStyle("A{$row}:N{$row}")->getFill()->setFillType($fill::FILL_SOLID)->getStartColor()->setARGB($rowBg);
+            $detail->getStyle("A{$row}:N{$row}")->getBorders()->getAllBorders()->setBorderStyle($border::BORDER_THIN)->getColor()->setARGB('FFE5E7EB');
+
             $row++;
         }
 
-        // Auto-size columns
-        foreach (range(1, 12) as $col) {
-            $sheet->getColumnDimensionByColumn($col)->setAutoSize(true);
+        foreach (range(1, 14) as $col) {
+            $detail->getColumnDimension($coord::stringFromColumnIndex($col))->setAutoSize(true);
         }
 
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-        $fileName = "Audit_Report_{$session->id}_" . now()->format('YmdHis') . ".xlsx";
+        // Set active sheet to summary
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $fileName = 'StockOpname_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $session->name) . '_' . now()->format('Ymd') . '.xlsx';
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
         }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    public function exportPdf(AuditSession $session)
+    {
+        $session->load([
+            'creator:id,name',
+            'items' => fn($q) => $q->with('verifier:id,name')->orderBy('expected_location'),
+        ]);
+
+        $pdf = Pdf::loadView('audit.report_pdf', compact('session'))
+            ->setPaper('a4', 'landscape')
+            ->setOptions([
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled'      => false,
+                'defaultFont'          => 'dejavusans',
+                'dpi'                  => 110,
+            ]);
+
+        $fileName = 'StockOpname_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $session->name) . '_' . now()->format('Ymd') . '.pdf';
+
+        return $pdf->download($fileName);
+    }
+
+    private function isExcludedAsset(array $asset): bool
+    {
+        $status = strtolower(trim((string) (data_get($asset, 'status_label.name') ?? '')));
+        $statusType = strtolower(trim((string) (data_get($asset, 'status_label.status_type') ?? '')));
+
+        return in_array($status, ['broken', 'rusak', 'out for repair', 'mati', 'damaged'], true)
+            || $statusType === 'broken';
+    }
+
+    private function fetchAuditAssets(): \Illuminate\Support\Collection
+    {
+        return collect($this->snipe->fetchRows('hardware', [], 500, true))
+            ->reject(fn (array $asset) => $this->isExcludedAsset($asset))
+            ->unique(fn (array $asset) => (int) ($asset['id'] ?? 0))
+            ->filter(fn (array $asset) => (int) ($asset['id'] ?? 0) > 0)
+            ->values();
+    }
+
+    private function seedSessionItems(AuditSession $session): void
+    {
+        $assets = $this->fetchAuditAssets();
+
+        if ($assets->isEmpty()) {
+            return;
+        }
+
+        DB::transaction(function () use ($session, $assets): void {
+            if ($session->items()->exists()) {
+                return;
+            }
+
+            $session->items()->createMany($assets->map(fn (array $asset) => [
+                'snipeit_asset_id' => (int) $asset['id'],
+                'asset_tag' => (string) ($asset['asset_tag'] ?? ''),
+                'serial' => (string) ($asset['serial'] ?? ''),
+                'asset_name' => (string) ($asset['name'] ?? data_get($asset, 'model.name', 'Hardware Asset')),
+                'status' => 'Missing',
+                'expected_location' => (string) (data_get($asset, 'location.name') ?? ''),
+                'expected_department' => $this->resolveAssetDepartment($asset),
+                'expected_user' => (string) (data_get($asset, 'assigned_to.name') ?? 'Available'),
+            ])->all());
+        });
+    }
+
+    private function resolveAssetDepartment(array $asset): string
+    {
+        $department = data_get($asset, 'assigned_to.department.name')
+            ?? data_get($asset, 'assigned_to.department');
+
+        if ($department) {
+            return (string) $department;
+        }
+
+        $snipeUserId = (int) data_get($asset, 'assigned_to.id', 0);
+
+        return $snipeUserId > 0
+            ? (string) (User::where('snipeit_user_id', $snipeUserId)->value('department') ?? '')
+            : '';
+    }
+
+    private function backfillDepartments(AuditSession $session): void
+    {
+        $items = $session->items()->where(function ($query): void {
+            $query->whereNull('expected_department')->orWhere('expected_department', '');
+        })->get();
+
+        foreach ($items as $item) {
+            $asset = $this->snipe->getHardware((int) $item->snipeit_asset_id);
+            $department = $this->resolveAssetDepartment($asset ?? []);
+
+            if ($department !== '') {
+                $item->update(['expected_department' => $department]);
+            }
+        }
     }
 }
