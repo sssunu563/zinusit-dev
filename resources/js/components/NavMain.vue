@@ -87,10 +87,12 @@ const scheduleFlyoutClose = (title: string) => {
 };
 const handleParentClick = (item: NavItem, event: MouseEvent) => {
     event.preventDefault();
+
     if (state.value === 'collapsed') {
         showFlyout(item);
         return;
     }
+
     closeFlyout();
     expandedGroupTitle.value =
         expandedGroupTitle.value === item.title ? null : item.title;
@@ -158,28 +160,39 @@ onBeforeUnmount(() => {
                                 ? 'border-primary/20 bg-primary/10 text-primary'
                                 : 'border-transparent text-muted-foreground transition-colors hover:bg-primary/5 hover:text-primary',
                         ]"
-                        @click="handleParentClick(item, $event)"
+                        as-child
                     >
-                        <component :is="item.icon" class="size-4 shrink-0" />
-                        <span
-                            class="truncate group-data-[collapsible=icon]:hidden"
-                            >{{ item.title }}</span
+                        <button
+                            type="button"
+                            class="flex w-full items-center gap-2"
+                            @click="handleParentClick(item, $event)"
                         >
-                        <SidebarMenuBadge
-                            v-if="item.badge"
-                            class="right-8 h-4 min-w-4 rounded-full px-1 text-[10px] font-bold group-data-[collapsible=icon]:hidden"
-                            :class="
-                                isItemActive(item)
-                                    ? 'bg-primary text-white'
-                                    : 'bg-muted text-muted-foreground'
-                            "
-                        >
-                            {{ item.badge }}
-                        </SidebarMenuBadge>
-                        <ChevronDown
-                            class="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[collapsible=icon]:hidden"
-                            :class="isGroupExpanded(item) ? 'rotate-180' : ''"
-                        />
+                            <component
+                                :is="item.icon"
+                                class="size-4 shrink-0"
+                            />
+                            <span
+                                class="truncate group-data-[collapsible=icon]:hidden"
+                                >{{ item.title }}</span
+                            >
+                            <SidebarMenuBadge
+                                v-if="item.badge"
+                                class="right-8 h-4 min-w-4 rounded-full px-1 text-[10px] font-bold group-data-[collapsible=icon]:hidden"
+                                :class="
+                                    isItemActive(item)
+                                        ? 'bg-primary text-white'
+                                        : 'bg-muted text-muted-foreground'
+                                "
+                            >
+                                {{ item.badge }}
+                            </SidebarMenuBadge>
+                            <ChevronDown
+                                class="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[collapsible=icon]:hidden"
+                                :class="
+                                    isGroupExpanded(item) ? 'rotate-180' : ''
+                                "
+                            />
+                        </button>
                     </SidebarMenuButton>
                 </div>
 

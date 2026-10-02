@@ -1226,14 +1226,14 @@
         border: 1px solid #cbd5e1 !important;
     }
     .shared-signature-body {
-        height: 120px !important;
-        padding-top: 8px !important;
+        height: 80px !important;
+        padding-top: 6px !important;
         text-align: center !important;
         border: 1px solid #cbd5e1 !important;
     }
     .shared-signature-image-box {
-        height: 60px !important;
-        margin-bottom: 4px !important;
+        height: 40px !important;
+        margin-bottom: 3px !important;
     }
     .shared-signature-name {
         font-weight: 700 !important;
@@ -1760,7 +1760,7 @@
     }
 
     .shared-signature-body {
-        height: 80px;
+        height: 60px;
         text-align: center;
         vertical-align: top;
         font-weight: 600;
@@ -1774,15 +1774,15 @@
 
     .shared-signature-image-box {
         display: flex;
-        height: 44px;
+        height: 32px;
         align-items: center;
         justify-content: center;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
 
     .shared-signature-image {
         max-width: 100%;
-        max-height: 42px;
+        max-height: 30px;
         object-fit: contain;
     }
 
@@ -1912,7 +1912,7 @@
             padding: 5px 6px;
         }
         .shared-signature-body {
-            height: 112px;
+            height: 80px;
         }
     }
 
@@ -2030,15 +2030,15 @@
             grid-template-columns: 3fr 2fr !important;
         }
         .shared-signature-body {
-            height: 120px !important;
-            padding-top: 8px !important;
+            height: 80px !important;
+            padding-top: 6px !important;
         }
         .shared-signature-image-box {
-            height: 60px !important;
-            margin-bottom: 6px !important;
+            height: 40px !important;
+            margin-bottom: 4px !important;
         }
         .shared-signature-image {
-            max-height: 54px !important;
+            max-height: 36px !important;
         }
         .shared-signature-name {
             font-size: 11px !important;

@@ -359,285 +359,161 @@ const downloadCsv = () => {
             <div
                 class="rounded-[32px] border border-slate-200/60 bg-white p-6 shadow-xl shadow-slate-200/50 lg:p-8"
             >
-                <!-- Toolbar -->
-                <div
-                    class="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center"
-                >
-                    <div class="relative w-full lg:max-w-md">
-                        <Search
-                            class="absolute top-1/2 left-4 size-4 -translate-y-1/2 text-slate-400"
-                        />
-                        <input
-                            v-model="searchQuery"
-                            type="text"
-                            placeholder="Cari dokumen, ID, atau penerima..."
-                            class="h-12 w-full rounded-2xl border border-slate-100 bg-white pr-4 pl-12 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-400 focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
-                            @input="currentPage = 1"
-                        />
+                <!-- Compact Single-Row Header -->
+                <div class="pb-4 border-b border-slate-100 flex items-center justify-between gap-6 mb-8">
+                    <!-- Left: Icon + Title -->
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="h-8 w-8 rounded-lg bg-[#003628]/10 flex items-center justify-center shrink-0">
+                            <CheckCircle2 class="size-4 text-[#003628]" />
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-slate-900">Peminjaman Asset</h2>
+                        </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
+                    <!-- Right: Compact Controls -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <!-- Small Search Box -->
+                        <div class="relative w-40">
+                            <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                            <input
+                                v-model="searchQuery"
+                                type="text"
+                                placeholder="Cari..."
+                                class="w-full h-8 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-2 focus:ring-[#003628]/10 transition-all outline-none shadow-sm"
+                                @input="currentPage = 1"
+                            />
+                        </div>
+
+                        <!-- Export Button -->
                         <button
                             type="button"
-                            class="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628] active:scale-95"
+                            class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
+                            title="Export CSV"
                             @click="downloadCsv"
                         >
                             <Download class="size-4" />
                         </button>
 
-                        <!-- Filter flyout -->
+                        <!-- Filter Panel -->
                         <div ref="filterPanelRef" class="relative">
                             <button
                                 type="button"
-                                class="relative flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628]"
+                                class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all relative shadow-sm"
                                 @click="showFilters = !showFilters"
                             >
-                                <SlidersHorizontal class="size-5" />
-                                <span
-                                    v-if="activeFilterCount"
-                                    class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white"
-                                    >{{ activeFilterCount }}</span
-                                >
+                                <SlidersHorizontal class="size-4" />
+                                <span v-if="activeFilterCount" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white">
+                                    {{ activeFilterCount }}
+                                </span>
                             </button>
 
                             <Transition
-                                enter-active-class="transition duration-300 ease-out"
-                                enter-from-class="opacity-0 translate-y-4 scale-95"
+                                enter-active-class="transition duration-200 ease-out"
+                                enter-from-class="opacity-0 translate-y-2 scale-95"
                                 enter-to-class="opacity-100 translate-y-0 scale-100"
-                                leave-active-class="transition duration-200 ease-in"
+                                leave-active-class="transition duration-150 ease-in"
                                 leave-from-class="opacity-100 translate-y-0 scale-100"
-                                leave-to-class="opacity-0 translate-y-4 scale-95"
+                                leave-to-class="opacity-0 translate-y-2 scale-95"
                             >
-                                <div
-                                    v-if="showFilters"
-                                    class="absolute top-full right-0 z-50 mt-4 w-80 overflow-hidden rounded-[32px] border border-slate-200 bg-white p-8 shadow-2xl"
-                                >
-                                    <div
-                                        class="mb-8 flex items-center justify-between"
-                                    >
-                                        <h3
-                                            class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                        >
-                                            Filter
-                                        </h3>
+                                <div v-if="showFilters" class="absolute top-full right-0 z-50 mt-4 w-88 rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter Peminjaman</h3>
                                         <button
                                             @click="resetFilters"
-                                            class="flex items-center gap-1.5 text-[10px] font-black tracking-widest text-primary uppercase transition-colors hover:opacity-70"
+                                            class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5 cursor-pointer"
                                         >
                                             <RefreshCw class="size-3" /> Reset
                                         </button>
                                     </div>
 
-                                    <div class="space-y-6">
-                                        <!-- Views -->
-                                        <div class="space-y-2">
-                                            <label
-                                                class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Views</label
-                                            >
+                                    <div class="space-y-4">
+                                        <!-- Status Tabs -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Status</label>
                                             <div class="grid gap-2">
                                                 <Link
                                                     href="/peminjaman?tab=pending"
-                                                    class="flex items-center justify-between rounded-2xl border p-3.5 transition-all"
-                                                    :class="
-                                                        activeTab === 'pending'
-                                                            ? 'border-[#003628]/20 bg-[#003628]/5 text-[#003628]'
-                                                            : 'border-slate-100 text-slate-500 hover:bg-slate-50'
-                                                    "
-                                                    @click="showFilters = false"
+                                                    class="flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition-all"
+                                                    :class="activeTab === 'pending' ? 'border-[#003628]/30 bg-[#003628]/5 text-[#003628]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
                                                 >
-                                                    <span
-                                                        class="text-xs font-bold"
-                                                        >Active</span
-                                                    >
-                                                    <span
-                                                        class="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black"
-                                                        >{{
-                                                            pendingCount
-                                                        }}</span
-                                                    >
+                                                    <span>Active</span>
+                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">{{ pendingCount }}</span>
                                                 </Link>
                                                 <Link
                                                     href="/peminjaman?tab=completed"
-                                                    class="flex items-center justify-between rounded-2xl border p-3.5 transition-all"
-                                                    :class="
-                                                        activeTab ===
-                                                        'completed'
-                                                            ? 'border-[#003628]/20 bg-[#003628]/5 text-[#003628]'
-                                                            : 'border-slate-100 text-slate-500 hover:bg-slate-50'
-                                                    "
-                                                    @click="showFilters = false"
+                                                    class="flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition-all"
+                                                    :class="activeTab === 'completed' ? 'border-[#003628]/30 bg-[#003628]/5 text-[#003628]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
                                                 >
-                                                    <span
-                                                        class="text-xs font-bold"
-                                                        >Completed</span
-                                                    >
-                                                    <span
-                                                        class="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black"
-                                                        >{{
-                                                            completedCount
-                                                        }}</span
-                                                    >
+                                                    <span>Completed</span>
+                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">{{ completedCount }}</span>
                                                 </Link>
                                                 <Link
                                                     href="/peminjaman?tab=cancelled"
-                                                    class="flex items-center justify-between rounded-2xl border p-3.5 transition-all"
-                                                    :class="
-                                                        activeTab ===
-                                                        'cancelled'
-                                                            ? 'border-[#003628]/20 bg-[#003628]/5 text-[#003628]'
-                                                            : 'border-slate-100 text-slate-500 hover:bg-slate-50'
-                                                    "
-                                                    @click="showFilters = false"
+                                                    class="flex items-center justify-between rounded-xl border px-3 py-2 text-xs font-bold transition-all"
+                                                    :class="activeTab === 'cancelled' ? 'border-[#003628]/30 bg-[#003628]/5 text-[#003628]' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
                                                 >
-                                                    <span
-                                                        class="text-xs font-bold"
-                                                        >Cancelled</span
-                                                    >
-                                                    <span
-                                                        class="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black"
-                                                        >{{
-                                                            cancelledCount
-                                                        }}</span
-                                                    >
+                                                    <span>Cancelled</span>
+                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]">{{ cancelledCount }}</span>
                                                 </Link>
                                             </div>
                                         </div>
 
-                                        <div
-                                            class="space-y-4 border-t border-slate-100 pt-6"
-                                        >
-                                            <div class="space-y-1.5">
-                                                <label
-                                                    class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                    >Flow</label
-                                                >
-                                                <div class="relative">
-                                                    <select
-                                                        v-model="
-                                                            localFilters.flow
-                                                        "
-                                                        class="h-11 w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-4 pr-10 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                                    >
-                                                        <option value="all">
-                                                            Semua
-                                                        </option>
-                                                        <option value="out">
-                                                            Loan Out
-                                                        </option>
-                                                        <option value="return">
-                                                            Return
-                                                        </option>
-                                                    </select>
-                                                    <svg
-                                                        class="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-slate-400"
-                                                        viewBox="0 0 20 20"
-                                                        fill="currentColor"
-                                                    >
-                                                        <path
-                                                            fill-rule="evenodd"
-                                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                            clip-rule="evenodd"
-                                                        />
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                            <div class="space-y-1.5">
-                                                <label
-                                                    class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                    >Perusahaan</label
-                                                >
-                                                <div class="relative">
-                                                    <select
-                                                        v-model="
-                                                            localFilters.company
-                                                        "
-                                                        class="h-11 w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-4 pr-10 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                                    >
-                                                        <option value="">
-                                                            Semua
-                                                        </option>
-                                                        <option
-                                                            v-for="opt in companyOptions"
-                                                            :key="opt"
-                                                            :value="opt"
-                                                        >
-                                                            {{ opt }}
-                                                        </option>
-                                                    </select>
-                                                    <svg
-                                                        class="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-slate-400"
-                                                        viewBox="0 0 20 20"
-                                                        fill="currentColor"
-                                                    >
-                                                        <path
-                                                            fill-rule="evenodd"
-                                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                            clip-rule="evenodd"
-                                                        />
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                            <div class="space-y-1.5">
-                                                <label
-                                                    class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                    >Lokasi</label
-                                                >
-                                                <div class="relative">
-                                                    <select
-                                                        v-model="
-                                                            localFilters.location
-                                                        "
-                                                        class="h-11 w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-4 pr-10 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                                    >
-                                                        <option value="">
-                                                            Semua
-                                                        </option>
-                                                        <option
-                                                            v-for="opt in locationOptions"
-                                                            :key="opt"
-                                                            :value="opt"
-                                                        >
-                                                            {{ opt }}
-                                                        </option>
-                                                    </select>
-                                                    <svg
-                                                        class="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-slate-400"
-                                                        viewBox="0 0 20 20"
-                                                        fill="currentColor"
-                                                    >
-                                                        <path
-                                                            fill-rule="evenodd"
-                                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                            clip-rule="evenodd"
-                                                        />
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                            <button
-                                                class="mt-4 h-12 w-full rounded-2xl bg-[#003628] text-sm font-black tracking-widest text-white uppercase shadow-lg shadow-primary/10 transition-all hover:opacity-90 active:scale-95"
-                                                @click="commitFilters"
+                                        <!-- Flow Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Flow</label>
+                                            <select
+                                                v-model="selectedFlow"
+                                                @change="currentPage = 1"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
                                             >
-                                                Terapkan Filter
-                                            </button>
+                                                <option value="all">All Flows</option>
+                                                <option value="loan-out">Loan Out</option>
+                                                <option value="return">Return</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Company Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Company</label>
+                                            <select
+                                                v-model="selectedCompany"
+                                                @change="currentPage = 1"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">All Companies</option>
+                                                <option v-for="c in companyOptions" :key="c" :value="c">{{ c }}</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Location Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Location</label>
+                                            <select
+                                                v-model="selectedLocation"
+                                                @change="currentPage = 1"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">All Locations</option>
+                                                <option v-for="loc in locationOptions" :key="loc" :value="loc">{{ loc }}</option>
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
                             </Transition>
                         </div>
 
-                        <!-- Create button -->
+                        <!-- Add Button -->
                         <Link
-                            href="/peminjaman/create?movementType=out"
-                            class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003628] px-6 text-[13px] font-bold text-white shadow-lg shadow-emerald-900/20 transition-all hover:bg-[#003628]/90 active:scale-95"
+                            href="/peminjaman/create"
+                            class="h-8 px-3 rounded-lg bg-[#003628] text-white flex items-center gap-1.5 transition-all hover:opacity-90 shadow-sm active:scale-95"
                         >
                             <Plus class="size-4" />
-                            <span>Buat Peminjaman</span>
+                            <span class="text-xs font-bold">Peminjaman</span>
                         </Link>
                     </div>
                 </div>
 
-                <!-- Desktop Table -->
                 <div
                     v-if="paginatedRows.length"
                     class="hidden overflow-hidden rounded-xl border border-slate-200/50 md:block"
@@ -1160,4 +1036,4 @@ const downloadCsv = () => {
             @close="quickReturnId = null"
         />
     </AppLayout>
-</template>
+</template>>

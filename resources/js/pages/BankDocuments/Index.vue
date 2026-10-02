@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, router } from '@inertiajs/vue3';
+import { onClickOutside } from '@vueuse/core';
 import {
     LucideFolderArchive as FolderArchive,
     LucideHistory as HistoryIcon,
@@ -8,6 +9,10 @@ import {
     LucideSearchCheck as InspectionIcon,
     LucideFileCheck as FileCheck,
     LucideFiles as FilesIcon,
+    LucideSearch,
+    LucideDownload,
+    LucideSlidersHorizontal,
+    LucideRefreshCw,
 } from 'lucide-vue-next';
 import { computed, reactive, ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -67,20 +72,60 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Bank Dokumen', href: '/bank-documents' },
 ];
 
+const getLast31DaysRange = () => {
+    const today = new Date();
+    const last31Days = new Date(today);
+    last31Days.setDate(today.getDate() - 31);
+    
+    return {
+        from: last31Days.toISOString().split('T')[0],
+        to: today.toISOString().split('T')[0],
+    };
+};
+
+const defaultDateRange = getLast31DaysRange();
+
 const filterForm = reactive({
     search: props.filters.search || '',
     filter_type: props.filters.filter_type || '',
     filter_status: props.filters.filter_status || '',
-    from_date: props.filters.from_date || '',
-    to_date: props.filters.to_date || '',
+    from_date: props.filters.from_date || defaultDateRange.from,
+    to_date: props.filters.to_date || defaultDateRange.to,
 });
 
 const selectedDoc = ref<BankDocumentItem | null>(null);
 const sheetOpen = ref(false);
+const showFilters = ref(false);
+const filterPanelRef = ref<HTMLElement | null>(null);
+
+onClickOutside(filterPanelRef, () => {
+    showFilters.value = false;
+});
 
 const openDetail = (doc: BankDocumentItem) => {
     selectedDoc.value = doc;
     sheetOpen.value = true;
+};
+
+const getTypeCount = (key: string) => {
+    if (!props.stats) return '0';
+    const val = (props.stats as unknown as Record<string, number>)[key];
+    return val !== undefined ? val : '0';
+};
+
+const getStatusCount = (key: string) => {
+    if (!props.stats) return '0';
+    if (key === 'completed') return props.stats.completed;
+    return '0';
+};
+
+const resetFilters = () => {
+    filterForm.search = '';
+    filterForm.filter_type = '';
+    filterForm.filter_status = '';
+    filterForm.from_date = defaultDateRange.from;
+    filterForm.to_date = defaultDateRange.to;
+    showFilters.value = false;
 };
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -126,16 +171,25 @@ const summaryText = computed(() => {
     return `Menampilkan ${props.documents.from ?? 0}-${props.documents.to ?? 0} dari ${props.documents.total} dokumen`;
 });
 
-const activeFilterCount = computed(
-    () =>
-        [
-            filterForm.search,
-            filterForm.filter_type,
-            filterForm.filter_status,
-            filterForm.from_date,
-            filterForm.to_date,
-        ].filter(Boolean).length,
-);
+const activeFilterCount = computed(() => {
+    let count = 0;
+    
+    // Don't count search (auto-applied)
+    if (filterForm.filter_type) count++;
+    if (filterForm.filter_status) count++;
+    
+    // Only count date filters if they differ from the default 31-day range
+    const isDefaultDateRange = 
+        filterForm.from_date === defaultDateRange.from && 
+        filterForm.to_date === defaultDateRange.to;
+    
+    if (!isDefaultDateRange && (filterForm.from_date || filterForm.to_date)) {
+        if (filterForm.from_date) count++;
+        if (filterForm.to_date) count++;
+    }
+    
+    return count;
+});
 
 const exportUrl = computed(() => {
     const params = new URLSearchParams();
@@ -192,45 +246,6 @@ const isPresetActive = (preset: keyof typeof datePresets) =>
     filterForm.from_date === datePresets[preset].from &&
     filterForm.to_date === datePresets[preset].to;
 
-const setCardFilter = (mode: 'all' | 'stb' | 'peminjaman' | 'inspection' | 'completed') => {
-    switch (mode) {
-        case 'all':
-            filterForm.filter_type = '';
-            filterForm.filter_status = '';
-            break;
-        case 'stb':
-            filterForm.filter_type = 'stb';
-            filterForm.filter_status = '';
-            break;
-        case 'peminjaman':
-            filterForm.filter_type = 'peminjaman';
-            filterForm.filter_status = '';
-            break;
-        case 'inspection':
-            filterForm.filter_type = 'inspection';
-            filterForm.filter_status = '';
-            break;
-        case 'completed':
-            filterForm.filter_type = '';
-            filterForm.filter_status = 'completed';
-            break;
-    }
-};
-
-const isCardActive = (mode: 'all' | 'stb' | 'peminjaman' | 'inspection' | 'completed') => {
-    switch (mode) {
-        case 'all':
-            return filterForm.filter_type === '' && filterForm.filter_status === '';
-        case 'stb':
-            return filterForm.filter_type === 'stb';
-        case 'peminjaman':
-            return filterForm.filter_type === 'peminjaman';
-        case 'inspection':
-            return filterForm.filter_type === 'inspection';
-        case 'completed':
-            return filterForm.filter_status === 'completed';
-    }
-};
 </script>
 
 <template>
@@ -238,132 +253,170 @@ const isCardActive = (mode: 'all' | 'stb' | 'peminjaman' | 'inspection' | 'compl
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="app-page-shell">
-            <!-- Header Section -->
-            <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div class="space-y-1">
-                    <div class="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#003628] uppercase mb-2">
-                        <FolderArchive class="size-3" />
-                        Repositori &amp; Arsip Digital Operasional
+            <!-- Combined Header + Table Card -->
+            <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
+                <!-- Compact Single-Row Header -->
+                <div class="pb-4 border-b border-slate-100 flex items-center justify-between gap-6 mb-8">
+                    <!-- Left: Icon + Title -->
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="h-8 w-8 rounded-lg bg-[#003628]/10 flex items-center justify-center shrink-0">
+                            <FolderArchive class="size-4 text-[#003628]"/>
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-slate-900">Bank Dokumen</h2>
+                        </div>
                     </div>
-                    <h1 class="text-3xl font-black tracking-tight text-slate-900 lg:text-4xl">
-                        Bank <span class="text-[#003628] italic">Dokumen</span>
-                    </h1>
+
+                    <!-- Right: Compact Controls -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <!-- Small Search Box -->
+                        <div class="relative w-40">
+                            <LucideSearch class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                            <input
+                                v-model="filterForm.search"
+                                type="text"
+                                placeholder="Cari..."
+                                class="w-full h-8 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-2 focus:ring-[#003628]/10 transition-all outline-none shadow-sm"
+                            />
+                        </div>
+
+                        <!-- Export Button -->
+                        <a
+                            :href="exportUrl"
+                            class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
+                            title="Ekspor CSV"
+                        >
+                            <LucideDownload class="size-4" />
+                        </a>
+
+                        <!-- Filter Panel -->
+                        <div ref="filterPanelRef" class="relative">
+                            <button
+                                type="button"
+                                class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all relative shadow-sm"
+                                @click="showFilters = !showFilters"
+                            >
+                                <LucideSlidersHorizontal class="size-4" />
+                                <span v-if="activeFilterCount" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white">
+                                    {{ activeFilterCount }}
+                                </span>
+                            </button>
+
+                            <Transition
+                                enter-active-class="transition duration-200 ease-out"
+                                enter-from-class="opacity-0 translate-y-2 scale-95"
+                                enter-to-class="opacity-100 translate-y-0 scale-100"
+                                leave-active-class="transition duration-150 ease-in"
+                                leave-from-class="opacity-100 translate-y-0 scale-100"
+                                leave-to-class="opacity-0 translate-y-2 scale-95"
+                            >
+                                <div v-if="showFilters" class="absolute top-full right-0 z-50 mt-4 w-88 rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter Bank Dokumen</h3>
+                                        <button
+                                            @click="resetFilters"
+                                            class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                        >
+                                            <LucideRefreshCw class="size-3" /> Reset
+                                        </button>
+                                    </div>
+
+                                    <div class="space-y-4">
+                                        <!-- Document Type Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Jenis Dokumen</label>
+                                            <select
+                                                v-model="filterForm.filter_type"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">Semua Jenis Dokumen</option>
+                                                <option v-for="t in document_types" :key="t.key" :value="t.key">
+                                                    {{ t.label }} ({{ getTypeCount(t.key) }})
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Status Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Status Dokumen</label>
+                                            <select
+                                                v-model="filterForm.filter_status"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">Semua Status</option>
+                                                <option v-for="st in statuses" :key="st.key" :value="st.key">
+                                                    {{ st.label }} ({{ getStatusCount(st.key) }})
+                                                </option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Date Presets -->
+                                        <div class="pt-3 border-t border-slate-100 space-y-2">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Preset Rentang Tanggal</label>
+                                            <div class="grid grid-cols-3 gap-2">
+                                                <button
+                                                    type="button"
+                                                    @click="applyDatePreset('today')"
+                                                    class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
+                                                    :class="isPresetActive('today') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+                                                >
+                                                    Hari Ini
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="applyDatePreset('last7Days')"
+                                                    class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
+                                                    :class="isPresetActive('last7Days') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+                                                >
+                                                    7 Hari
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="applyDatePreset('thisMonth')"
+                                                    class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
+                                                    :class="isPresetActive('thisMonth') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+                                                >
+                                                    Bulan Ini
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Date Inputs -->
+                                        <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                            <div class="space-y-1">
+                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Dari</label>
+                                                <input
+                                                    v-model="filterForm.from_date"
+                                                    type="date"
+                                                    :max="defaultDateRange.to"
+                                                    class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                                />
+                                            </div>
+                                            <div class="space-y-1">
+                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Hingga</label>
+                                                <input
+                                                    v-model="filterForm.to_date"
+                                                    type="date"
+                                                    :max="defaultDateRange.to"
+                                                    class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Transition>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <div class="h-12 w-12 rounded-2xl border border-slate-200 bg-white shadow-xs flex items-center justify-center">
-                        <FilesIcon class="size-5 text-[#003628]" />
-                    </div>
-                </div>
-            </header>
-
-            <!-- Stats Overview Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
-                <!-- Semua Dokumen -->
-                <button
-                    type="button"
-                    @click="setCardFilter('all')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('all')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('all') ? 'text-emerald-300' : 'text-slate-400'">
-                            Semua Dokumen
-                        </span>
-                        <FilesIcon class="size-4" :class="isCardActive('all') ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.total }}</p>
-                </button>
-
-                <!-- Dokumen STB -->
-                <button
-                    type="button"
-                    @click="setCardFilter('stb')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('stb')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('stb') ? 'text-emerald-300' : 'text-slate-400'">
-                            Dokumen STB
-                        </span>
-                        <StbIcon class="size-4" :class="isCardActive('stb') ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.stb }}</p>
-                </button>
-
-                <!-- Peminjaman -->
-                <button
-                    type="button"
-                    @click="setCardFilter('peminjaman')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('peminjaman')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('peminjaman') ? 'text-emerald-300' : 'text-slate-400'">
-                            Peminjaman
-                        </span>
-                        <LoanIcon class="size-4" :class="isCardActive('peminjaman') ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.peminjaman }}</p>
-                </button>
-
-                <!-- Inspection -->
-                <button
-                    type="button"
-                    @click="setCardFilter('inspection')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer"
-                    :class="isCardActive('inspection')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('inspection') ? 'text-emerald-300' : 'text-slate-400'">
-                            Inspection
-                        </span>
-                        <InspectionIcon class="size-4" :class="isCardActive('inspection') ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.inspection }}</p>
-                </button>
-
-                <!-- PDF Lengkap -->
-                <button
-                    type="button"
-                    @click="setCardFilter('completed')"
-                    class="p-4 rounded-2xl border transition-all text-left group cursor-pointer col-span-2 sm:col-span-1"
-                    :class="isCardActive('completed')
-                        ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20'
-                        : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-xs'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="isCardActive('completed') ? 'text-emerald-300' : 'text-slate-400'">
-                            Arsip PDF Selesai
-                        </span>
-                        <FileCheck class="size-4" :class="isCardActive('completed') ? 'text-emerald-200' : 'text-emerald-600'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.completed }}</p>
-                </button>
+                <!-- Table Content -->
+                <BankDocumentsTable
+                    :documents="documents"
+                    :filter-form="filterForm"
+                    :summary-text="summaryText"
+                    @open-detail="openDetail"
+                />
             </div>
-
-            <!-- Main Table Component -->
-            <BankDocumentsTable
-                :documents="documents"
-                :filter-form="filterForm"
-                :document-types="document_types"
-                :statuses="statuses"
-                :summary-text="summaryText"
-                :export-url="exportUrl"
-                :apply-date-preset="applyDatePreset"
-                :clear-date-filters="clearDateFilters"
-                :is-preset-active="isPresetActive"
-                :active-filter-count="activeFilterCount"
-                @open-detail="openDetail"
-            />
         </div>
 
         <!-- Detail Sheet Modal -->

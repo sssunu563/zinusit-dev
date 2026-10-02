@@ -30,72 +30,114 @@ class UserController extends Controller
     // =========================================================================
 
     /**
-     * Display user list sourced directly from Snipe-IT, enriched with
-     * local DB linkage info (local ID, last sync timestamp, etc).
+     * Display user list sourced from local database mirror (like assets).
+     * If local DB is empty, fallback to API and auto-sync.
      */
     public function index(): Response
     {
-        // Pull all users from Snipe-IT (up to 500; adjust limit as needed)
-        $remoteUsers = collect($this->snipe->fetchRows(
-            'users',
-            ['limit' => 500, 'sort' => 'name', 'order' => 'asc'],
-            500,
-        ))
-            ->reject(fn (array $remote): bool => (bool) ($remote['ldap_import'] ?? false))
+        // Check if local DB has data
+        $localCount = \App\Models\SnipeitUser::count();
+        
+        if ($localCount === 0) {
+            // Auto-sync from API if DB is empty
+            \Illuminate\Support\Facades\Artisan::call('snipeit:sync', ['--type' => 'users']);
+        }
+
+        // Query from local database mirror (super fast!)
+        $users = \App\Models\SnipeitUser::orderBy('id', 'desc')->get();
+
+        $usersData = $users->map(function ($user) {
+            $rawData = $user->raw_data ?? [];
+
+            return [
+                // --- Local & Snipe-IT identity ---
+                'id' => $user->id,
+                'snipeit_user_id' => $user->snipeit_id,
+                'snipeit_username' => $user->username,
+                // --- Profile fields ---
+                'name' => $user->name,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'email' => $user->email,
+                'phone' => $user->phone ?? data_get($rawData, 'mobile'),
+                'jobtitle' => $user->jobtitle,
+                'employee_num' => $user->employee_num,
+                'manager_name' => $user->manager_name,
+                'location_name' => $user->location_name,
+                'department_name' => $user->department,
+                'company_name' => $user->company,
+                // --- Snipe-IT flags ---
+                'activated' => $user->activated,
+                'ldap_import' => (bool) data_get($rawData, 'ldap_import', false),
+                'permissions' => data_get($rawData, 'permissions', []),
+                // --- Local linkage ---
+                'email_verified_at' => $user->snipeit_updated_at?->toIso8601String(),
+                'snipeit_synced_at' => $user->updated_at?->toIso8601String(),
+                'created_at' => $user->snipeit_created_at?->toIso8601String() ?? data_get($rawData, 'created_at.datetime'),
+            ];
+        })->values();
+
+        // Fetch LDAP users for the unified view
+        $ldapUsers = collect($this->ldap->getAllUsers())
+            ->map(function (array $user): array {
+                $username = (string) ($user['username'] ?? '');
+
+                return [
+                    'username' => $username,
+                    'name' => (string) ($user['name'] ?? ''),
+                    'first_name' => (string) ($user['first_name'] ?? ''),
+                    'last_name' => (string) ($user['last_name'] ?? ''),
+                    'email' => (string) ($user['email'] ?? ''),
+                    'phone' => (string) ($user['phone'] ?? ''),
+                    'company_name' => (string) ($user['company_name'] ?? ''),
+                    'department_name' => (string) ($user['department_name'] ?? ''),
+                    'location_name' => (string) ($user['location_name'] ?? ''),
+                    'manager' => (string) ($user['manager'] ?? ''),
+                    'title' => (string) ($user['title'] ?? ''),
+                    'uuid' => (string) ($user['uuid'] ?? ''),
+                    'created_at' => (string) ($user['created_at'] ?? ''),
+                    'modified_at' => (string) ($user['modified_at'] ?? ''),
+                    'password_modified_at' => (string) ($user['password_modified_at'] ?? ''),
+                    'groups' => $this->ldap->getGroupsForUser($username),
+                ];
+            })
+            ->filter(fn (array $user): bool => $user['username'] !== '')
+            ->unique(fn (array $user): string => strtolower(trim($user['username'])))
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values()
             ->all();
 
-        // Build a lookup map of local users keyed by snipeit_user_id for enrichment
-        $localBySnipeId = User::query()
-            ->whereNotNull('snipeit_user_id')
-            ->get(['id', 'snipeit_user_id', 'snipeit_synced_at', 'email_verified_at'])
-            ->keyBy('snipeit_user_id');
-
-        $users = collect($remoteUsers)->map(function (array $remote) use ($localBySnipeId) {
-            $remoteId = (int) ($remote['id'] ?? 0);
-            $local    = $localBySnipeId->get($remoteId);
-
-            return [
-                // --- Snipe-IT identity ---
-                'snipeit_user_id'  => $remoteId,
-                'snipeit_username' => $remote['username'] ?? null,
-                // --- Profile fields ---
-                'name'          => $remote['name'] ?? null,
-                'first_name'    => $remote['first_name'] ?? null,
-                'last_name'     => $remote['last_name'] ?? null,
-                'email'         => $remote['email'] ?? null,
-                'phone'         => $remote['phone'] ?? $remote['mobile'] ?? null,
-                'jobtitle'      => $remote['jobtitle'] ?? null,
-                'employee_num'  => $remote['employee_num'] ?? null,
-                'manager_name'  => isset($remote['manager']) ? ($remote['manager']['name'] ?? null) : null,
-                'location_name' => isset($remote['location']) ? ($remote['location']['name'] ?? null) : null,
-                'department_name' => isset($remote['department']) ? ($remote['department']['name'] ?? null) : null,
-                'company_name'  => isset($remote['company']) ? ($remote['company']['name'] ?? null) : null,
-                // --- Snipe-IT role / activation flags ---
-                'activated'         => (bool) ($remote['activated'] ?? false),
-                'ldap_import'       => (bool) ($remote['ldap_import'] ?? false),
-                'permissions'       => $remote['permissions'] ?? [],
-                // --- Local linkage ---
-                'id'                => $local?->id,
-                'email_verified_at' => $local?->email_verified_at?->toIso8601String(),
-                'snipeit_synced_at' => $local?->snipeit_synced_at?->toIso8601String(),
-            ];
-        })
-            // Snipe-IT can contain historical duplicate identities. Keep one
-            // directory row and prefer the record linked to local data.
-            ->sortByDesc(fn (array $user): int => (int) ($user['id'] !== null))
-            ->unique(function (array $user): string {
-                $email = strtolower(trim((string) ($user['email'] ?? '')));
-                $username = strtolower(trim((string) ($user['snipeit_username'] ?? '')));
-
-                return $email !== '' ? 'email:' . $email : 'username:' . $username;
-            })
-            ->values();
-
         return Inertia::render('Users/Index', [
-            'users'  => $users,
+            'users'  => $usersData->all(),
+            'ldapUsers' => $ldapUsers,  // Already an array
             'status' => session('status'),
             'options' => $this->managedUsers->getFormOptions(),
+            'filterOptions' => [
+                'companies' => $users->groupBy('company')
+                    ->map(fn($group, $name) => [
+                        'name' => $name ?: 'Tanpa Perusahaan',
+                        'count' => $group->count()
+                    ])
+                    ->sortByDesc('count')
+                    ->values()
+                    ->all(),
+                'locations' => $users->groupBy(fn($u) => data_get($u->raw_data, 'location.name'))
+                    ->map(fn($group, $name) => [
+                        'name' => $name ?: 'Tanpa Lokasi',
+                        'count' => $group->count()
+                    ])
+                    ->sortByDesc('count')
+                    ->values()
+                    ->all(),
+                'departments' => $users->groupBy('department')
+                    ->map(fn($group, $name) => [
+                        'name' => $name ?: 'Tanpa Departemen',
+                        'count' => $group->count()
+                    ])
+                    ->sortByDesc('count')
+                    ->values()
+                    ->all(),
+            ],
         ]);
     }
 
@@ -262,36 +304,122 @@ class UserController extends Controller
     }
 
     /**
-     * API-like endpoint to fetch full edit data for a user to be used in a modal.
+     * Resolve SnipeitUser and Local User models from ID or instance.
      */
-    public function getEditData(User $user): \Illuminate\Http\JsonResponse
+    private function resolveSnipeitAndLocalUser($user): array
     {
-        // Pull full Snipe-IT profile for this user
-        $snipeProfile = [];
-        if ($user->snipeit_user_id) {
-            $resp = $this->snipe->request("users/{$user->snipeit_user_id}");
-            if (!empty($resp['id'])) {
-                $snipeProfile = $resp;
+        $snipeitUser = null;
+        $localUser = null;
+
+        if ($user instanceof User) {
+            $localUser = $user;
+            if ($user->snipeit_user_id) {
+                $snipeitUser = \App\Models\SnipeitUser::where('snipeit_id', $user->snipeit_user_id)->first();
+            }
+        } elseif ($user instanceof \App\Models\SnipeitUser) {
+            $snipeitUser = $user;
+            $localUser = User::where('snipeit_user_id', $user->snipeit_id)->first();
+        } else {
+            // $user is an ID or string
+            $snipeitUser = \App\Models\SnipeitUser::find($user)
+                ?? \App\Models\SnipeitUser::where('snipeit_id', $user)->first();
+
+            if ($snipeitUser) {
+                $localUser = User::where('snipeit_user_id', $snipeitUser->snipeit_id)
+                    ->orWhere('id', $snipeitUser->id)
+                    ->first();
+            } else {
+                $localUser = User::find($user)
+                    ?? User::where('snipeit_user_id', $user)->first();
+                if ($localUser?->snipeit_user_id) {
+                    $snipeitUser = \App\Models\SnipeitUser::where('snipeit_id', $localUser->snipeit_user_id)->first();
+                }
             }
         }
 
-        $mergedProfile = array_merge(
-            $this->managedUsers->getProfileForUser($user),
-            [
-                'id'                   => $user->id,
-                'name'                 => $user->name,
-                'username'             => $user->username ?? $snipeProfile['username'] ?? '',
-                'email'                => $user->email   ?? $snipeProfile['email']    ?? '',
-                'mobile'               => $snipeProfile['mobile']  ?? null,
-                'website'              => $snipeProfile['website'] ?? null,
-                'notes'                => $snipeProfile['notes']   ?? null,
-                'vip'                  => (bool) ($snipeProfile['vip']                  ?? false),
-                'remote'               => (bool) ($snipeProfile['remote']               ?? false),
-                'auto_assign_licenses' => (bool) ($snipeProfile['auto_assign_licenses'] ?? false),
-            ]
-        );
+        return [$snipeitUser, $localUser];
+    }
 
-        return response()->json($mergedProfile);
+    /**
+     * API-like endpoint to fetch full edit data for a user to be used in a modal.
+     */
+    public function getEditData($user): \Illuminate\Http\JsonResponse
+    {
+        [$snipeitUser, $localUser] = $this->resolveSnipeitAndLocalUser($user);
+
+        if (!$snipeitUser && !$localUser) {
+            return response()->json(['error' => 'User tidak ditemukan'], 404);
+        }
+
+        $rawData = $snipeitUser?->raw_data ?? [];
+        $snipeId = $snipeitUser?->snipeit_id ?? $localUser?->snipeit_user_id;
+
+        // Pull full Snipe-IT profile for this user if available
+        $snipeProfile = [];
+        if ($snipeId) {
+            try {
+                $resp = $this->snipe->request("users/{$snipeId}");
+                if (!empty($resp['id'])) {
+                    $snipeProfile = $resp;
+                }
+            } catch (\Throwable) {}
+        }
+
+        $name = $snipeProfile['name'] ?? $snipeitUser?->name ?? $localUser?->name ?? '';
+        $firstName = $snipeProfile['first_name'] ?? $snipeitUser?->first_name ?? '';
+        $lastName = $snipeProfile['last_name'] ?? $snipeitUser?->last_name ?? '';
+        if (!$firstName && $name) {
+            $parts = explode(' ', $name, 2);
+            $firstName = $parts[0];
+            $lastName = $parts[1] ?? '';
+        }
+
+        // Log read/view activity
+        try {
+            ActionLog::create([
+                'user_id'     => auth()->id(),
+                'action_type' => 'read',
+                'item_type'   => User::class,
+                'item_id'     => $snipeitUser?->id ?? $localUser?->id,
+                'target_type' => User::class,
+                'target_id'   => $snipeitUser?->id ?? $localUser?->id,
+                'snipeit_id'  => $snipeId,
+                'snipeit_type'=> 'user',
+                'note'        => "Membuka modal detail/edit user '{$name}'",
+                'log_meta'    => ['snipeit_id' => $snipeId, 'name' => $name, 'email' => $snipeProfile['email'] ?? $snipeitUser?->email ?? ''],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write user modal read log', ['error' => $e->getMessage()]);
+        }
+
+        return response()->json([
+            'id'                   => $snipeitUser?->id ?? $localUser?->id ?? $user,
+            'snipeit_user_id'      => $snipeId,
+            'first_name'           => (string) $firstName,
+            'last_name'            => (string) $lastName,
+            'name'                 => (string) $name,
+            'username'             => (string) ($snipeProfile['username'] ?? $snipeitUser?->username ?? $localUser?->username ?? ''),
+            'email'                => (string) ($snipeProfile['email'] ?? $snipeitUser?->email ?? $localUser?->email ?? ''),
+            'employee_num'         => (string) ($snipeProfile['employee_num'] ?? $snipeitUser?->employee_num ?? data_get($rawData, 'employee_num') ?? ''),
+            'phone'                => (string) ($snipeProfile['phone'] ?? $snipeitUser?->phone ?? data_get($rawData, 'phone') ?? ''),
+            'mobile'               => (string) ($snipeProfile['mobile'] ?? data_get($rawData, 'mobile') ?? ''),
+            'jobtitle'             => (string) ($snipeProfile['jobtitle'] ?? $snipeitUser?->jobtitle ?? data_get($rawData, 'jobtitle') ?? ''),
+            'website'              => (string) ($snipeProfile['website'] ?? data_get($rawData, 'website') ?? ''),
+            'notes'                => (string) ($snipeProfile['notes'] ?? data_get($rawData, 'notes') ?? ''),
+            'manager_id'           => (string) (data_get($snipeProfile, 'manager.id') ?? data_get($rawData, 'manager.id') ?? ''),
+            'manager_name'         => (string) (data_get($snipeProfile, 'manager.name') ?? data_get($rawData, 'manager.name') ?? $snipeitUser?->manager_name ?? ''),
+            'location_id'          => (string) (data_get($snipeProfile, 'location.id') ?? $snipeitUser?->location_id ?? data_get($rawData, 'location.id') ?? ''),
+            'location_name'        => (string) (data_get($snipeProfile, 'location.name') ?? data_get($rawData, 'location.name') ?? $snipeitUser?->location_name ?? ''),
+            'department_id'        => (string) (data_get($snipeProfile, 'department.id') ?? $snipeitUser?->department_id ?? data_get($rawData, 'department.id') ?? ''),
+            'department_name'      => (string) (data_get($snipeProfile, 'department.name') ?? data_get($rawData, 'department.name') ?? $snipeitUser?->department ?? ''),
+            'company_id'           => (string) (data_get($snipeProfile, 'company.id') ?? $snipeitUser?->company_id ?? data_get($rawData, 'company.id') ?? ''),
+            'company_name'         => (string) (data_get($snipeProfile, 'company.name') ?? data_get($rawData, 'company.name') ?? $snipeitUser?->company ?? ''),
+            'password'             => '',
+            'password_confirmation'=> '',
+            'vip'                  => (bool) ($snipeProfile['vip'] ?? data_get($rawData, 'vip', false)),
+            'remote'               => (bool) ($snipeProfile['remote'] ?? data_get($rawData, 'remote', false)),
+            'auto_assign_licenses' => (bool) ($snipeProfile['auto_assign_licenses'] ?? data_get($rawData, 'autoassign_licenses', false)),
+        ]);
     }
 
     public function create(): Response
@@ -374,17 +502,47 @@ class UserController extends Controller
     /**
     * Update a user used for Snipe-IT asset operations.
      */
-    public function update(UserUpdateRequest $request, User $user): RedirectResponse
+    public function update(UserUpdateRequest $request, $user): RedirectResponse
     {
         $data = $request->validated();
+        [$snipeitUser, $localUser] = $this->resolveSnipeitAndLocalUser($user);
+
+        $snipeId = $snipeitUser?->snipeit_id ?? $localUser?->snipeit_user_id;
+
+        if (!$localUser) {
+            $localUser = User::create([
+                'name' => trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? '')),
+                'email' => $data['email'] ?? ($snipeitUser?->email ?? "user_{$snipeId}@snipeit.local"),
+                'username' => $data['username'] ?? ($snipeitUser?->username ?? "snipe_{$snipeId}"),
+                'password' => \Illuminate\Support\Str::random(16),
+                'snipeit_user_id' => $snipeId,
+            ]);
+        }
 
         // Step 1: update Snipe-IT and local DB
         $this->managedUsers->updateManagedUser(
-            $user,
+            $localUser,
             $data,
             allowPasswordUpdate: true,
             markVerified: true,
         );
+
+        // Also update SnipeitUser mirror directly
+        if ($snipeitUser) {
+            $snipeitUser->update([
+                'name' => trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? '')) ?: $snipeitUser->name,
+                'first_name' => $data['first_name'] ?? $snipeitUser->first_name,
+                'last_name' => $data['last_name'] ?? $snipeitUser->last_name,
+                'email' => $data['email'] ?? $snipeitUser->email,
+                'phone' => $data['phone'] ?? $snipeitUser->phone,
+                'jobtitle' => $data['jobtitle'] ?? $snipeitUser->jobtitle,
+                'employee_num' => $data['employee_num'] ?? $snipeitUser->employee_num,
+                'company_id' => $data['company_id'] ?? $snipeitUser->company_id,
+                'location_id' => $data['location_id'] ?? $snipeitUser->location_id,
+                'department_id' => $data['department_id'] ?? $snipeitUser->department_id,
+                'manager_id' => $data['manager_id'] ?? $snipeitUser->manager_id,
+            ]);
+        }
 
         // Log user update
         try {
@@ -392,11 +550,11 @@ class UserController extends Controller
                 'user_id'     => auth()->id(),
                 'action_type' => 'updated',
                 'item_type'   => User::class,
-                'item_id'     => $user->id,
+                'item_id'     => $localUser->id,
                 'target_type' => User::class,
-                'target_id'   => $user->id,
-                'note'        => "User '{$user->name}' ({$user->email}) diperbarui",
-                'log_meta'    => ['username' => $user->username, 'email' => $user->email],
+                'target_id'   => $localUser->id,
+                'note'        => "User '{$localUser->name}' ({$localUser->email}) diperbarui",
+                'log_meta'    => ['username' => $localUser->username, 'email' => $localUser->email],
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to write user update log', ['error' => $e->getMessage()]);
@@ -452,8 +610,34 @@ class UserController extends Controller
      * Tab 1 – Detail: LLDAP profile fused with Snipe-IT profile fields.
      * Tab 2 – Role & Akses: Snipe-IT permissions / groups for the user.
      */
-    public function show(User $user): Response
+    public function show($user): Response
     {
+        [$snipeitUser, $localUser] = $this->resolveSnipeitAndLocalUser($user);
+
+        if (!$localUser && $snipeitUser) {
+            $localUser = User::firstOrCreate(
+                ['snipeit_user_id' => $snipeitUser->snipeit_id],
+                [
+                    'name' => $snipeitUser->name ?: 'User',
+                    'email' => $snipeitUser->email ?: "user_{$snipeitUser->snipeit_id}@snipeit.local",
+                    'username' => $snipeitUser->username ?: "snipe_{$snipeitUser->snipeit_id}",
+                    'password' => \Illuminate\Support\Str::random(16),
+                    'employee_num' => $snipeitUser->employee_num,
+                    'location' => $snipeitUser->location_name,
+                    'department' => $snipeitUser->department,
+                    'company' => $snipeitUser->company,
+                    'avatar' => $snipeitUser->avatar,
+                    'snipeit_username' => $snipeitUser->username,
+                    'snipeit_synced_at' => now(),
+                ]
+            );
+        }
+
+        if (!$localUser) {
+            abort(404, 'User tidak ditemukan');
+        }
+
+        $user = $localUser;
         $snipeId = $user->snipeit_user_id;
         $snipeUser = [];
 
@@ -1079,27 +1263,26 @@ class UserController extends Controller
         return back()->with('error', 'Consumables tidak dapat di-checkin.');
     }
 
-    public function destroy(User $user): RedirectResponse
+    public function destroy($user): RedirectResponse
     {
-        $snipeId = $user->snipeit_user_id;
+        [$snipeitUser, $localUser] = $this->resolveSnipeitAndLocalUser($user);
+        $snipeId = $localUser?->snipeit_user_id ?? $snipeitUser?->snipeit_id;
 
         // Guard: block delete if user has active assignments in Snipe-IT
         if ($snipeId) {
-                $resp   = $this->snipe->request("users/{$snipeId}", [], true);
+            $resp   = $this->snipe->request("users/{$snipeId}", [], true);
             $total  = (int) ($resp['assets_count'] ?? 0)
                     + (int) ($resp['licenses_count'] ?? 0)
                     + (int) ($resp['accessories_count'] ?? 0);
 
             if ($total > 0) {
-                return to_route('users.show', $user)
-                    ->with('error', 'User masih memiliki asset yang di-assign. Harap checkin semua asset terlebih dahulu.');
+                return back()->with('error', 'User masih memiliki asset yang di-assign. Harap checkin semua asset terlebih dahulu.');
             }
 
             $hasDocuments = \App\Models\Stb::where('user_id', $snipeId)->exists()
                 || \App\Models\Peminjaman::where('user_id', $snipeId)->exists();
             if ($hasDocuments) {
-                return to_route('users.show', $user)
-                    ->with('error', 'User masih tercatat dalam dokumen STB atau Peminjaman.');
+                return back()->with('error', 'User masih tercatat dalam dokumen STB atau Peminjaman.');
             }
 
             $response = $this->snipe->deleteRecord('users', $snipeId);
@@ -1107,12 +1290,46 @@ class UserController extends Controller
                 $message = $response['messages'] ?? 'API menolak penghapusan.';
                 $message = is_array($message) ? json_encode($message) : (string) $message;
 
-                return to_route('users.show', $user)
-                    ->with('error', 'User tidak dapat dihapus dari Snipe-IT: ' . $message);
+                return back()->with('error', 'User tidak dapat dihapus dari Snipe-IT: ' . $message);
             }
         }
 
-        $user->delete();
+        $userName = $snipeitUser?->name ?? $localUser?->name ?? 'Unknown';
+        $userEmail = $snipeitUser?->email ?? $localUser?->email ?? '';
+
+        if ($localUser) {
+            $localUser->delete();
+        }
+
+        // ⚡ AUTO-SYNC: Delete from snipeit_users mirror table
+        if ($snipeitUser) {
+            $snipeitUser->delete();
+        } elseif ($snipeId) {
+            try {
+                \App\Models\SnipeitUser::where('snipeit_id', $snipeId)->orWhere('id', $snipeId)->delete();
+            } catch (\Throwable $e) {
+                \Log::warning('Failed to delete user from mirror table', [
+                    'user_id' => $snipeId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // Log delete activity
+        try {
+            ActionLog::create([
+                'user_id'     => auth()->id(),
+                'action_type' => 'deleted',
+                'item_type'   => User::class,
+                'target_type' => User::class,
+                'snipeit_id'  => $snipeId,
+                'snipeit_type'=> 'user',
+                'note'        => "User '{$userName}' ({$userEmail}) dihapus",
+                'log_meta'    => ['snipeit_id' => $snipeId, 'name' => $userName, 'email' => $userEmail],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write user delete log', ['error' => $e->getMessage()]);
+        }
 
         return to_route('users.index')->with('status', 'User berhasil dihapus.');
     }
@@ -1206,6 +1423,20 @@ class UserController extends Controller
     public function sync(): RedirectResponse
     {
         $count = $this->managedUsers->syncAllUsers();
+
+        // Log sync activity
+        try {
+            ActionLog::create([
+                'user_id'     => auth()->id(),
+                'action_type' => 'sync',
+                'item_type'   => User::class,
+                'target_type' => User::class,
+                'note'        => "Sync {$count} user dari Snipe-IT ke database lokal",
+                'log_meta'    => ['count' => $count, 'source' => 'snipeit'],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write user sync log', ['error' => $e->getMessage()]);
+        }
 
         return to_route('users.index')->with('status', "Berhasil mensinkronisasi {$count} user dari Snipe-IT.");
     }

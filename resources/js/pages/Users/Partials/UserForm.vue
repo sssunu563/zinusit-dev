@@ -7,7 +7,7 @@ import {
     LucideX as X,
     LucideCheckCircle2 as CheckCircle,
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +57,19 @@ const props = defineProps<Props>();
 const emit = defineEmits(['success', 'close']);
 
 const form = useForm({ ...props.initialValues });
+
+watch(
+    () => props.initialValues,
+    (newVal) => {
+        if (newVal) {
+            Object.keys(newVal).forEach((key) => {
+                // @ts-ignore
+                form[key] = newVal[key];
+            });
+        }
+    },
+    { deep: true }
+);
 
 const optionalOpen = ref(true);
 

@@ -91,6 +91,9 @@ const props = defineProps<{
     selectedStatus: string;
     selectedCompany: string;
     selectedLocation: string;
+    dateFrom: string;
+    dateTo: string;
+    defaultDateRange: { from: string; to: string };
     pageStart: number;
     pageEnd: number;
     totalRows: number;
@@ -127,8 +130,10 @@ const props = defineProps<{
     cancelledCount: number;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
     (e: 'update:searchQuery', value: string): void;
+    (e: 'update:dateFrom', value: string): void;
+    (e: 'update:dateTo', value: string): void;
     (e: 'update:page-size', value: number): void;
 }>();
 
@@ -147,12 +152,26 @@ onClickOutside(createFlyoutRef, () => {
 });
 
 const activeFilterCount = computed(
-    () =>
-        [
-            props.selectedStatus,
-            props.selectedCompany,
-            props.selectedLocation,
-        ].filter((val) => Boolean(val)).length,
+    () => {
+        let count = 0;
+        
+        // Count non-date filters
+        if (props.selectedStatus) count++;
+        if (props.selectedCompany) count++;
+        if (props.selectedLocation) count++;
+        
+        // Only count date filters if they differ from the default 31-day range
+        const isDefaultDateRange = 
+            props.dateFrom === props.defaultDateRange.from && 
+            props.dateTo === props.defaultDateRange.to;
+        
+        if (!isDefaultDateRange && (props.dateFrom || props.dateTo)) {
+            if (props.dateFrom) count++;
+            if (props.dateTo) count++;
+        }
+        
+        return count;
+    },
 );
 
 const itemsModalOpen = ref(false);
@@ -175,6 +194,8 @@ const localFilters = ref({
     status: props.selectedStatus,
     company: props.selectedCompany,
     location: props.selectedLocation,
+    dateFrom: props.dateFrom,
+    dateTo: props.dateTo,
 });
 
 const commitFilters = () => {
@@ -189,175 +210,64 @@ const resetFilters = () => {
         status: '',
         company: '',
         location: '',
+        dateFrom: props.defaultDateRange.from,
+        dateTo: props.defaultDateRange.to,
     };
+    emit('update:dateFrom', props.defaultDateRange.from);
+    emit('update:dateTo', props.defaultDateRange.to);
     props.resetFilters();
 };
 </script>
 
 <template>
     <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-    <section>
-        <!-- Toolbar -->
-        <div class="mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div class="relative w-full lg:max-w-md">
-                <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                <input
-                    :value="searchQuery"
-                    type="text"
-                    placeholder="Search document, ID, or recipient..."
-                    class="w-full h-12 pl-12 pr-4 rounded-2xl border border-slate-100 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none"
-                    @input="
-                        $emit(
-                            'update:searchQuery',
-                            ($event.target as HTMLInputElement).value,
-                        )
-                    "
-                />
+        <!-- Compact Single-Row Header -->
+        <div class="pb-4 border-b border-slate-100 flex items-center justify-between gap-6 mb-8">
+            <!-- Left: Icon + Title -->
+            <div class="flex items-center gap-3 flex-1">
+                <div class="h-8 w-8 rounded-lg bg-[#003628]/10 flex items-center justify-center shrink-0">
+                    <CheckCircle2 class="size-4 text-[#003628]" />
+                </div>
+                <div>
+                    <h2 class="text-sm font-bold text-slate-900">Serah Terima Barang</h2>
+                </div>
             </div>
 
-            <div class="flex items-center gap-2">
+            <!-- Right: Compact Controls -->
+            <div class="flex items-center gap-2 shrink-0">
+                <!-- Small Search Box -->
+                <div class="relative w-40">
+                    <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                    <input
+                        :value="searchQuery"
+                        type="text"
+                        placeholder="Cari..."
+                        class="w-full h-8 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-2 focus:ring-[#003628]/10 transition-all outline-none shadow-sm"
+                        @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
+                    />
+                </div>
+
+                <!-- Export Button -->
                 <button
                     type="button"
-                    class="h-11 px-4 rounded-xl border border-slate-200 bg-white flex items-center gap-2 text-slate-600 hover:text-[#003628] hover:bg-[#003628]/5 transition-all text-sm font-bold active:scale-95 shadow-sm"
+                    class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
                     title="Export CSV"
                     @click="downloadCsv"
                 >
                     <Download class="size-4" />
                 </button>
 
-                <!-- Filter flyout trigger -->
+                <!-- Filter Panel -->
                 <div ref="filterPanelRef" class="relative">
                     <button
                         type="button"
-                        class="size-11 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm relative"
+                        class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all relative shadow-sm"
                         @click="showFilters = !showFilters"
                     >
-                        <SlidersHorizontal class="size-5" />
-                        <span
-                            v-if="activeFilterCount"
-                            class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white"
-                        >
+                        <SlidersHorizontal class="size-4" />
+                        <span v-if="activeFilterCount" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white">
                             {{ activeFilterCount }}
                         </span>
-                    </button>
-
-                    <!-- Flyout panel -->
-                    <Transition
-                        enter-active-class="transition duration-300 ease-out"
-                        enter-from-class="opacity-0 translate-y-4 scale-95"
-                        enter-to-class="opacity-100 translate-y-0 scale-100"
-                        leave-active-class="transition duration-200 ease-in"
-                        leave-from-class="opacity-100 translate-y-0 scale-100"
-                        leave-to-class="opacity-0 translate-y-4 scale-95"
-                    >
-                        <div
-                            v-if="showFilters"
-                            class="absolute top-full right-0 z-50 mt-4 w-80 rounded-[32px] border border-slate-200 bg-white p-8 shadow-2xl backdrop-blur-xl overflow-hidden"
-                        >
-                            <div class="flex items-center justify-between mb-8">
-                                <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Search Filters</h3>
-                                <button @click="resetFilters" class="text-[10px] font-black uppercase tracking-widest text-primary hover:opacity-70 transition-colors flex items-center gap-1.5">
-                                    <RefreshCw class="size-3" /> Reset
-                                </button>
-                            </div>
-
-                            <div class="space-y-6">
-                                <div class="space-y-2">
-                                    <label class="text-[10px] font-black uppercase tracking-widest text-slate-400">Views</label>
-                                    <div class="grid gap-2">
-                                        <Link
-                                            href="/stb?tab=pending"
-                                            class="flex items-center justify-between p-3.5 rounded-2xl border transition-all"
-                                            :class="activeTab === 'pending' || !activeTab ? 'bg-[#003628]/5 border-[#003628]/20 text-[#003628]' : 'border-slate-100 hover:bg-slate-50 text-slate-500'"
-                                            @click="showFilters = false"
-                                        >
-                                            <span class="text-xs font-bold">Draft</span>
-                                            <span class="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100">{{ pendingCount }}</span>
-                                        </Link>
-                                        <Link
-                                            href="/stb?tab=completed"
-                                            class="flex items-center justify-between p-3.5 rounded-2xl border transition-all"
-                                            :class="activeTab === 'completed' ? 'bg-[#003628]/5 border-[#003628]/20 text-[#003628]' : 'border-slate-100 hover:bg-slate-50 text-slate-500'"
-                                            @click="showFilters = false"
-                                        >
-                                            <span class="text-xs font-bold">Completed</span>
-                                            <span class="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100">{{ completedCount }}</span>
-                                        </Link>
-                                        <Link
-                                            href="/stb?tab=cancelled"
-                                            class="flex items-center justify-between p-3.5 rounded-2xl border transition-all"
-                                            :class="activeTab === 'cancelled' ? 'bg-[#003628]/5 border-[#003628]/20 text-[#003628]' : 'border-slate-100 hover:bg-slate-50 text-slate-500'"
-                                            @click="showFilters = false"
-                                        >
-                                            <span class="text-xs font-bold">Cancelled</span>
-                                            <span class="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100">{{ cancelledCount }}</span>
-                                        </Link>
-                                    </div>
-                                </div>
-
-                                <div class="space-y-4 pt-6 border-t border-slate-100">
-                                    <div class="space-y-1.5">
-                                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
-                                        <div class="relative">
-                                            <select
-                                                v-model="localFilters.status"
-                                                class="w-full h-11 px-4 pr-10 rounded-2xl border border-slate-100 bg-slate-50 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50 appearance-none"
-                                            >
-                                                <option value="">Semua Status</option>
-                                                <option v-for="opt in statusOptions" :key="opt" :value="opt">{{ opt }}</option>
-                                            </select>
-                                            <svg class="size-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-1.5">
-                                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Perusahaan</label>
-                                        <div class="relative">
-                                            <select
-                                                v-model="localFilters.company"
-                                                class="w-full h-11 px-4 pr-10 rounded-2xl border border-slate-100 bg-slate-50 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50 appearance-none"
-                                            >
-                                                <option value="">Semua Perusahaan</option>
-                                                <option v-for="opt in companyOptions" :key="opt" :value="opt">{{ opt }}</option>
-                                            </select>
-                                            <svg class="size-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                                        </div>
-                                    </div>
-
-                                    <div class="space-y-1.5">
-                                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Lokasi</label>
-                                        <div class="relative">
-                                            <select
-                                                v-model="localFilters.location"
-                                                class="w-full h-11 px-4 pr-10 rounded-2xl border border-slate-100 bg-slate-50 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50 appearance-none"
-                                            >
-                                                <option value="">Semua Lokasi</option>
-                                                <option v-for="opt in locationOptions" :key="opt" :value="opt">{{ opt }}</option>
-                                            </select>
-                                            <svg class="size-4 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                                        </div>
-                                    </div>
-
-                                    <button
-                                        class="w-full h-12 mt-4 rounded-2xl bg-[#003628] text-white text-sm font-black uppercase tracking-widest hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/10"
-                                        @click="commitFilters"
-                                    >
-                                        Terapkan Filter
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </Transition>
-                </div>
-
-                <!-- Create STB Flyout -->
-                <div ref="createFlyoutRef" class="relative">
-                    <button
-                        type="button"
-                        class="h-11 px-6 rounded-xl bg-[#003628] flex items-center justify-center text-white text-[13px] font-bold hover:bg-[#003628]/90 transition-all active:scale-95 shadow-lg shadow-emerald-900/20"
-                        @click="showCreateFlyout = !showCreateFlyout"
-                    >
-                        <span>Buat STB</span>
                     </button>
 
                     <Transition
@@ -368,23 +278,126 @@ const resetFilters = () => {
                         leave-from-class="opacity-100 translate-y-0 scale-100"
                         leave-to-class="opacity-0 translate-y-2 scale-95"
                     >
-                        <div
-                            v-if="showCreateFlyout"
-                            class="absolute top-full right-0 z-50 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl overflow-hidden"
-                        >
+                        <div v-if="showFilters" class="absolute top-full right-0 z-50 mt-4 w-88 rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
+                            <div class="flex items-center justify-between mb-6">
+                                <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter STB</h3>
+                                <button
+                                    @click="resetFilters"
+                                    class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                    <RefreshCw class="size-3" /> Reset
+                                </button>
+                            </div>
+
+                            <div class="space-y-4">
+                                <!-- Status Filter (Tabs) -->
+                                <div class="space-y-1.5">
+                                    <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Status</label>
+                                    <select
+                                        v-model="localFilters.status"
+                                        class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                    >
+                                        <option value="">Pending ({{ pendingCount }})</option>
+                                        <option value="completed">Completed ({{ completedCount }})</option>
+                                        <option value="cancelled">Cancelled ({{ cancelledCount }})</option>
+                                    </select>
+                                </div>
+
+                                <!-- Company Filter -->
+                                <div class="space-y-1.5">
+                                    <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Company</label>
+                                    <select
+                                        v-model="localFilters.company"
+                                        class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                    >
+                                        <option value="">All Companies</option>
+                                        <option v-for="comp in companyOptions" :key="comp" :value="comp">{{ comp }}</option>
+                                    </select>
+                                </div>
+
+                                <!-- Location Filter -->
+                                <div class="space-y-1.5">
+                                    <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Location</label>
+                                    <select
+                                        v-model="localFilters.location"
+                                        class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                    >
+                                        <option value="">All Locations</option>
+                                        <option v-for="loc in locationOptions" :key="loc" :value="loc">{{ loc }}</option>
+                                    </select>
+                                </div>
+
+                                <!-- Date Inputs -->
+                                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                    <div class="space-y-1">
+                                        <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Dari</label>
+                                        <input
+                                            v-model="localFilters.dateFrom"
+                                            type="date"
+                                            :max="defaultDateRange.to"
+                                            class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            @change="emit('update:dateFrom', localFilters.dateFrom)"
+                                        />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Hingga</label>
+                                        <input
+                                            v-model="localFilters.dateTo"
+                                            type="date"
+                                            :max="defaultDateRange.to"
+                                            class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            @change="emit('update:dateTo', localFilters.dateTo)"
+                                        />
+                                    </div>
+                                </div>
+
+                                <!-- Apply Button -->
+                                <button
+                                    @click="commitFilters"
+                                    class="w-full h-9 rounded-xl bg-[#003628] text-white text-xs font-bold hover:bg-[#003628]/90 transition-colors mt-2"
+                                >
+                                    Apply
+                                </button>
+                            </div>
+                        </div>
+                    </Transition>
+                </div>
+
+                <!-- Create Button with Flyout -->
+                <div ref="createFlyoutRef" class="relative">
+                    <button
+                        type="button"
+                        class="h-8 px-3 rounded-lg bg-[#003628] text-white flex items-center gap-1.5 transition-all hover:opacity-90 shadow-sm active:scale-95"
+                        @click="showCreateFlyout = !showCreateFlyout"
+                    >
+                        <Plus class="size-4" />
+                        <span class="text-xs font-bold">STB</span>
+                    </button>
+
+                    <Transition
+                        enter-active-class="transition duration-200 ease-out"
+                        enter-from-class="opacity-0 translate-y-2 scale-95"
+                        enter-to-class="opacity-100 translate-y-0 scale-100"
+                        leave-active-class="transition duration-150 ease-in"
+                        leave-from-class="opacity-100 translate-y-0 scale-100"
+                        leave-to-class="opacity-0 translate-y-2 scale-95"
+                    >
+                        <div v-if="showCreateFlyout" class="absolute top-full right-0 z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
                             <Link
                                 href="/stb/create?documentType=handover&movementType=out"
-                                class="flex items-center w-full p-4 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                                class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                                 @click="showCreateFlyout = false"
                             >
-                                <span class="text-xs font-black text-slate-900 uppercase tracking-widest">Serah Terima</span>
+                                <CheckCircle2 class="size-4" />
+                                Serah Terima Asset
                             </Link>
                             <Link
                                 href="/stb/create?documentType=handover&movementType=return"
-                                class="flex items-center w-full p-4 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                                class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                                 @click="showCreateFlyout = false"
                             >
-                                <span class="text-xs font-black text-slate-900 uppercase tracking-widest">Pengembalian</span>
+                                <RefreshCw class="size-4" />
+                                Pengembalian Asset
                             </Link>
                         </div>
                     </Transition>
@@ -668,6 +681,6 @@ const resetFilters = () => {
             :stb="selectedStbForSignatures"
             @close="signaturesModalOpen = false"
         />
-    </section>
     </div>
 </template>
+

@@ -79,11 +79,14 @@ class HelpdeskController extends Controller
         $techCompany  = (string) (data_get($remoteUser, 'company.name')  ?? '—');
         $techLocation = (string) (data_get($remoteUser, 'location.name') ?? '—');
 
+        // Analytics data for Summary tab
+        $analytics = $this->getAnalytics($filters, $canViewAll, $request->user());
+
         return Inertia::render('Helpdesk/Index', [
             'tickets'               => $tickets,
             'filters'               => $filters,
-            'priorityOptions'       => self::PRIORITY_OPTIONS,
-            'statusOptions'         => self::STATUS_OPTIONS,
+            'priorityOptions'       => $this->resolvePriorityOptions(),
+            'statusOptions'         => $this->resolveStatusOptions(),
             'ticketScopeOptions'    => self::TICKET_SCOPE_OPTIONS,
             'maintenanceTypeOptions'=> self::MAINTENANCE_TYPE_OPTIONS,
             'categoryOptions'       => $this->resolveCategoryOptions(),
@@ -93,6 +96,7 @@ class HelpdeskController extends Controller
             'techLocation'          => $techLocation,
             'technicianOptions'     => $this->resolveTechnicianOptions(),
             'vendorOptions'         => Vendor::orderBy('name')->get(),
+            'analytics'             => $analytics,
         ]);
     }
 
@@ -242,6 +246,20 @@ class HelpdeskController extends Controller
         $techCompany  = (string) (data_get($remoteUser, 'company.name')  ?? '—');
         $techLocation = (string) (data_get($remoteUser, 'location.name') ?? '—');
 
+        // Company fallback logic
+        if ($techCompany === '—' && $tickets->isNotEmpty()) {
+            $techCompany = $tickets->first()->company ?? 'ZINUS DREAM INDONESIA';
+        } elseif ($techCompany === '—') {
+            $techCompany = 'ZINUS DREAM INDONESIA';
+        }
+
+        // Location fallback logic (same as company)
+        if ($techLocation === '—' && $tickets->isNotEmpty()) {
+            $techLocation = $tickets->first()->location ?? 'Head Office';
+        } elseif ($techLocation === '—') {
+            $techLocation = 'Head Office';
+        }
+
         ActionLog::create([
             'user_id' => $request->user()->id,
             'action_type' => 'print',
@@ -275,17 +293,17 @@ class HelpdeskController extends Controller
             $sheet->setTitle('Helpdesk');
 
             $headers = [
-                'ID', 'Company', 'Location', 'Category', 'Ticket Scope',
-                'Priority', 'Requester', 'Department', 'Asset Ref',
-                'Maintenance Type', 'Issue Desc', 'Action', 'Note',
-                'Technician', 'Status', 'Date Closed', 'Sync Status',
-                'Maintenance ID', 'Created At',
+                'ID', 'Date Created', 'Location', 'User', 'Department', 
+                'Category', 'Issue Description', 'Status', 'Technician', 
+                'Date Closed', 'Duration (Days)', 'Company', 'Ticket Scope',
+                'Priority', 'Asset Ref', 'Maintenance Type', 'Action Taken', 
+                'Note', 'Sync Status', 'Maintenance ID',
             ];
 
             $sheet->fromArray($headers, null, 'A1');
 
             // Header row styling
-            $lastCol = 'S';
+            $lastCol = 'T';
             $headerRange = 'A1:' . $lastCol . '1';
             $sheet->getStyle($headerRange)->applyFromArray([
                 'font' => [
@@ -295,7 +313,7 @@ class HelpdeskController extends Controller
                 ],
                 'fill' => [
                     'fillType'   => Fill::FILL_SOLID,
-                    'startColor' => ['argb' => 'FF1E3A5F'],
+                    'startColor' => ['argb' => 'FF003628'],
                 ],
                 'alignment' => [
                     'horizontal' => Alignment::HORIZONTAL_CENTER,
@@ -320,29 +338,42 @@ class HelpdeskController extends Controller
                     foreach ($tickets as $ticket) {
                         $isEven = ($rowIndex % 2 === 0);
 
+                        // Calculate duration
+                        $duration = null;
+                        if ($ticket->created_at) {
+                            $endDate = ($ticket->status === 'Closed' && $ticket->date_closed) 
+                                ? $ticket->date_closed 
+                                : now();
+                            
+                            $diffDays = (int) $ticket->created_at->diffInDays($endDate);
+                            // Same day or 1 day minimum
+                            $duration = $diffDays === 0 ? 1 : $diffDays;
+                        }
+
                         $sheet->fromArray([
                             $ticket->id,
-                            $ticket->company,
+                            optional($ticket->created_at)?->toDateTimeString(),
                             $ticket->location,
-                            $ticket->category,
-                            $ticket->ticket_scope,
-                            $ticket->priority,
                             $ticket->requester,
                             $ticket->department,
+                            $ticket->category,
+                            $ticket->issue_description,
+                            $ticket->status,
+                            $ticket->technician,
+                            optional($ticket->date_closed)?->toDateString(),
+                            $duration,
+                            $ticket->company,
+                            $ticket->ticket_scope,
+                            $ticket->priority,
                             $ticket->asset_reference_snapshot,
                             $ticket->maintenance_type,
-                            $ticket->issue_description,
                             $ticket->action_taken,
                             $ticket->note,
-                            $ticket->technician,
-                            $ticket->status,
-                            optional($ticket->date_closed)?->toDateString(),
                             $ticket->snipeit_sync_status,
                             $ticket->snipeit_maintenance_id,
-                            optional($ticket->created_at)?->toDateTimeString(),
                         ], null, 'A' . $rowIndex);
 
-                        $rowRange = 'A' . $rowIndex . ':S' . $rowIndex;
+                        $rowRange = 'A' . $rowIndex . ':T' . $rowIndex;
                         $sheet->getStyle($rowRange)->applyFromArray([
                             'fill' => [
                                 'fillType'   => Fill::FILL_SOLID,
@@ -364,7 +395,7 @@ class HelpdeskController extends Controller
                     }
                 });
 
-            foreach (range('A', 'S') as $column) {
+            foreach (range('A', 'T') as $column) {
                 $sheet->getColumnDimension($column)->setAutoSize(true);
             }
 
@@ -400,6 +431,40 @@ class HelpdeskController extends Controller
                 'total' => $tickets->count(),
                 'generated_at' => now()->toIso8601String(),
             ],
+        ]);
+    }
+
+    public function filterOptions(Request $request): JsonResponse
+    {
+        $filters = $this->resolveFilters($request);
+
+        $query = $this->buildFilteredQuery($request->user(), $filters);
+
+        $categories = $query->clone()
+            ->whereNotNull('category')
+            ->where('category', '!=', '')
+            ->distinct()
+            ->pluck('category')
+            ->map(fn (string $c) => trim($c))
+            ->filter()
+            ->sort()
+            ->values()
+            ->all();
+
+        $technicians = $query->clone()
+            ->whereNotNull('technician')
+            ->where('technician', '!=', '')
+            ->distinct()
+            ->pluck('technician')
+            ->map(fn (string $t) => trim($t))
+            ->filter()
+            ->sort()
+            ->values()
+            ->all();
+
+        return response()->json([
+            'categories' => $categories,
+            'technicians' => $technicians,
         ]);
     }
 
@@ -627,36 +692,92 @@ class HelpdeskController extends Controller
 
     private function resolveCategoryOptions(): array
     {
-        // PERF: Cache for 15 minutes — category list is stable and queried on every index page load
-        return Cache::remember('helpdesk_category_options', 900, fn () =>
-            Ticket::query()
+        // PERF: Cache for 5 minutes — dynamic from actual data only
+        return Cache::remember('helpdesk_category_options', 300, function () {
+            return Ticket::query()
                 ->whereNotNull('category')
                 ->where('category', '!=', '')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category')
-                ->map(fn (string $category) => trim($category))
-                ->filter(fn (string $category) => $category !== '')
+                ->selectRaw('category, COUNT(*) as count')
+                ->groupBy('category')
+                ->orderByDesc('count')
+                ->get()
+                ->map(fn ($item) => [
+                    'name' => trim($item->category),
+                    'count' => $item->count
+                ])
+                ->filter(fn ($item) => $item['name'] !== '')
                 ->values()
-                ->all()
-        );
+                ->all();
+        });
+    }
+
+    private function resolvePriorityOptions(): array
+    {
+        // PERF: Cache for 5 minutes — dynamic from actual data
+        return Cache::remember('helpdesk_priority_options', 300, function () {
+            $priorities = Ticket::query()
+                ->whereNotNull('priority')
+                ->where('priority', '!=', '')
+                ->selectRaw('priority, COUNT(*) as count')
+                ->groupBy('priority')
+                ->get()
+                ->keyBy('priority');
+
+            // Return in predefined order with counts
+            return collect(self::PRIORITY_OPTIONS)
+                ->map(fn ($priority) => [
+                    'name' => $priority,
+                    'count' => $priorities->get($priority)?->count ?? 0
+                ])
+                ->filter(fn ($item) => $item['count'] > 0) // Only show if has data
+                ->values()
+                ->all();
+        });
+    }
+
+    private function resolveStatusOptions(): array
+    {
+        // PERF: Cache for 5 minutes — dynamic from actual data
+        return Cache::remember('helpdesk_status_options', 300, function () {
+            $statuses = Ticket::query()
+                ->whereNotNull('status')
+                ->where('status', '!=', '')
+                ->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')
+                ->get()
+                ->keyBy('status');
+
+            // Return in predefined order with counts
+            return collect(self::STATUS_OPTIONS)
+                ->map(fn ($status) => [
+                    'name' => $status,
+                    'count' => $statuses->get($status)?->count ?? 0
+                ])
+                ->filter(fn ($item) => $item['count'] > 0) // Only show if has data
+                ->values()
+                ->all();
+        });
     }
 
     private function resolveTechnicianOptions(): array
     {
-        // PERF: Cache for 15 minutes — technician list is stable and queried on every index page load
-        return Cache::remember('helpdesk_technician_options', 900, fn () =>
-            Ticket::query()
+        // PERF: Cache for 5 minutes — dynamic from actual ticket data
+        return Cache::remember('helpdesk_technician_options', 300, function () {
+            return Ticket::query()
                 ->whereNotNull('technician')
                 ->where('technician', '!=', '')
-                ->distinct()
-                ->orderBy('technician')
-                ->pluck('technician')
-                ->map(fn (string $tech) => trim($tech))
-                ->filter(fn (string $tech) => $tech !== '')
+                ->selectRaw('technician, COUNT(*) as count')
+                ->groupBy('technician')
+                ->orderByDesc('count')
+                ->get()
+                ->map(fn ($item) => [
+                    'name' => trim($item->technician),
+                    'count' => $item->count
+                ])
+                ->filter(fn ($item) => $item['name'] !== '')
                 ->values()
-                ->all()
-        );
+                ->all();
+        });
     }
 
     private function synchronizeTicketMaintenance(Ticket $ticket): array
@@ -904,5 +1025,132 @@ class HelpdeskController extends Controller
         $normalized = trim((string) $value);
 
         return $normalized !== '' ? $normalized : $fallback;
+    }
+
+    /**
+     * Get analytics data for dashboard summary
+     */
+    private function getAnalytics(array $filters, bool $canViewAll, User $user): array
+    {
+        $baseQuery = $this->buildFilteredQuery($user, $filters, $canViewAll);
+
+        // Total metrics
+        $totalTickets = (clone $baseQuery)->count();
+        $openTickets = (clone $baseQuery)->where('status', 'Open')->count();
+        $inProgressTickets = (clone $baseQuery)->where('status', 'In Progress')->count();
+        $closedTickets = (clone $baseQuery)->where('status', 'Closed')->count();
+
+        // Top Categories
+        $topCategories = (clone $baseQuery)
+            ->selectRaw('category, COUNT(*) as count')
+            ->whereNotNull('category')
+            ->groupBy('category')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get()
+            ->map(fn($item) => [
+                'name' => $item->category,
+                'count' => $item->count,
+                'percentage' => $totalTickets > 0 ? round(($item->count / $totalTickets) * 100, 1) : 0,
+            ]);
+
+        // Top Requesters (Users)
+        $topRequesters = (clone $baseQuery)
+            ->selectRaw('requester, department, location, COUNT(*) as count')
+            ->whereNotNull('requester')
+            ->groupBy('requester', 'department', 'location')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get()
+            ->map(fn($item) => [
+                'name' => $item->requester,
+                'department' => $item->department,
+                'location' => $item->location,
+                'count' => $item->count,
+                'percentage' => $totalTickets > 0 ? round(($item->count / $totalTickets) * 100, 1) : 0,
+            ]);
+
+        // Status Distribution
+        $statusDistribution = (clone $baseQuery)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->get()
+            ->map(fn($item) => [
+                'status' => $item->status,
+                'count' => $item->count,
+                'percentage' => $totalTickets > 0 ? round(($item->count / $totalTickets) * 100, 1) : 0,
+            ]);
+
+        // Priority Distribution
+        $priorityDistribution = (clone $baseQuery)
+            ->selectRaw('priority, COUNT(*) as count')
+            ->groupBy('priority')
+            ->orderByRaw("FIELD(priority, 'Critical', 'High', 'Medium', 'Low')")
+            ->get()
+            ->map(fn($item) => [
+                'priority' => $item->priority,
+                'count' => $item->count,
+                'percentage' => $totalTickets > 0 ? round(($item->count / $totalTickets) * 100, 1) : 0,
+            ]);
+
+        // Recent Tickets
+        $recentTickets = (clone $baseQuery)
+            ->latest('created_at')
+            ->limit(15)
+            ->get()
+            ->map(fn($ticket) => [
+                'id' => $ticket->id,
+                'requester' => $ticket->requester,
+                'category' => $ticket->category,
+                'status' => $ticket->status,
+                'priority' => $ticket->priority,
+                'created_at' => $ticket->created_at?->toIso8601String(),
+                'issue_description' => $ticket->issue_description,
+            ]);
+
+        // Technician Performance
+        $technicianStats = (clone $baseQuery)
+            ->selectRaw('technician, COUNT(*) as count')
+            ->whereNotNull('technician')
+            ->groupBy('technician')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get()
+            ->map(fn($item) => [
+                'name' => $item->technician,
+                'count' => $item->count,
+            ]);
+
+        // Completion Rate
+        $completionRate = $totalTickets > 0 ? round(($closedTickets / $totalTickets) * 100, 1) : 0;
+
+        // Average Resolution Time (for closed tickets)
+        $avgResolutionTime = (clone $baseQuery)
+            ->where('status', 'Closed')
+            ->whereNotNull('date_closed')
+            ->get()
+            ->map(function($ticket) {
+                if ($ticket->created_at && $ticket->date_closed) {
+                    return $ticket->created_at->diffInHours($ticket->date_closed);
+                }
+                return null;
+            })
+            ->filter()
+            ->avg();
+
+        return [
+            'total' => $totalTickets,
+            'open' => $openTickets,
+            'inProgress' => $inProgressTickets,
+            'closed' => $closedTickets,
+            'completionRate' => $completionRate,
+            'avgResolutionTime' => $avgResolutionTime ? round($avgResolutionTime, 1) : 0,
+            'topCategories' => $topCategories,
+            'topRequesters' => $topRequesters,
+            'statusDistribution' => $statusDistribution,
+            'priorityDistribution' => $priorityDistribution,
+            'recentTickets' => $recentTickets,
+            'technicianStats' => $technicianStats,
+        ];
     }
 }

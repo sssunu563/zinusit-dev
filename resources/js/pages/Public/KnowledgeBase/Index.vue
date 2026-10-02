@@ -26,14 +26,15 @@ import {
     Wrench,
     X,
 } from 'lucide-vue-next';
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 interface ArticleItem {
     id: number;
     title: string;
     slug: string;
     category: string;
-    content: string;
+    content_preview?: string;
+    content?: string;
     view_count: number;
     created_at: string;
     author?: {
@@ -135,12 +136,20 @@ const getCategoryIcon = (category: string) => {
 
 const stripHtml = (html: string) => {
     if (!html) return '';
+    // Cached simple strip - sudah dipotong di backend
     return html
-        .replace(/<[^>]*>?/gm, '')
+        .replace(/<[^>]*>/g, '')
         .replace(/[#*`_~]/g, '')
-        .trim()
-        .substring(0, 130);
+        .trim();
 };
+
+// Computed untuk artikel dengan preview yang sudah di-strip
+const articlesWithPreview = computed(() => {
+    return articles.data.map(item => ({
+        ...item,
+        preview: stripHtml(item.content_preview || item.content || '').substring(0, 130)
+    }));
+});
 
 const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
@@ -153,7 +162,9 @@ const formatDate = (dateStr: string) => {
 </script>
 
 <template>
-    <Head title="Pusat Bantuan & Panduan IT - Zinus IT" />
+    <Head title="Pusat Bantuan & Panduan IT - Zinus IT">
+        <link rel="preload" href="/form-logo.png" as="image" />
+    </Head>
 
     <div class="min-h-screen bg-[#F8FAFC] flex flex-col antialiased text-slate-900 selection:bg-[#003628]/20 selection:text-[#003628]">
         <!-- Top Navigation Header -->
@@ -161,7 +172,15 @@ const formatDate = (dateStr: string) => {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
                 <div class="flex items-center gap-3">
                     <Link href="/help" class="flex items-center gap-2">
-                        <img src="/form-logo.png" class="h-6 w-auto object-contain" alt="Zinus IT" />
+                        <img 
+                            src="/form-logo.png" 
+                            class="h-6 w-auto object-contain" 
+                            alt="Zinus IT" 
+                            width="24" 
+                            height="24"
+                            loading="eager"
+                            fetchpriority="high"
+                        />
                         <span class="text-xs text-slate-200">|</span>
                         <span class="text-xs font-bold text-slate-600 tracking-tight">Pusat Bantuan & Panduan IT</span>
                     </Link>
@@ -321,9 +340,9 @@ const formatDate = (dateStr: string) => {
                 </div>
 
                 <!-- Articles Grid (1 col mobile, 2 col sm, 3 col lg, 4 col xl) -->
-                <div v-if="articles.data.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div v-if="articlesWithPreview.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     <Link
-                        v-for="item in articles.data"
+                        v-for="item in articlesWithPreview"
                         :key="item.id"
                         :href="`/help/${item.slug}`"
                         class="bg-white rounded-2xl border border-gray-100 p-4.5 shadow-xs hover:border-emerald-200 hover:shadow-md transition-all flex flex-col justify-between group"
@@ -346,7 +365,7 @@ const formatDate = (dateStr: string) => {
                             </h3>
 
                             <p class="text-[11px] text-slate-500 line-clamp-3 leading-relaxed">
-                                {{ stripHtml(item.content) }}...
+                                {{ item.preview }}...
                             </p>
                         </div>
 

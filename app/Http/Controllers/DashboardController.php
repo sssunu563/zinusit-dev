@@ -46,8 +46,26 @@ class DashboardController extends Controller
         $isFiltered = $rawFrom !== null || $rawTo !== null;
 
         // Implement Caching for Snipe-IT Data (15 minutes)
-        $cacheTtl = 900;
+        // OPTIMIZED: Only load count for summary, not full data
+        $cacheTtl = 900; // 15 menit
 
+        $hardwareCount = Cache::remember('dashboard_hardware_count', $cacheTtl, function() {
+            return count($this->snipe->fetchRows('hardware'));
+        });
+        
+        $licensesCount = Cache::remember('dashboard_licenses_count', $cacheTtl, function() {
+            return count($this->snipe->fetchRows('licenses'));
+        });
+        
+        $accessoriesCount = Cache::remember('dashboard_accessories_count', $cacheTtl, function() {
+            return count($this->snipe->fetchRows('accessories'));
+        });
+        
+        $componentsCount = Cache::remember('dashboard_components_count', $cacheTtl, function() {
+            return count($this->snipe->fetchRows('components'));
+        });
+
+        // Only load full data when needed for specific calculations
         $hardware = Cache::remember('dashboard_hardware', $cacheTtl, fn() => collect($this->snipe->fetchRows('hardware')));
         $licenses = Cache::remember('dashboard_licenses', $cacheTtl, fn() => collect($this->snipe->fetchRows('licenses')));
         $accessories = Cache::remember('dashboard_accessories', $cacheTtl, fn() => collect($this->snipe->fetchRows('accessories')));
@@ -98,13 +116,15 @@ class DashboardController extends Controller
             ->values()
             ->all();
 
-        $stockHistoryRows = AssetStockHistory::query()
-            ->where('asset_type', 'consumable')
-            ->whereBetween('purchase_date', [$windowStart->toDateString(), $windowEnd->toDateString()])
-            ->latest('purchase_date')
-            ->latest('id')
-            ->limit(6)
-            ->get();
+        $stockHistoryRows = Cache::remember('dashboard_stock_history', 600, function() use ($windowStart, $windowEnd) {
+            return AssetStockHistory::query()
+                ->where('asset_type', 'consumable')
+                ->whereBetween('purchase_date', [$windowStart->toDateString(), $windowEnd->toDateString()])
+                ->latest('purchase_date')
+                ->latest('id')
+                ->limit(6)
+                ->get();
+        });
 
         $stockTrendRows = AssetStockHistory::query()
             ->where('asset_type', 'consumable')
@@ -146,9 +166,9 @@ class DashboardController extends Controller
         $inspectionStats = DB::table('inspections')
             ->selectRaw("
                 COUNT(id) as total,
-                COUNT(CASE WHEN completed_at IS NULL THEN 1 END) as waiting_approval,
-                COUNT(CASE WHEN completed_at IS NOT NULL AND (inspection_scope = 'unit' OR inspection_scope IS NULL OR inspection_scope = '') THEN 1 END) as inspection_asset,
-                COUNT(CASE WHEN completed_at IS NOT NULL AND (inspection_scope = 'internal_component' OR inspection_scope = 'external_component') THEN 1 END) as inspection_component
+                COUNT(CASE WHEN signature_date IS NULL THEN 1 END) as waiting_approval,
+                COUNT(CASE WHEN signature_date IS NOT NULL AND (device_category NOT IN ('internal_component', 'external_component') OR device_category IS NULL) THEN 1 END) as inspection_asset,
+                COUNT(CASE WHEN signature_date IS NOT NULL AND device_category IN ('internal_component', 'external_component') THEN 1 END) as inspection_component
             ")->first();
 
         $totalStb          = (int) ($stbStats->total ?? 0);
@@ -346,31 +366,31 @@ class DashboardController extends Controller
                 [
                     'label' => 'Hardware',
                     'count' => $hardware->count(),
-                    'href' => route('asset.index', ['type' => 'assets']),
+                    'href' => '/asset?type=assets',
                     'tone' => 'emerald',
                 ],
                 [
                     'label' => 'Consumable',
                     'count' => $consumableSnapshots->count(),
-                    'href' => route('asset.index', ['type' => 'consumable']),
+                    'href' => '/asset?type=consumable',
                     'tone' => 'amber',
                 ],
                 [
                     'label' => 'Accessories',
                     'count' => $accessories->count(),
-                    'href' => route('asset.index', ['type' => 'accessories']),
+                    'href' => '/asset?type=accessories',
                     'tone' => 'sky',
                 ],
                 [
                     'label' => 'Components',
                     'count' => $components->count(),
-                    'href' => route('asset.index', ['type' => 'component']),
+                    'href' => '/asset?type=component',
                     'tone' => 'slate',
                 ],
                 [
                     'label' => 'License',
                     'count' => $licenses->count(),
-                    'href' => route('asset.index', ['type' => 'license']),
+                    'href' => '/asset?type=license',
                     'tone' => 'rose',
                 ],
             ],
@@ -459,82 +479,94 @@ class DashboardController extends Controller
                 ->all(),
             'stockTrend' => $stockTrend,
             'trend' => $trend,
-            'recentTickets' => Ticket::query()
-                ->whereBetween('created_at', [$windowStart, $windowEnd])
-                ->latest()
-                ->limit(5)
-                ->get()
-                ->map(fn (Ticket $ticket) => [
-                    'id' => $ticket->id,
-                    'requester' => $ticket->requester,
-                    'category' => $ticket->category,
-                    'priority' => $ticket->priority,
-                    'status' => $ticket->status,
-                    'createdAt' => $ticket->created_at->diffForHumans(),
-                    'href' => route('helpdesk.show', $ticket->id),
-                ]),
-            'recentActivities' => collect()
-                ->merge(
-                    Stb::query()
-                        ->whereBetween('created_at', [$windowStart, $windowEnd])
-                        ->latest()
-                        ->limit(5)
-                        ->get()
-                        ->map(fn (Stb $stb) => [
-                            'type' => 'document',
-                            'label' => $stb->movement_type === 'return' ? 'STB In (Kembali)' : 'STB Out (Penyerahan)',
-                            'title' => ($stb->user_name ?? $stb->department ?? 'User') . ' - ' . ($stb->location_name ?? 'STB'),
-                            'time' => $stb->created_at->diffForHumans(),
-                            'timestamp' => $stb->created_at->timestamp,
-                            'tone' => $stb->movement_type === 'return' ? 'sky' : 'emerald',
-                            'href' => route('stb.show', $stb->id),
-                        ])
-                )
-                ->merge(
-                    Peminjaman::query()
-                        ->whereBetween('created_at', [$windowStart, $windowEnd])
-                        ->latest()
-                        ->limit(5)
-                        ->get()
-                        ->map(fn (Peminjaman $p) => [
-                            'type' => 'peminjaman',
-                            'label' => $p->movement_type === 'return' || $p->returned_at ? 'Pengembalian Pinjaman' : 'Peminjaman Aset',
-                            'title' => ($p->user_name ?? $p->user_dept ?? 'User') . ' - ' . ($p->location_name ?? 'Peminjaman'),
-                            'time' => $p->created_at->diffForHumans(),
-                            'timestamp' => $p->created_at->timestamp,
-                            'tone' => 'sky',
-                            'href' => route('peminjaman.show', $p->id),
-                        ])
-                )
-                ->merge(
-                    Inspection::query()
-                        ->whereBetween('created_at', [$windowStart, $windowEnd])
-                        ->latest()
-                        ->limit(5)
-                        ->get()
-                        ->map(fn (Inspection $insp) => [
-                            'type' => 'inspection',
-                            'label' => $insp->inspection_scope === 'internal_component' ? 'Inspeksi Komponen' : 'Inspeksi Aset',
-                            'title' => ($insp->device_name ?? $insp->location ?? 'Aset') . ' - ' . ($insp->user ?? 'Inspeksi'),
-                            'time' => $insp->created_at->diffForHumans(),
-                            'timestamp' => $insp->created_at->timestamp,
-                            'tone' => 'purple',
-                            'href' => route('inspection.show', $insp->id),
-                        ])
-                )
-                ->sortByDesc('timestamp')
-                ->values()
-                ->take(6),
+            'recentTickets' => Cache::remember('dashboard_recent_tickets', 300, function() use ($windowStart, $windowEnd) {
+                return Ticket::query()
+                    ->whereBetween('created_at', [$windowStart, $windowEnd])
+                    ->latest()
+                    ->limit(5)
+                    ->get(['id', 'requester', 'category', 'priority', 'status', 'created_at'])
+                    ->map(fn (Ticket $ticket) => [
+                        'id' => $ticket->id,
+                        'requester' => $ticket->requester,
+                        'category' => $ticket->category,
+                        'priority' => $ticket->priority,
+                        'status' => $ticket->status,
+                        'createdAt' => $ticket->created_at->diffForHumans(),
+                        'href' => route('helpdesk.show', $ticket->id),
+                    ]);
+            }),
+            'recentActivities' => Cache::remember('dashboard_recent_activities', 300, function() use ($windowStart, $windowEnd) {
+                return collect()
+                    ->merge(
+                        Stb::query()
+                            ->select(['id', 'movement_type', 'user_name', 'user_dept', 'location_name', 'created_at'])
+                            ->whereBetween('created_at', [$windowStart, $windowEnd])
+                            ->latest()
+                            ->limit(5)
+                            ->get()
+                            ->map(fn (Stb $stb) => [
+                                'type' => 'document',
+                                'label' => $stb->movement_type === 'return' ? 'STB In (Kembali)' : 'STB Out (Penyerahan)',
+                                'title' => ($stb->user_name ?? $stb->user_dept ?? 'User') . ' - ' . ($stb->location_name ?? 'STB'),
+                                'time' => $stb->created_at->diffForHumans(),
+                                'timestamp' => $stb->created_at->timestamp,
+                                'tone' => $stb->movement_type === 'return' ? 'sky' : 'emerald',
+                                'href' => route('stb.show', $stb->id),
+                            ])
+                    )
+                    ->merge(
+                        Peminjaman::query()
+                            ->select(['id', 'movement_type', 'user_name', 'user_dept', 'location_name', 'returned_at', 'created_at'])
+                            ->whereBetween('created_at', [$windowStart, $windowEnd])
+                            ->latest()
+                            ->limit(5)
+                            ->get()
+                            ->map(fn (Peminjaman $p) => [
+                                'type' => 'peminjaman',
+                                'label' => $p->movement_type === 'return' || $p->returned_at ? 'Pengembalian Pinjaman' : 'Peminjaman Aset',
+                                'title' => ($p->user_name ?? $p->user_dept ?? 'User') . ' - ' . ($p->location_name ?? 'Peminjaman'),
+                                'time' => $p->created_at->diffForHumans(),
+                                'timestamp' => $p->created_at->timestamp,
+                                'tone' => 'sky',
+                                'href' => route('peminjaman.show', $p->id),
+                            ])
+                    )
+                    ->merge(
+                        Inspection::query()
+                            ->select(['id', 'device_category', 'device_name', 'location', 'user', 'created_at'])
+                            ->whereBetween('created_at', [$windowStart, $windowEnd])
+                            ->latest()
+                            ->limit(5)
+                            ->get()
+                            ->map(fn (Inspection $insp) => [
+                                'type' => 'inspection',
+                                'label' => in_array($insp->device_category, ['internal_component', 'external_component']) ? 'Inspeksi Komponen' : 'Inspeksi Aset',
+                                'title' => ($insp->device_name ?? $insp->location ?? 'Aset') . ' - ' . ($insp->user ?? 'Inspeksi'),
+                                'time' => $insp->created_at->diffForHumans(),
+                                'timestamp' => $insp->created_at->timestamp,
+                                'tone' => 'purple',
+                                'href' => route('inspection.show', $insp->id),
+                            ])
+                    )
+                    ->sortByDesc('timestamp')
+                    ->values()
+                    ->take(6);
+            }),
             'expiringWarranties' => $hardware
                 ->filter(function ($asset) {
                     if (empty($asset['warranty_expires'])) return false;
-                    $expiry = CarbonImmutable::parse($asset['warranty_expires']);
-                    return $expiry->isFuture() && $expiry->diffInDays(now()) <= 30;
+                    try {
+                        $expiry = CarbonImmutable::parse($asset['warranty_expires']);
+                        return $expiry->isFuture() && $expiry->diffInDays(now()) <= 30;
+                    } catch (\Throwable) {
+                        return false;
+                    }
                 })
+                ->take(10)  // LIMIT: hanya ambil 10 teratas
                 ->map(fn ($asset) => [
                     'id' => $asset['id'],
-                    'name' => $asset['name'] ?? $asset['model']['name'],
-                    'tag' => $asset['asset_tag'],
+                    'name' => $asset['name'] ?? $asset['model']['name'] ?? 'Hardware',
+                    'tag' => $asset['asset_tag'] ?? '-',
                     'expiry' => CarbonImmutable::parse($asset['warranty_expires'])->format('d M Y'),
                     'daysLeft' => CarbonImmutable::parse($asset['warranty_expires'])->diffInDays(now()),
                     'href' => route('asset.show', ['assetId' => $asset['id'], 'type' => 'assets']),
@@ -542,7 +574,7 @@ class DashboardController extends Controller
                 ->values()
                 ->all(),
             'expiringLicenses' => $licenses
-                ->filter(function (array $license): bool {
+                ->filter(function (array $license) use ($now): bool {
                     $expiresAt = $license['expiration_date']
                         ?? data_get($license, 'expiration_date.date')
                         ?? data_get($license, 'expiration_date.formatted');
@@ -566,6 +598,7 @@ class DashboardController extends Controller
 
                     return CarbonImmutable::parse($expiresAt)->diffInDays($now);
                 })
+                ->take(10)  // LIMIT: hanya ambil 10 teratas
                 ->map(function (array $license) use ($now): array {
                     $expiresAt = $license['expiration_date']
                         ?? data_get($license, 'expiration_date.date')

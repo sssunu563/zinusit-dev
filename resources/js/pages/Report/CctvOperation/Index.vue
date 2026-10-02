@@ -50,11 +50,31 @@ const filterTo     = ref(formatDate(new Date()));
 const applyTrigger = ref(0);
 const openFlyout   = ref<"filter"|"fetch"|"export"|null>(null);
 
+// Validasi maksimal 31 hari
+const dateRangeDays = computed(() => {
+    const from = new Date(filterFrom.value + "T00:00:00");
+    const to = new Date(filterTo.value + "T00:00:00");
+    return Math.round((to.getTime() - from.getTime()) / 86400000);
+});
+
+const dateRangeError = computed(() => {
+    const days = dateRangeDays.value;
+    if (days < 0) return "Tanggal 'Dari' harus lebih awal dari 'Sampai'";
+    if (days > 31) return "Rentang maksimal 31 hari";
+    return null;
+});
+
+const canApplyFilter = computed(() => dateRangeError.value === null);
+
 function toggleFlyout(name: "filter"|"fetch"|"export") {
     openFlyout.value = openFlyout.value === name ? null : name;
 }
 function closeFlyout() { openFlyout.value = null; }
-function applyFilter() { applyTrigger.value++; closeFlyout(); }
+function applyFilter() { 
+    if (!canApplyFilter.value) return;
+    applyTrigger.value++; 
+    closeFlyout(); 
+}
 
 const fetchDate    = ref(formatDate(new Date(Date.now() - 86400000)));
 const fetchLoading = ref(false);
@@ -160,17 +180,34 @@ function onLocationsLoaded(locs: string[]) {
                                 class="fixed md:absolute right-4 md:right-0 top-auto md:top-10 z-50 w-72 bg-white rounded-2xl border border-slate-200 shadow-2xl shadow-slate-900/10 p-5 space-y-3"
                                 @click.stop>
                                 <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">Rentang Tanggal</p>
+                                
+                                <!-- Error Message -->
+                                <div v-if="dateRangeError" class="flex items-start gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100">
+                                    <AlertCircle class="size-3.5 text-rose-500 shrink-0 mt-0.5"/>
+                                    <p class="text-[9px] font-bold text-rose-600 leading-snug">{{ dateRangeError }}</p>
+                                </div>
+                                
+                                <!-- Info: Days Selected -->
+                                <div v-else-if="dateRangeDays >= 0" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100">
+                                    <CheckCircle2 class="size-3 text-emerald-600"/>
+                                    <p class="text-[9px] font-bold text-emerald-700">{{ dateRangeDays }} hari dipilih</p>
+                                </div>
+                                
                                 <div class="grid grid-cols-2 gap-2">
                                     <div>
-                                        <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">Dari</label>
-                                        <input v-model="filterFrom" type="date" class="w-full h-9 px-3 rounded-xl border border-slate-100 bg-slate-50 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003628]/20"/>
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Dari</label>
+                                        <input v-model="filterFrom" type="date" class="w-full h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#003628]/30 focus:border-[#003628]/30 cursor-pointer hover:border-slate-300 transition-all"/>
                                     </div>
                                     <div>
-                                        <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1">Sampai</label>
-                                        <input v-model="filterTo" type="date" class="w-full h-9 px-3 rounded-xl border border-slate-100 bg-slate-50 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003628]/20"/>
+                                        <label class="text-[9px] font-bold text-slate-400 uppercase block mb-1.5">Sampai</label>
+                                        <input v-model="filterTo" type="date" class="w-full h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#003628]/30 focus:border-[#003628]/30 cursor-pointer hover:border-slate-300 transition-all"/>
                                     </div>
                                 </div>
-                                <button type="button" class="w-full h-9 rounded-xl bg-[#003628] text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-[#003628]/20 active:scale-95" @click="applyFilter">
+                                <button type="button" 
+                                    :disabled="!canApplyFilter"
+                                    class="w-full h-9 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                                    :class="canApplyFilter ? 'bg-[#003628] hover:opacity-90 shadow-[#003628]/20' : 'bg-slate-300 cursor-not-allowed shadow-slate-300/20'"
+                                    @click="applyFilter">
                                     <RefreshCw class="size-3.5"/> Terapkan
                                 </button>
                             </div>
@@ -285,14 +322,14 @@ function onLocationsLoaded(locs: string[]) {
                         </div>
                         <div class="h-5 w-px bg-slate-200"/>
                         <select v-model="filterLocation"
-                            class="h-7 px-2.5 rounded-lg border border-slate-200 bg-white text-[9px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003628]/20">
+                            class="h-7 pl-2.5 pr-7 rounded-md border border-slate-200 bg-white text-[9px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#003628]/30 focus:border-[#003628]/30 cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 fill=%27none%27 viewBox=%270 0 20 20%27%3E%3Cpath stroke=%27%236b7280%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 stroke-width=%271.5%27 d=%27m6 8 4 4 4-4%27/%3E%3C/svg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_0.125rem_center] bg-no-repeat hover:bg-slate-50 transition-all">
                             <option value="">Semua Lokasi</option>
                             <option v-for="loc in locationOptions" :key="loc" :value="loc">{{ loc }}</option>
                         </select>
                         <div class="relative">
                             <Search class="size-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/>
                             <input v-model="searchDevice" type="text" placeholder="Cari device..."
-                                class="h-7 pl-7 pr-2.5 rounded-lg border border-slate-200 bg-white text-[9px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#003628]/20 w-32"/>
+                                class="h-7 pl-7 pr-2.5 rounded-md border border-slate-200 bg-white text-[9px] font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-[#003628]/30 focus:border-[#003628]/30 w-36 hover:border-slate-300 transition-all"/>
                         </div>
                     </div>
                 </div>

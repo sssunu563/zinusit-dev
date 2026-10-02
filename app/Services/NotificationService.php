@@ -13,11 +13,21 @@ class NotificationService
      */
     public static function sendToTeams(string $title, string $message, string $color = '003628', array $facts = [])
     {
-        $setting = NotificationWebhookSetting::first();
-        $webhookUrl = $setting?->webhook_url ?: config('services.teams.webhook_url');
+        try {
+            $setting = NotificationWebhookSetting::first();
+            $webhookUrl = $setting?->webhook_url ?: config('services.teams.webhook_url');
 
-        if (($setting && ! $setting->enabled) || ! $webhookUrl) {
-            return;
+            if (($setting && ! $setting->enabled) || ! $webhookUrl) {
+                return;
+            }
+        } catch (\Exception $e) {
+            // Table doesn't exist or other DB error - fallback to config
+            $webhookUrl = config('services.teams.webhook_url');
+            
+            if (! $webhookUrl) {
+                Log::debug('Teams webhook not configured and notification_webhook_settings table not available');
+                return;
+            }
         }
 
         // Format facts for Teams Adaptive Card or Message Card

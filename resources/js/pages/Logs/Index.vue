@@ -3,10 +3,6 @@ import { Head, router } from '@inertiajs/vue3';
 import {
     LucideActivity as ActivityIcon,
     LucideHistory as HistoryIcon,
-    LucideHardDrive as AssetIcon,
-    LucideUsers as UserIcon,
-    LucideServer as ServerIcon,
-    LucideRadio as InfraIcon,
 } from 'lucide-vue-next';
 import { computed, reactive, watch, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -225,81 +221,61 @@ const openAssetDetail = (id: number, type: string) => {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="app-page-shell">
-            <!-- Header Section -->
-            <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div class="space-y-1">
-                    <div class="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#003628] uppercase mb-2">
-                        <ActivityIcon class="size-3" />
-                        Audit Sistem & Aktivitas Operasional
+            <!-- Combined Header + Table Card -->
+            <div class="bg-white rounded-[28px] border border-slate-200/70 shadow-xl shadow-slate-200/50">
+                <!-- Header Section -->
+                <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100">
+                    <!-- Brand -->
+                    <div class="flex items-center gap-2.5">
+                        <div class="h-10 w-10 rounded-2xl bg-[#003628] flex items-center justify-center shadow-md shadow-[#003628]/25 shrink-0">
+                            <ActivityIcon class="size-5 text-white"/>
+                        </div>
+                        <div>
+                            <h1 class="text-[15px] font-black tracking-tight text-slate-900 leading-none">
+                                Log <span class="text-[#003628]">Aktivitas</span>
+                            </h1>
+                            <p class="text-[9px] text-slate-400 mt-0.5">Timeline Audit & Aktivitas Operasional</p>
+                        </div>
                     </div>
-                    <h1 class="text-3xl font-black tracking-tight text-slate-900 lg:text-4xl">
-                        Timeline <span class="text-[#003628] italic">Aktivitas</span>
-                    </h1>
+
+                    <!-- Stats Summary -->
+                    <div class="hidden lg:flex items-center gap-3 text-[10px] font-bold">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-slate-400"/>
+                            <span class="text-slate-400">Total:</span>
+                            <span class="text-slate-700">{{ stats.total.toLocaleString() }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-500"/>
+                            <span class="text-slate-400">Aset:</span>
+                            <span class="text-slate-700">{{ stats.assets.toLocaleString() }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"/>
+                            <span class="text-slate-400">Users:</span>
+                            <span class="text-slate-700">{{ stats.users.toLocaleString() }}</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <div class="h-12 w-12 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center justify-center">
-                        <HistoryIcon class="size-5 text-[#003628]" />
-                    </div>
+                <!-- Table Content -->
+                <div class="p-6 lg:p-8">
+                    <LogsTable
+                        :logs="logs"
+                        :filter-form="filterForm"
+                        :filter-options="filter_options"
+                        :stats="stats"
+                        :summary-text="summaryText"
+                        :export-url="exportUrl"
+                        :apply-date-preset="applyDatePreset"
+                        :clear-date-filters="clearDateFilters"
+                        :is-preset-active="isPresetActive"
+                        :active-filter-count="activeFilterCount"
+                        @open-asset="openAssetDetail"
+                        @open-detail="openDetail"
+                    />
                 </div>
-            </header>
-
-            <!-- Stats Overview Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
-                <button
-                    type="button"
-                    @click="filterForm.filter_category = ''"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_category === '' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_category === '' ? 'text-emerald-300' : 'text-slate-400'">Semua Log (Aset & User)</span>
-                        <ActivityIcon class="size-4" :class="filterForm.filter_category === '' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.total }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_category = 'assets'"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_category === 'assets' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_category === 'assets' ? 'text-emerald-300' : 'text-slate-400'">Aset & Perangkat</span>
-                        <AssetIcon class="size-4" :class="filterForm.filter_category === 'assets' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.assets }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_category = 'users'"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_category === 'users' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_category === 'users' ? 'text-emerald-300' : 'text-slate-400'">Pengguna & Akun</span>
-                        <UserIcon class="size-4" :class="filterForm.filter_category === 'users' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.users }}</p>
-                </button>
             </div>
-
-            <!-- Main Table Component -->
-            <LogsTable
-                :logs="logs"
-                :filter-form="filterForm"
-                :filter-options="filter_options"
-                :summary-text="summaryText"
-                :export-url="exportUrl"
-                :apply-date-preset="applyDatePreset"
-                :clear-date-filters="clearDateFilters"
-                :is-preset-active="isPresetActive"
-                :active-filter-count="activeFilterCount"
-                @open-asset="openAssetDetail"
-                @open-detail="openDetail"
-            />
         </div>
 
         <!-- Detail Sheet Modal -->

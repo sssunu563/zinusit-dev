@@ -1,1 +1,0 @@
-import{o as r,ai as d}from"./app-Ds0vR2yb.js";const t=()=>!1,_=(o,n)=>{if(!t())return;window.__APP_RENDER_COUNTS__??={};const e=(window.__APP_RENDER_COUNTS__[o]??0)+1;window.__APP_RENDER_COUNTS__[o]=e,console.debug(`[render-profiler] ${o} ${n} #${e}`)},i=o=>{r(()=>{_(o,"mounted")}),d(()=>{_(o,"updated")})};export{i as u};

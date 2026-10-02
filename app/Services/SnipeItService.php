@@ -605,13 +605,17 @@ class SnipeItService
 
     private function cacheTtlForEndpoint(string $endpoint, array $query = []): int
     {
+        // ⚡ OPTIMIZED: Increased cache TTL for better performance
+        // List endpoints: 1 hour (3600s) - untuk list yang jarang berubah
+        // Detail endpoints: 6 hours (21600s) - untuk detail yang sangat jarang berubah
+        
         $isListEndpoint = str_contains($endpoint, 'reports/activity') === false && !preg_match('#/(\d+)$#', $endpoint);
 
         if ($isListEndpoint) {
-            return 30;
+            return 3600; // 1 hour (was 30 seconds)
         }
 
-        return 180;
+        return 21600; // 6 hours (was 180 seconds)
     }
 
     private function decodeResponse(Response $response): array

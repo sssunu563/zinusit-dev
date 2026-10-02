@@ -1,41 +1,25 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
 import { Link } from '@inertiajs/vue3';
-import { onClickOutside } from '@vueuse/core';
 import {
     LucideDownload as Download,
-    LucideSearch as Search,
-    LucideSlidersHorizontal as SlidersHorizontal,
     LucideFolderArchive as FolderArchive,
     LucideFolder as StbIcon,
     LucideClipboardList as LoanIcon,
     LucideSearchCheck as InspectionIcon,
     LucideFileText as FileText,
-    LucideUser as UserIcon,
-    LucideRefreshCw as RefreshCw,
     LucideEye as EyeIcon,
     LucideCheckCircle2 as CheckCircle,
     LucideClock as ClockIcon,
     LucideExternalLink as ExternalLink,
     LucidePrinter as Printer,
 } from 'lucide-vue-next';
-import { ref } from 'vue';
 import type { BankDocumentItem } from '@/pages/BankDocuments/Partials/BankDocumentDetailSheet.vue';
 
 interface PaginationLink {
     url: string | null;
     label: string;
     active: boolean;
-}
-
-interface DocTypeOption {
-    key: string;
-    label: string;
-}
-
-interface StatusOption {
-    key: string;
-    label: string;
 }
 
 const props = defineProps<{
@@ -50,26 +34,12 @@ const props = defineProps<{
         from_date: string;
         to_date: string;
     };
-    documentTypes: DocTypeOption[];
-    statuses: StatusOption[];
     summaryText: string;
-    exportUrl: string;
-    applyDatePreset: (preset: 'today' | 'last7Days' | 'thisMonth') => void;
-    clearDateFilters: () => void;
-    isPresetActive: (preset: 'today' | 'last7Days' | 'thisMonth') => boolean;
-    activeFilterCount: number;
 }>();
 
 const emit = defineEmits<{
     (e: 'open-detail', doc: BankDocumentItem): void;
 }>();
-
-const showFilters = ref(false);
-const filterPanelRef = ref<HTMLElement | null>(null);
-
-onClickOutside(filterPanelRef, () => {
-    showFilters.value = false;
-});
 
 const getDocIcon = (type?: string) => {
     switch (type) {
@@ -86,159 +56,9 @@ const getDocIcon = (type?: string) => {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <!-- TABLE CARD CONTAINER -->
-        <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-            <!-- Toolbar Section -->
-            <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div class="relative w-full lg:max-w-md">
-                    <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                    <input
-                        v-model="filterForm.search"
-                        type="text"
-                        placeholder="Cari nomor dokumen, penerima, departemen..."
-                        class="w-full h-10 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/30 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:bg-white transition-all outline-none shadow-xs"
-                    />
-                </div>
-
-                <div class="flex items-center gap-2">
-                    <a
-                        :href="exportUrl"
-                        class="h-10 px-3 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-all active:scale-95 shadow-xs"
-                        title="Ekspor CSV"
-                    >
-                        <Download class="size-4" />
-                    </a>
-
-                    <!-- Filter Dropdown Button & Popover -->
-                    <div ref="filterPanelRef" class="relative">
-                        <button
-                            type="button"
-                            class="h-10 px-4 rounded-xl border border-slate-200 bg-white flex items-center gap-2.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all active:scale-95 shadow-xs cursor-pointer"
-                            @click="showFilters = !showFilters"
-                        >
-                            <SlidersHorizontal class="size-4 text-slate-400" />
-                            <span>Filter</span>
-                            <span
-                                v-if="activeFilterCount"
-                                class="flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[9px] font-black text-white"
-                            >
-                                {{ activeFilterCount }}
-                            </span>
-                        </button>
-
-                        <Transition
-                            enter-active-class="transition duration-300 ease-out"
-                            enter-from-class="opacity-0 translate-y-4 scale-95"
-                            enter-to-class="opacity-100 translate-y-0 scale-100"
-                            leave-active-class="transition duration-200 ease-in"
-                            leave-from-class="opacity-100 translate-y-0 scale-100"
-                            leave-to-class="opacity-0 translate-y-4 scale-95"
-                        >
-                            <div
-                                v-if="showFilters"
-                                class="absolute top-full right-0 z-50 mt-4 w-88 rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl backdrop-blur-xl overflow-hidden"
-                            >
-                                <div class="flex items-center justify-between mb-6">
-                                    <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter Bank Dokumen</h3>
-                                    <button
-                                        @click="
-                                            filterForm.search = '';
-                                            filterForm.filter_type = '';
-                                            filterForm.filter_status = '';
-                                            clearDateFilters();
-                                            showFilters = false;
-                                        "
-                                        class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                        <RefreshCw class="size-3" /> Reset
-                                    </button>
-                                </div>
-
-                                <div class="space-y-4">
-                                    <!-- Document Type Filter -->
-                                    <div class="space-y-1.5">
-                                        <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Jenis Dokumen</label>
-                                        <select
-                                            v-model="filterForm.filter_type"
-                                            class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
-                                        >
-                                            <option value="">Semua Jenis Dokumen</option>
-                                            <option v-for="t in documentTypes" :key="t.key" :value="t.key">{{ t.label }}</option>
-                                        </select>
-                                    </div>
-
-                                    <!-- Status Filter -->
-                                    <div class="space-y-1.5">
-                                        <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Status Dokumen</label>
-                                        <select
-                                            v-model="filterForm.filter_status"
-                                            class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
-                                        >
-                                            <option value="">Semua Status</option>
-                                            <option v-for="st in statuses" :key="st.key" :value="st.key">{{ st.label }}</option>
-                                        </select>
-                                    </div>
-
-                                    <!-- Date Presets -->
-                                    <div class="pt-3 border-t border-slate-100 space-y-2">
-                                        <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Preset Rentang Tanggal</label>
-                                        <div class="grid grid-cols-3 gap-2">
-                                            <button
-                                                type="button"
-                                                @click="applyDatePreset('today')"
-                                                class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
-                                                :class="isPresetActive('today') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
-                                            >
-                                                Hari Ini
-                                            </button>
-                                            <button
-                                                type="button"
-                                                @click="applyDatePreset('last7Days')"
-                                                class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
-                                                :class="isPresetActive('last7Days') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
-                                            >
-                                                7 Hari
-                                            </button>
-                                            <button
-                                                type="button"
-                                                @click="applyDatePreset('thisMonth')"
-                                                class="h-7 px-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer"
-                                                :class="isPresetActive('thisMonth') ? 'bg-[#003628] text-white border-[#003628]' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
-                                            >
-                                                Bulan Ini
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <!-- Date Inputs -->
-                                    <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                                        <div class="space-y-1">
-                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Dari</label>
-                                            <input
-                                                v-model="filterForm.from_date"
-                                                type="date"
-                                                class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
-                                            />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Hingga</label>
-                                            <input
-                                                v-model="filterForm.to_date"
-                                                type="date"
-                                                class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </Transition>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Desktop Table -->
-            <div class="hidden md:block overflow-hidden rounded-2xl border border-slate-100">
+    <div>
+        <!-- Desktop Table -->
+        <div class="hidden md:block overflow-hidden rounded-2xl border border-slate-100">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead>
                         <tr class="border-b border-slate-100 bg-slate-50/50">
@@ -438,5 +258,4 @@ const getDocIcon = (type?: string) => {
                 </nav>
             </div>
         </div>
-    </div>
 </template>

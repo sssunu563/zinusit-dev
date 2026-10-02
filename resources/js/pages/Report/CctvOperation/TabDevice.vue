@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue";
 import {
     Activity, Loader2, CheckCircle2, XCircle, AlertTriangle,
-    Clock, Server, Camera, Fingerprint, X, Save, WrenchIcon, Search,
+    Clock, Server, Camera, Fingerprint, X, Save, WrenchIcon,
     ChevronUp, ChevronDown, ChevronsUpDown, AlertCircle, Plus, EyeOff, Eye, FileText, Trash2,
 } from "lucide-vue-next";
 
@@ -115,14 +115,37 @@ const datColStyle = computed(() => {
     return { minWidth: w + "px", width: w + "px" };
 });
 
-const sortedDevices = computed(() => {
+// Pagination & Filters (Asset-style)
+const pageSize = ref(20);
+const currentPage = ref(1);
+const filterStatus = ref('all'); // all | active | maintenance | excluded
+const filterUptimeMin = ref<number | null>(null);
+const filterUptimeMax = ref<number | null>(null);
+
+// Enhanced sorted & filtered devices
+const filteredDevices = computed(() => {
     if (!uptimeData.value?.devices) return [];
-    const q = searchDeviceLocal.value.toLowerCase();
-    let devs = uptimeData.value.devices.filter((d: any) => {
+    const q = props.searchDevice.toLowerCase();
+    
+    return uptimeData.value.devices.filter((d: any) => {
+        // Search
         if (q && !d.device_name.toLowerCase().includes(q) && !(d.ip_address ?? "").toLowerCase().includes(q)) return false;
+        
+        // Status filter
+        if (filterStatus.value === 'active' && (d.is_excluded || d.in_maintenance || d.maintenance_note)) return false;
+        if (filterStatus.value === 'maintenance' && !d.in_maintenance && !d.maintenance_note) return false;
+        if (filterStatus.value === 'excluded' && !d.is_excluded) return false;
+        
+        // Uptime range
+        if (filterUptimeMin.value !== null && (d.avg_uptime ?? 100) < filterUptimeMin.value) return false;
+        if (filterUptimeMax.value !== null && (d.avg_uptime ?? 0) > filterUptimeMax.value) return false;
+        
         return true;
     });
-    devs = [...devs].sort((a: any, b: any) => {
+});
+
+const sortedDevices = computed(() => {
+    const devs = [...filteredDevices.value].sort((a: any, b: any) => {
         let av = a[sortCol.value] ?? "";
         let bv = b[sortCol.value] ?? "";
         if (sortCol.value === "avg_uptime") { av = a.avg_uptime ?? -1; bv = b.avg_uptime ?? -1; }
@@ -131,6 +154,25 @@ const sortedDevices = computed(() => {
     });
     return devs;
 });
+
+// Pagination
+const totalPages = computed(() => Math.max(1, Math.ceil(sortedDevices.value.length / pageSize.value)));
+const pagedDevices = computed(() => {
+    const start = (currentPage.value - 1) * pageSize.value;
+    return sortedDevices.value.slice(start, start + pageSize.value);
+});
+
+// Reset page when filters change
+watch([() => props.searchDevice, () => filterStatus.value, () => filterUptimeMin.value, () => filterUptimeMax.value], () => {
+    currentPage.value = 1;
+});
+
+// Remove old pagination variables
+// const uptimePage = ref(1);
+// const UPTIME_PER_PAGE = 20;
+// const uptimePages = computed(...)
+// const pagedDevices = computed(...)
+// watch(() => searchDeviceLocal.value, ...)
 
 const typeLabel = computed(() => ({ nvr: "NVR", cctv: "CCTV", finger: "Fingerprint" }[props.deviceType] ?? props.deviceType));
 const TypeIcon  = computed(() => ({ nvr: Server, cctv: Camera, finger: Fingerprint }[props.deviceType] ?? Camera));
@@ -200,7 +242,13 @@ async function loadAll() {
     finally { loading.value = false; }
 }
 
-onMounted(() => loadAll());
+onMounted(() => {
+    loadAll();
+});
+
+onBeforeUnmount(() => {
+});
+
 watch(() => props.applyTrigger, () => loadAll());
 watch(() => props.activeView, (v) => { if (v === "maintenance") loadMaintLogs(); if (v === "record") loadNvrRecords(); });
 watch(() => props.filterLocation, (v) => { filterLocationLocal.value = v; loadUptime(); });
@@ -315,7 +363,9 @@ async function deleteMaintLog(id: number) {
             <Activity class="size-10 text-slate-200 mx-auto mb-3"/>
             <p class="text-[11px] font-black uppercase tracking-widest text-slate-300">Belum ada data</p>
         </div>
-        <div v-else class="bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <div v-else class="space-y-4">
+            <!-- TABLE -->
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm">
             <div class="overflow-x-auto w-full relative">
                 <table class="border-collapse text-left" style="width:max-content;min-width:100%">
                     <thead>
@@ -337,7 +387,7 @@ async function deleteMaintLog(id: number) {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        <tr v-for="dev in sortedDevices" :key="dev.id" class="hover:bg-slate-50/40 transition-colors group" :class="dev.is_excluded?'opacity-50':''">
+                        <tr v-for="dev in pagedDevices" :key="dev.id" class="hover:bg-slate-50/40 transition-colors group" :class="dev.is_excluded?'opacity-50':''">
                             <td class="sticky left-0 z-10 bg-white px-3 py-3 text-[10px] font-bold text-slate-600 whitespace-nowrap group-hover:bg-slate-50/40">{{ dev.location }}</td>
                             <td class="sticky left-[100px] z-10 bg-white px-3 py-2 group-hover:bg-slate-50/40">
                                 <div class="flex items-center justify-between gap-2">
@@ -355,7 +405,7 @@ async function deleteMaintLog(id: number) {
                             </td>
                             <td class="sticky left-[320px] z-10 bg-white px-3 py-3 text-[10px] text-slate-400 whitespace-nowrap group-hover:bg-slate-50/40">{{ dev.display_group }}</td>
                             <td class="sticky left-[430px] z-10 bg-white border-r border-slate-100 px-3 py-3 text-center group-hover:bg-slate-50/40" style="box-shadow:2px 0 5px -1px rgba(0,0,0,0.08)">
-                                <span class="px-2 py-1 rounded-lg text-[10px] font-black" :class="uptimeColor(dev.avg_uptime, true)">{{ dev.avg_uptime !== null ? dev.avg_uptime + '%' : '�' }}</span>
+                                <span class="px-2 py-1 rounded-lg text-[10px] font-black" :class="uptimeColor(dev.avg_uptime, true)">{{ dev.avg_uptime !== null ? dev.avg_uptime + '%' : '—' }}</span>
                             </td>
                             <td v-for="(daily, di) in dev.daily" :key="di" class="px-0.5 py-1.5 text-center" :style="datColStyle">
                                 <span v-if="!daily.in_range || daily.uptime === null"
@@ -374,53 +424,37 @@ async function deleteMaintLog(id: number) {
                     </tbody>
                 </table>
             </div>
-        </div>
-
-        <!-- FETCH LOG -->
-        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
-                <Clock class="size-4 text-[#003628]"/>
-                <p class="text-sm font-black text-slate-800">Fetch Log</p>
-                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[9px] font-black text-slate-500">{{ logData.length }} entri</span>
-            </div>
-            <div v-if="!logData.length" class="py-10 text-center">
-                <p class="text-[10px] font-black uppercase tracking-widest text-slate-300">Belum ada log</p>
-            </div>
-            <div v-else class="divide-y divide-slate-50 max-h-64 overflow-y-auto">
-                <div v-for="log in logData.slice(0, 30)" :key="log.id"
-                    class="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/50 transition-colors flex-wrap">
-                    <!-- Status badge -->
-                    <div class="shrink-0 px-2 py-0.5 rounded-lg border text-[8px] font-black uppercase tracking-widest flex items-center gap-1"
-                        :class="logStatusConf(log.status).bg">
-                        <component :is="logStatusConf(log.status).icon" class="size-3" :class="logStatusConf(log.status).color"/>
-                        <span :class="logStatusConf(log.status).color">{{ log.status }}</span>
-                    </div>
-                    <!-- Date -->
-                    <span class="text-[11px] font-black text-slate-800 tabular-nums">{{ log.fetch_date }}</span>
-                    <!-- Source -->
-                    <span class="text-[10px] font-bold text-slate-500 uppercase">{{ log.source }}
-                        <span v-if="log.source_instance && log.source_instance !== 'main'" class="text-slate-400">/{{ log.source_instance }}</span>
-                    </span>
-                    <!-- Device type badge -->
-                    <span class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase"
-                        :class="log.device_type==='nvr'?'bg-violet-50 border border-violet-100 text-violet-600':log.device_type==='cctv'?'bg-sky-50 border border-sky-100 text-sky-600':'bg-emerald-50 border border-emerald-100 text-emerald-600'">
-                        {{ log.device_type?.toUpperCase() }}
-                    </span>
-                    <!-- Group -->
-                    <span v-if="log.group_name" class="text-[10px] text-slate-400 truncate max-w-[160px]">{{ log.group_name }}</span>
-                    <!-- OK / Fail counts -->
-                    <span class="ml-auto flex items-center gap-2 shrink-0">
-                        <span class="text-[10px] font-black text-emerald-600 tabular-nums">{{ log.devices_ok }} OK</span>
-                        <span v-if="log.devices_fail > 0" class="text-[10px] font-black text-rose-500 tabular-nums">{{ log.devices_fail }} fail</span>
-                    </span>
-                    <!-- Manual badge + triggered by -->
-                    <span class="text-[9px] text-slate-400 whitespace-nowrap shrink-0">
-                        <span v-if="log.is_manual" class="px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-100 text-[7px] font-black uppercase text-amber-600 mr-1">Manual</span>
-                        {{ log.triggered_by }}
-                    </span>
-                    <!-- Timestamp -->
-                    <span class="text-[9px] text-slate-300 whitespace-nowrap shrink-0">{{ log.created_at }}</span>
+            
+            <!-- PAGINATION -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50">
+                <div class="flex items-center gap-2">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Show</span>
+                    <select v-model.number="pageSize" class="h-7 px-2 pr-6 rounded-md border border-slate-200 bg-white text-[9px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#003628]/30 focus:border-[#003628]/30 cursor-pointer">
+                        <option :value="10">10</option>
+                        <option :value="20">20</option>
+                        <option :value="50">50</option>
+                        <option :value="100">100</option>
+                    </select>
+                    <span class="text-[9px] font-bold text-slate-500">of {{ sortedDevices.length }}</span>
                 </div>
+                
+                <div class="flex items-center gap-1">
+                    <button type="button" :disabled="currentPage===1" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-slate-600 text-[9px] font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center" @click="currentPage--">
+                        <ChevronUp class="size-3 rotate-[-90deg]"/>
+                    </button>
+                    
+                    <div class="flex items-center gap-0.5 mx-1">
+                        <template v-for="p in totalPages" :key="p">
+                            <button v-if="p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1" type="button" class="h-7 min-w-[28px] px-1.5 rounded-md text-[9px] font-black transition-all" :class="p===currentPage?'bg-[#003628] text-white shadow-sm':'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'" @click="currentPage=p">{{ p }}</button>
+                            <span v-else-if="(p === 2 && currentPage > 3) || (p === totalPages - 1 && currentPage < totalPages - 2)" class="text-slate-300 text-[9px] px-1">···</span>
+                        </template>
+                    </div>
+                    
+                    <button type="button" :disabled="currentPage===totalPages" class="h-7 px-2 rounded-md border border-slate-200 bg-white text-slate-600 text-[9px] font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center justify-center" @click="currentPage++">
+                        <ChevronUp class="size-3 rotate-90"/>
+                    </button>
+                </div>
+            </div>
             </div>
         </div>
 

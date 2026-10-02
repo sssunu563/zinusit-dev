@@ -23,11 +23,10 @@ class LabelGeneratorController extends Controller
         $assets = [];
 
         if ($search !== '') {
-            $payload = $this->snipe->getHardware([
+            $rawRows = $this->snipe->fetchRows('hardware', [
                 'search' => $search,
                 'limit'  => 30,
             ]);
-            $rawRows = $payload['rows'] ?? [];
 
             $assets = array_map(function ($row) {
                 return [
@@ -87,8 +86,10 @@ class LabelGeneratorController extends Controller
             return back()->with('error', 'Asset tidak ditemukan di Snipe-IT.');
         }
 
-        $browserPath = $this->pdfBrowserPath();
-        if (!$browserPath) return back()->with('error', 'Browser PDF belum tersedia di server.');
+        $browserPaths = $this->pdfBrowserPaths();
+        if ($browserPaths === []) {
+            return back()->with('error', 'Browser PDF belum tersedia di server.');
+        }
 
         $tempDirectory = storage_path('app/label-temp');
         if (!is_dir($tempDirectory)) mkdir($tempDirectory, 0777, true);
@@ -100,19 +101,48 @@ class LabelGeneratorController extends Controller
             'size' => $size,
         ])->render());
 
-        $process = new Process([
-            $browserPath, '--headless=new', '--no-sandbox', '--disable-dev-shm-usage',
-            '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-            '--allow-file-access-from-files', '--no-pdf-header-footer',
-            '--run-all-compositor-stages-before-draw', '--virtual-time-budget=12000',
-            '--print-to-pdf=' . $pdfPath, 'file:///' . str_replace('\\', '/', $htmlPath),
-        ]);
-        $process->setTimeout(60);
-        $process->run();
+        $profilePath = storage_path('app/browser-profile-' . Str::uuid());
+        if (!is_dir($profilePath)) mkdir($profilePath, 0777, true);
+
+        $generated = false;
+        $lastError = null;
+
+        foreach ($browserPaths as $browserPath) {
+            $process = new Process([
+                $browserPath,
+                '--headless=new',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--allow-file-access-from-files',
+                '--no-pdf-header-footer',
+                '--run-all-compositor-stages-before-draw',
+                '--virtual-time-budget=12000',
+                '--user-data-dir=' . str_replace('\\', '/', $profilePath),
+                '--print-to-pdf=' . $pdfPath,
+                'file:///' . str_replace('\\', '/', $htmlPath),
+            ]);
+            $process->setTimeout(60);
+            $process->run();
+
+            $lastError = $process->getErrorOutput();
+            if ($process->isSuccessful() && is_file($pdfPath)) {
+                $generated = true;
+                break;
+            }
+
+            Log::warning('Asset labels PDF generation failed with browser path, trying fallback', [
+                'browser_path' => $browserPath,
+                'error' => $process->getErrorOutput(),
+            ]);
+        }
+
         @unlink($htmlPath);
 
-        if (!$process->isSuccessful() || !is_file($pdfPath)) {
-            Log::error('Asset labels PDF generation failed', ['error' => $process->getErrorOutput()]);
+        if (!$generated || !is_file($pdfPath)) {
+            Log::error('Asset labels PDF generation failed', ['error' => $lastError]);
             return back()->with('error', 'PDF label gagal dibuat.');
         }
 
@@ -122,17 +152,19 @@ class LabelGeneratorController extends Controller
         ]);
     }
 
-    private function pdfBrowserPath(): ?string
+    private function pdfBrowserPaths(): array
     {
-        foreach (array_filter([
+        $paths = array_filter([
             trim((string) config('services.pdf.browser_path', '')),
-            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
             'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            '/usr/bin/chromium', '/usr/bin/chromium-browser',
-            '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
-        ]) as $path) {
-            if (is_file($path)) return $path;
-        }
-        return null;
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome',
+            '/usr/bin/google-chrome-stable',
+        ]);
+
+        return array_values(array_unique(array_filter($paths, static fn (string $path) => is_file($path))));
     }
 }

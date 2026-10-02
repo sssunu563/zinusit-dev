@@ -105,8 +105,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('bank-documents/export', [\App\Http\Controllers\BankDocumentController::class, 'export'])->name('bank-documents.export');
     Route::get('report-logs', [\App\Http\Controllers\ReportLogController::class, 'index'])->name('report-logs.index');
     Route::get('report-logs/export', [\App\Http\Controllers\ReportLogController::class, 'export'])->name('report-logs.export');
+    
+    // Fetch Logs (centralized)
+    Route::get('fetch-logs', [\App\Http\Controllers\FetchLogsController::class, 'index'])->name('fetch-logs.index');
+    
     Route::get('helpdesk/export', [HelpdeskController::class, 'export'])->name('helpdesk.export');
     Route::get('helpdesk/print-batch', [HelpdeskController::class, 'printBatch'])->name('helpdesk.print-batch');
+    Route::get('helpdesk/filter-options', [HelpdeskController::class, 'filterOptions'])->name('helpdesk.filter-options');
     Route::get('helpdesk/{ticket}/print', [HelpdeskController::class, 'print'])->name('helpdesk.print');
     Route::resource('helpdesk', HelpdeskController::class)
         ->except(['create', 'edit'])
@@ -123,7 +128,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('asset/{assetId}/edit', [AssetController::class, 'edit'])->name('asset.edit');
     Route::post('asset', [AssetController::class, 'store'])->name('asset.store');
     Route::put('asset/{assetId}', [AssetController::class, 'update'])->name('asset.update');
-    Route::get('asset/{status?}', [AssetController::class, 'index'])->name('asset.index');
     Route::post('asset/bulk-checkout', [AssetController::class, 'bulkCheckout'])->name('asset.bulk-checkout');
     Route::get('asset/check-serial', [AssetController::class, 'checkSerial'])->name('asset.check-serial');
     Route::get('asset/timeline/{serial}', [\App\Http\Controllers\AssetTimelineController::class, 'show'])->name('asset.timeline');
@@ -187,8 +191,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Tools routes
     Route::get('label-generator', [\App\Http\Controllers\LabelGeneratorController::class, 'index'])->name('label-generator.index');
     Route::get('label-generator/pdf', [\App\Http\Controllers\LabelGeneratorController::class, 'pdf'])->name('label-generator.pdf');
+    
+    // Asset Label Routes - BATCH (multiple labels)
+    Route::get('asset/print-labels', [\App\Http\Controllers\AssetController::class, 'printLabels'])->name('asset.print-labels.batch');
+
+    // ⚡ Asset Metadata API - Lazy Loaded + Cached
+    Route::get('api/asset/metadata', [\App\Http\Controllers\AssetController::class, 'getMetadata'])->name('api.asset.metadata');
+
+    // Asset Label Routes - SINGLE (one label)
     Route::get('asset/label/{tag}', [\App\Http\Controllers\AssetController::class, 'printLabel'])->name('asset.label.print');
     Route::get('asset/label/{tag}/pdf', [\App\Http\Controllers\AssetController::class, 'printLabelPdf'])->name('asset.label.pdf');
+
+    Route::get('asset/{status?}', [AssetController::class, 'index'])->name('asset.index');
+
     Route::get('asset/item/{assetId}/stock-history', [\App\Http\Controllers\AssetController::class, 'stockHistory'])->name('asset.stock.history');
     Route::get('search', \App\Http\Controllers\SearchController::class)->name('universal-search');
 
@@ -244,6 +259,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/infra-report/export', [App\Http\Controllers\Report\InfraReportController::class, 'export'])->name('infra-report.export');
     Route::post('/infra-report/bandwidth/remark', [App\Http\Controllers\Report\InfraReportController::class, 'updateBandwidthRemark'])->name('infra-report.bandwidth.remark');
     Route::post('/infra-report/helpdesk/remark', [App\Http\Controllers\Report\InfraReportController::class, 'updateHelpdeskRemark'])->name('infra-report.helpdesk.remark');
+
+    // CCTV Regular Check Reports
+    Route::prefix('infra-report/cctv-regular')->name('infra-report.cctv-regular.')->group(function () {
+        Route::get('/data', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'data'])->name('data');
+        Route::get('/meta', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'meta'])->name('meta');
+        Route::match(['post', 'put'], '/', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'store'])->name('store');
+        Route::get('/{id}', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'show'])->name('show');
+        Route::match(['post', 'put'], '/{id}', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'update'])->name('update');
+        Route::post('/{id}/complete', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'complete'])->name('complete');
+        Route::delete('/{id}', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'destroy'])->name('destroy');
+        Route::get('/{id}/print', [\App\Http\Controllers\Report\CctvRegularReportController::class, 'printView'])->name('print');
+    });
 
     // Network Operation (Bandwidth + Uptime + ISP SLA)
     Route::get('network-operation', [\App\Http\Controllers\Network\NetworkOperationController::class, 'index'])->name('network-operation.index');

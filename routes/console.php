@@ -4,6 +4,26 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Schedule;
+
+// ⚡ SCHEDULED JOBS
+// Auto-sync Snipe-IT data every 15 minutes
+Schedule::command('snipeit:sync --type=all --limit=500')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground()
+    ->onSuccess(function () {
+        \Log::info('SnipeIT sync completed successfully');
+    })
+    ->onFailure(function () {
+        \Log::error('SnipeIT sync failed');
+    });
+
+// Sync users more frequently (every hour)
+Schedule::command('snipeit:sync --type=users --limit=500')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());

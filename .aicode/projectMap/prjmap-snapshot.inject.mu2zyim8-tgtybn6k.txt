@@ -1,0 +1,165 @@
+# PROJECT MAP (HINT)
+descr: Non-authoritative workspace snapshot. It may be intentionally stale within a bounded tolerance. Never treat paths in this block as verified; verify with fs_* and/or index_* / symbol_* / file_load* before acting.
+
+FORMAT:
+format: D/| listing + append-only diff ops
+format_descr: One directory per line: `D <projectName>/<relative/dir/> → file1 | file2 | ...`
+format_descr: Separator between files is exactly ` | ` (space + pipe + space). After splitting, unescape filename tokens: `\|` → `|` and `\\` → `\`.
+format_descr: Multi-root workspace: `<projectName>` may differ across lines; treat each line as self-contained.
+
+DIFF SECTION (APPEND-ONLY):
+format_diff: Optional section appended after the file list.
+format_diff: Marker line: `## PROJECT MAP DIFF (APPEND-ONLY)`.
+format_diff: Then a `descr:` line, then append-only op lines: `+ <canPath>` or `- <canPath>`.
+format_diff: Apply op lines sequentially; if a path appears multiple times, the last occurrence wins.
+
+RECONSTRUCTING A PATH FROM ONE LINE:
+1) Read the directory prefix: `<projectName>/<dir>/`.
+2) Split the rest on ` | ` to get filenames.
+3) Full path = `<projectName>/<dir>/` + `<filename>`.
+
+GUIDANCE:
+- Use this list for orientation; verify before edits or claims.
+- If the snapshot and the workspace disagree, the workspace wins.
+
+## WORKSPACE ROOTS
+- The project is named "zinusit" and has a single root directory at "zinusit/".
+
+## PROJECT MAP FILE LIST
+D zinusit/ → .dockerignore | .editorconfig | .env.example | .gitattributes | .gitignore | .npmrc | .prettierignore | .prettierrc | ACTIVITY_HISTORY_CHANGES.md | artisan | BUILD_FIX_GUIDE.md | BUILD_FIX_IMPORT_CASE.md | CARA_DEPLOY.txt | CARA_UPDATE.txt | check_inspection.php | components.json | composer.json | composer.lock | COMPOSER_FIX_REQUIRED.md | CONSUMABLE_STB_FIX.md | cookies.txt | DEBUG_BLANK_INDEX_PAGE.md | debug_serialization.php | debug_signature.php | deploy.sh | DEPLOYMENT_CLEANUP_SUMMARY.md | DEPLOYMENT_READY_CHECKLIST.md | docker-compose.yml | docker-compose.yml.prod | docker-entrypoint.sh | DOCKER_ANALYSIS_COMPLETE.md | DOCKER_DEPLOYMENT_GUIDE.md | DOCKER_FIXES_SUMMARY.md | Dockerfile | eslint.config.js | fix_inspection_signature_dates.sql | FIX_SERVER_COMMAND.md | infra_report_home.html | infra_report_page.html | ISSUES_LIST.md | manifest.live.json | NEXT_STEP_BUILD.md | package.json | PAGINATION_IMPLEMENTATION.md | PANDUAN_DEPLOY_INDONESIA.md | PERFORMANCE_OPTIMIZATION_SUMMARY.md | PHP_EXTENSIONS_FIX.md | phpunit.xml | pint.json | PRODUCTION_DEPLOYMENT_CHECKLIST.md | QUICK_DEPLOY_REFERENCE.md | README_DOCKER.md | README_STOCK_OPNAME.md | SEARCH_FIX_COMPLETE.md | SERVER_DEPLOYMENT_GUIDE.md | SNIPEIT_SYNC_GUIDE.md | SO_FIXES_SUMMARY_ID.md | SOLUTION_SUMMARY.md | SORTING_FIX_COMPLETE.md | SORTING_ISSUE_ANALYSIS.md | STB_GENERATION_FIX.md | STB_SHORTCUT_IMPLEMENTATION.md | STOCK_OPNAME_ANALYSIS.md | STOCK_OPNAME_FIX_SUMMARY.md | STOCK_OPNAME_FLOW_EXPLANATION.md | STOCK_OPNAME_IMPROVEMENTS_IMPLEMENTED.md | STOCK_OPNAME_MOBILE_REDESIGN.md | STOCK_OPNAME_SUMMARY.md | STOCK_OPNAME_VISUAL_FLOW.txt | TESTING_REPORT.md | tsconfig.json | vite.config.ts
+D zinusit/.github/workflows/ → lint.yml | tests.yml
+D zinusit/app/Actions/Fortify/ → CreateNewUser.php | ResetUserPassword.php
+D zinusit/app/Concerns/ → PasswordValidationRules.php | ProfileValidationRules.php
+D zinusit/app/Console/Commands/ → CheckInfraData.php | CleanupTemporaryDirectories.php | CreateServerOpComponents.php | DiagnosePeminjamanAssets.php | ExportPrtgDevicesCsv.php | FetchAllReports.php | FetchBandwidthData.php | FetchServerOperation.php | FetchUptimeData.php | FixInspectionSignatureDates.php | FixPeminjamanAssetStatus.php | LinkInspectionActivityLogs.php | SendLoanReminders.php | SetupServerOp.php | SetupServerOperationComponents.php | StorageCleanup.php | SyncSnipeItData.php | SyncSnipeitMetadata.php | UploadInspectionPdf.php
+D zinusit/app/Events/ → SnipeitAssetSynced.php
+D zinusit/app/Exports/ → InfraReportExport.php
+D zinusit/app/Http/Controllers/ → ActionLogController.php | AppNotificationController.php | AssetController.php | AssetTimelineController.php | AuditController.php | AuthLogController.php | BandwidthController.php | BankDocumentController.php | CctvController.php | ChangePasswordController.php | Controller.php | DashboardController.php | DocumentFlowController.php | FormLogController.php | HelpdeskController.php | InspectionController.php | KnowledgeBaseController.php | LabelGeneratorController.php | NotificationSettingsController.php | PeminjamanController.php | ProcurementController.php | PublicAssetController.php | PublicHelpController.php | ReportController.php | ReportLogController.php | SearchController.php | SnipeItController.php | StbController.php | UserController.php | VendorController.php
+D zinusit/app/Http/Controllers/Cctv/ → CctvOperationController.php
+D zinusit/app/Http/Controllers/Network/ → IspSlaController.php | NetworkOperationController.php | UptimeController.php
+D zinusit/app/Http/Controllers/Report/ → CctvRegularReportController.php | InfraReportController.php
+D zinusit/app/Http/Controllers/Server/ → ServerOperationController.php
+D zinusit/app/Http/Controllers/Settings/ → PasswordController.php | ProfileController.php | TwoFactorAuthenticationController.php
+D zinusit/app/Http/Controllers/Support/ → SupportOperationController.php
+D zinusit/app/Http/Middleware/ → HandleAppearance.php | HandleInertiaRequests.php | RequirePasswordChange.php | ValidateGrafanaApiKey.php
+D zinusit/app/Http/Requests/ → StoreTicketRequest.php | UserStoreRequest.php | UserUpdateRequest.php
+D zinusit/app/Http/Requests/Settings/ → PasswordUpdateRequest.php | ProfileDeleteRequest.php | ProfileUpdateRequest.php | TwoFactorAuthenticationRequest.php
+D zinusit/app/Http/Responses/ → LoginResponse.php
+D zinusit/app/Listeners/ → SyncSnipeitAssetToDatabase.php
+D zinusit/app/Models/ → ActionLog.php | AppNotification.php | Article.php | AssetStockHistory.php | AuditItem.php | AuditSession.php | AuthLog.php | BandwidthDaily.php | BandwidthFetchLog.php | CctvDaily.php | CctvDevice.php | CctvFetchLog.php | CctvMaintenanceLog.php | CctvNvrRecord.php | CctvRegularReport.php | CctvUptimeDaily.php | Inspection.php | IspDownHistory.php | IspSlaContract.php | IspSlaMonthly.php | NetworkBackupMonthly.php | NetworkDevice.php | NetworkFetchLog.php | NetworkMaintenanceLog.php | NetworkUptimeDaily.php | NotificationWebhookSetting.php | NotificationWebhookTemplate.php | Peminjaman.php | PeminjamanAttachment.php | PeminjamanItem.php | Procurement.php | ServerDevice.php | ServerFetchLog.php | ServerMaintenanceLog.php | ServerResourceDaily.php | ServerTemperatureDaily.php | SnipeitAccessory.php | SnipeitAsset.php | SnipeitCategory.php | SnipeitCompany.php | SnipeitComponent.php | SnipeitConsumable.php | SnipeitFieldset.php | SnipeitLicense.php | SnipeitLocation.php | SnipeitManufacturer.php | SnipeitModel.php | SnipeitStatusLabel.php | SnipeitSupplier.php | SnipeitUser.php | Stb.php | StbAttachment.php | StbItem.php | Ticket.php | UptimeDaily.php | UptimeDevice.php | UptimeFetchLog.php | User.php | Vendor.php
+D zinusit/app/Providers/ → AppServiceProvider.php | EventServiceProvider.php | FortifyServiceProvider.php
+D zinusit/app/Services/ → AssetNoteFormatterService.php | AuthLogService.php | CctvMonitorService.php | CctvPrtgService.php | ErrorMessageService.php | LabelGeneratorService.php | LdapService.php | NetworkMonitorService.php | NotificationService.php | PrtgService.php | ServerMonitorService.php | SnipeItManagedUserService.php | SnipeItService.php | SnipeItUserSyncService.php | UptimePrtgService.php
+D zinusit/app/Traits/ → DocumentCheckoutTrait.php | Loggable.php
+D zinusit/bootstrap/ → app.php | providers.php
+D zinusit/bootstrap/cache/ → .gitignore
+D zinusit/config/ → app.php | auth.php | cache.php | database.php | filesystems.php | fortify.php | inertia.php | labels.php | ldap.php | logging.php | mail.php | queue.php | services.php | session.php
+D zinusit/database/ → .gitignore
+D zinusit/database/factories/ → UserFactory.php
+D zinusit/database/migrations/ → 0001_01_01_000000_create_users_table.php | 0001_01_01_000001_create_cache_table.php | 0001_01_01_000002_create_jobs_table.php | 2025_01_01_000001_create_stbs_table.php | 2025_01_01_000002_create_stb_items_table.php | 2025_03_03_000000_add_indexes_to_stb_tables.php | 2025_08_14_170933_add_two_factor_columns_to_users_table.php | 2026_03_14_165726_create_inspections_table.php | 2026_03_14_165738_drop_device_reports_table_if_exists.php | 2026_03_17_000000_align_stbs_table_with_new_form_schema.php | 2026_03_17_000001_drop_unused_columns_from_stbs_table.php | 2026_03_17_000002_rename_name_to_user_id_on_stbs_table.php | 2026_03_17_000003_align_stb_items_with_computer_id.php | 2026_03_17_000004_drop_legacy_columns_from_stbs_table.php | 2026_03_17_000005_normalize_stb_photo_paths.php | 2026_03_17_000006_add_digital_signature_columns_to_stbs_table.php | 2026_03_26_000007_add_completion_columns_to_stbs_table.php | 2026_03_26_000009_drop_kategori_from_stb_items_table.php | 2026_03_26_000010_add_kategori_to_stb_items_table.php | 2026_03_27_000000_add_inventory_number_to_stb_items_table.php | 2026_03_30_000011_create_asset_stock_histories_table.php | 2026_03_30_000012_add_snipeit_columns_to_users_table.php | 2026_03_30_000013_create_auth_logs_table.php | 2026_04_02_000001_add_runtime_query_indexes.php | 2026_04_02_000002_add_composite_listing_indexes.php | 2026_04_02_000003_add_is_completed_flag_to_stbs_table.php | 2026_04_03_000100_add_snapshot_columns_to_stb_items_table.php | 2026_04_03_000200_add_cancellation_columns_to_stbs_table.php | 2026_04_03_000300_add_document_flow_columns_to_stbs_table.php | 2026_04_06_000000_create_tickets_table.php | 2026_04_06_000001_add_note_to_tickets_table.php | 2026_04_06_000002_add_snipeit_sync_columns_to_tickets_table.php | 2026_04_06_000003_add_maintenance_type_to_tickets_table.php | 2026_04_06_000004_add_ticket_scope_to_tickets_table.php | 2026_04_10_000000_enhance_snipeit_links_and_indexes.php | 2026_04_10_031447_add_employee_num_to_users_table.php | 2026_04_11_233258_add_must_change_password_to_users_table.php | 2026_04_16_220520_create_action_logs_table.php | 2026_04_16_224838_add_performance_indexes_to_logs_tables.php | 2026_04_17_033152_add_avatar_to_users_table.php | 2026_04_17_101919_add_is_admin_to_users_table.php | 2026_04_17_223322_add_new_fields_to_inspections_table.php | 2026_04_17_230842_add_performance_indexes_v2.php | 2026_04_20_000000_create_stb_attachments_table.php | 2026_04_20_093200_add_snapshot_fields_to_stbs_table.php | 2026_04_21_060311_add_snipeit_columns_to_action_logs.php | 2026_04_21_184511_add_profile_fields_to_users_table.php | 2026_04_24_194755_change_stb_signatures_to_longtext.php | 2026_04_24_200120_add_default_signature_to_users_table.php | 2026_04_27_192238_create_app_notifications_table.php | 2026_04_27_210205_change_signature_columns_to_longtext_on_stbs_table.php | 2026_04_27_223906_add_condition_to_stb_items_table.php | 2026_04_28_204316_create_vendors_table.php | 2026_04_28_204322_add_vendor_id_to_tickets_table.php | 2026_04_28_204733_create_audit_sessions_table.php | 2026_04_28_204744_create_audit_items_table.php | 2026_04_28_215237_create_articles_table.php | 2026_04_28_215301_create_procurements_table.php | 2026_04_30_011220_simplify_stbs_table.php | 2026_04_30_013451_create_peminjamans_table.php | 2026_04_30_032951_add_return_fields_to_peminjamans_table.php | 2026_04_30_041052_restore_signature_columns_to_stbs_table.php | 2026_04_30_050552_add_return_photo_to_peminjamans_table.php | 2026_05_01_112350_add_new_fields_to_inspections_table.php | 2026_05_01_115003_add_completion_to_inspections_table.php | 2026_05_01_132113_add_it_staff_to_inspections_table.php | 2026_05_01_204054_add_completed_pdf_path_to_inspections_table.php | 2026_05_02_022653_make_device_category_nullable_on_inspections_table.php | 2026_05_02_032525_add_checked_signature_to_inspections_table.php | 2026_05_02_052138_add_staff_ids_to_inspections_table.php | 2026_05_04_013926_ensure_all_production_indexes_exist.php | 2026_05_05_020009_create_bandwidth_daily_table.php | 2026_05_05_020026_create_bandwidth_fetch_logs_table.php | 2026_05_05_180828_add_indexes_to_bandwidth_tables.php | 2026_05_05_183827_create_cctv_daily_table.php | 2026_05_05_183829_create_cctv_fetch_logs_table.php | 2026_05_06_013729_create_isp_sla_tables.php | 2026_05_06_020153_add_indexes_to_isp_sla_tables.php | 2026_05_06_031258_fix_isp_sla_contracts_unique_constraint.php | 2026_05_06_033326_create_uptime_tables.php | 2026_05_06_065431_create_network_monitoring_tables.php | 2026_05_06_213729_create_network_maintenance_logs_table.php | 2026_05_07_202244_add_is_excluded_to_network_devices.php | 2026_05_07_205152_create_cctv_monitoring_tables.php | 2026_05_07_205513_create_cctv_maintenance_logs_table.php | 2026_05_08_000001_create_server_monitoring_tables.php | 2026_05_08_010756_create_cctv_nvr_records_table.php | 2026_05_08_035043_create_server_maintenance_logs_table.php | 2026_05_10_102954_align_maintenance_and_bandwidth_fields_for_infra_report.php | 2026_09_03_053740_make_stb_items_computer_id_nullable.php | 2026_09_03_060944_drop_backup_monthly_table.php | 2026_09_04_000001_add_internal_component_scope_to_inspections_table.php | 2026_09_04_000002_change_inspection_signature_date_to_datetime.php | 2026_09_08_000001_create_notification_webhook_settings_table.php | 2026_09_08_000002_create_notification_webhook_templates_table.php | 2026_09_09_000001_add_audit_snapshot_fields.php | 2026_09_09_000002_make_audit_verifier_nullable.php | 2026_09_10_000001_add_department_to_audit_items.php | 2026_09_13_214948_create_snipeit_mirror_tables.php | 2026_09_14_103500_add_remaining_snipeit_metadata_tables.php | 2026_09_14_140000_create_cctv_regular_reports_table.php | 2026_09_14_143000_add_areas_data_to_cctv_regular_reports_table.php
+D zinusit/database/seeders/ → DatabaseSeeder.php
+D zinusit/docs/ → ACTION_LOG_IMPLEMENTATION_SUMMARY.md | ASSET_NOTE_STANDARDIZATION_COMPLETE.md | BUG_FIX_CUSTOM_FIELDS.md | CATEGORY_STANDARDIZATION_GUIDE.md | CHANGELOG_PEMINJAMAN_RETURN.md | COMPONENT_ASSIGNMENT_FIX.md | COMPONENT_ASSIGNMENT_IMPLEMENTATION.md | COMPREHENSIVE_AUDIT_AND_LOGGING_REQUIREMENTS.md | DUPLICATE_TEXT_AUDIT.md | ERROR_MESSAGE_SANITIZATION.md | ERROR_SANITIZATION_COMPLETE.md | FIX_ASSET_PICKER_FILTER.md | FIX_REMEMBER_TEAM.md | ICON_AUDIT.md | ICON_IMPLEMENTATION_GUIDE.md | IMPLEMENTATION_GUIDE.md | IMPLEMENTATION_STATUS.md | INDEX.md | LABELS_USAGE.md | LOGGING_AUDIT_SUMMARY.md | PEMINJAMAN_TROUBLESHOOTING.md | QUICK_FIX_PENGEMBALIAN.md | README.md | STB_COMPLETION_NOTIFICATION_AUDIT.md | STB_COMPLETION_STATUS.md | TEXT_LANGUAGE_AUDIT.md | VUE_ERROR_HANDLER_GUIDE.md
+D zinusit/public/ → .htaccess | apple-touch-icon.png | apple-touch-icon2.png | favicon.ico | favicon.svg | form-logo.png | index.php | logo-pwa-192.png | manifest.json | robots.txt
+D zinusit/public/assets/images/ → login-bg.png
+D zinusit/resources/css/ → app.css
+D zinusit/resources/js/ → app.ts | ssr.ts
+D zinusit/resources/js/components/ → AlertError.vue | AppAssetPickerModal.vue | AppConfirmDialog.vue | AppContent.vue | AppDashboardAreaChart.vue | AppDashboardDoughnut.vue | AppDocumentDetailSummary.vue | AppDocumentHeroSummary.vue | AppDocumentItemsTable.vue | AppDocumentPhotoRemarkPanel.vue | AppearanceTabs.vue | AppHeader.vue | AppLogo.vue | AppLogoIcon.vue | AppNotificationDrawer.vue | AppPagination.vue | AppPdfViewerModal.vue | AppPrintableDocument.vue | AppPrintToolbar.vue | AppRelatedDocumentsPanel.vue | AppShell.vue | AppSidebar.vue | AppSidebarHeader.vue | AppSignatureLinkHelpPanel.vue | AppSignatureModal.vue | AppUniversalSearch.vue | Breadcrumbs.vue | DeleteUser.vue | FlashAlert.vue | Heading.vue | InputError.vue | NavFooter.vue | NavMain.vue | NavUser.vue | SignaturePad.vue | SignatureRenderer.vue | TextLink.vue | TwoFactorRecoveryCodes.vue | TwoFactorSetupModal.vue | UserInfo.vue | UserMenuContent.vue
+D zinusit/resources/js/components/dashboard/ → DashboardHardwareStatus.vue | DashboardRestockWidget.vue | DashboardWorkflowPipeline.vue
+D zinusit/resources/js/components/header/ → AppHeaderAccountMenu.vue | AppHeaderDesktopNav.vue | appHeaderLinks.ts | AppHeaderMobileNav.vue | AppHeaderUtilityLinks.vue
+D zinusit/resources/js/components/ui/alert/ → Alert.vue | AlertDescription.vue | AlertTitle.vue | index.ts
+D zinusit/resources/js/components/ui/avatar/ → Avatar.vue | AvatarFallback.vue | AvatarImage.vue | index.ts
+D zinusit/resources/js/components/ui/badge/ → Badge.vue | index.ts
+D zinusit/resources/js/components/ui/breadcrumb/ → Breadcrumb.vue | BreadcrumbEllipsis.vue | BreadcrumbItem.vue | BreadcrumbLink.vue | BreadcrumbList.vue | BreadcrumbPage.vue | BreadcrumbSeparator.vue | index.ts
+D zinusit/resources/js/components/ui/button/ → Button.vue | index.ts
+D zinusit/resources/js/components/ui/card/ → Card.vue | CardAction.vue | CardContent.vue | CardDescription.vue | CardFooter.vue | CardHeader.vue | CardTitle.vue | index.ts
+D zinusit/resources/js/components/ui/checkbox/ → Checkbox.vue | index.ts
+D zinusit/resources/js/components/ui/collapsible/ → Collapsible.vue | CollapsibleContent.vue | CollapsibleTrigger.vue | index.ts
+D zinusit/resources/js/components/ui/dialog/ → Dialog.vue | DialogClose.vue | DialogContent.vue | DialogDescription.vue | DialogFooter.vue | DialogHeader.vue | DialogOverlay.vue | DialogScrollContent.vue | DialogTitle.vue | DialogTrigger.vue | index.ts
+D zinusit/resources/js/components/ui/dropdown-menu/ → DropdownMenu.vue | DropdownMenuCheckboxItem.vue | DropdownMenuContent.vue | DropdownMenuGroup.vue | DropdownMenuItem.vue | DropdownMenuLabel.vue | DropdownMenuRadioGroup.vue | DropdownMenuRadioItem.vue | DropdownMenuSeparator.vue | DropdownMenuShortcut.vue | DropdownMenuSub.vue | DropdownMenuSubContent.vue | DropdownMenuSubTrigger.vue | DropdownMenuTrigger.vue | index.ts
+D zinusit/resources/js/components/ui/input-otp/ → index.ts | InputOTP.vue | InputOTPGroup.vue | InputOTPSeparator.vue | InputOTPSlot.vue
+D zinusit/resources/js/components/ui/input/ → index.ts | Input.vue
+D zinusit/resources/js/components/ui/label/ → index.ts | Label.vue
+D zinusit/resources/js/components/ui/navigation-menu/ → index.ts | NavigationMenu.vue | NavigationMenuContent.vue | NavigationMenuIndicator.vue | NavigationMenuItem.vue | NavigationMenuLink.vue | NavigationMenuList.vue | NavigationMenuTrigger.vue | NavigationMenuViewport.vue
+D zinusit/resources/js/components/ui/select/ → index.ts | Select.vue | SelectContent.vue | SelectGroup.vue | SelectItem.vue | SelectItemText.vue | SelectLabel.vue | SelectScrollDownButton.vue | SelectScrollUpButton.vue | SelectSeparator.vue | SelectTrigger.vue | SelectValue.vue
+D zinusit/resources/js/components/ui/separator/ → index.ts | Separator.vue
+D zinusit/resources/js/components/ui/sheet/ → index.ts | Sheet.vue | SheetClose.vue | SheetContent.vue | SheetDescription.vue | SheetFooter.vue | SheetHeader.vue | SheetOverlay.vue | SheetTitle.vue | SheetTrigger.vue
+D zinusit/resources/js/components/ui/sidebar/ → index.ts | Sidebar.vue | SidebarContent.vue | SidebarFooter.vue | SidebarGroup.vue | SidebarGroupAction.vue | SidebarGroupContent.vue | SidebarGroupLabel.vue | SidebarHeader.vue | SidebarInput.vue | SidebarInset.vue | SidebarMenu.vue | SidebarMenuAction.vue | SidebarMenuBadge.vue | SidebarMenuButton.vue | SidebarMenuButtonChild.vue | SidebarMenuItem.vue | SidebarMenuSkeleton.vue | SidebarMenuSub.vue | SidebarMenuSubButton.vue | SidebarMenuSubItem.vue | SidebarProvider.vue | SidebarRail.vue | SidebarSeparator.vue | SidebarTrigger.vue | utils.ts
+D zinusit/resources/js/components/ui/skeleton/ → index.ts | Skeleton.vue
+D zinusit/resources/js/components/ui/spinner/ → index.ts | Spinner.vue
+D zinusit/resources/js/components/ui/tooltip/ → index.ts | Tooltip.vue | TooltipContent.vue | TooltipProvider.vue | TooltipTrigger.vue
+D zinusit/resources/js/composables/ → useActionNotice.ts | useAppearance.ts | useCurrentUrl.ts | useDocumentApprovalCards.ts | useDocumentAssetBootstrap.ts | useDocumentFlowPresentation.ts | useDocumentPageActions.ts | useInitials.ts | usePrintPreview.ts | useRenderProfiler.ts | useSignaturePadWorkflow.ts | useSnipeDirectory.ts | useTwoFactorAuth.ts
+D zinusit/resources/js/constants/ → app-navigation.ts | categories.ts | icons.ts | labels.ts
+D zinusit/resources/js/layouts/ → AppLayout.vue | AuthLayout.vue
+D zinusit/resources/js/layouts/app/ → AppSidebarLayout.vue
+D zinusit/resources/js/layouts/auth/ → AuthSimpleLayout.vue | AuthSplitLayout.vue
+D zinusit/resources/js/layouts/settings/ → Layout.vue
+D zinusit/resources/js/lib/ → utils.ts
+D zinusit/resources/js/pages/ → Dashboard.vue | Inspection.vue
+D zinusit/resources/js/pages/Asset/ → Create.vue | Label.vue | List.vue | Show.vue | ShowAccessory.vue | ShowComponent.vue | ShowConsumable.vue | ShowLicense.vue | Timeline.vue | types.ts
+D zinusit/resources/js/pages/Asset/Modals/ → ReturnLoanModal.vue
+D zinusit/resources/js/pages/Asset/Partials/ → AddStockModal.vue | AssetActivityDetailSheet.vue | AssetActivityHistoryTable.vue | AssetAssignmentsTable.vue | AssetCategoryModal.vue | AssetCreateHero.vue | AssetCreateMainFields.vue | AssetCreateMainFields.vue.bak | AssetCustomFieldsSection.vue | AssetDetailSheet.vue | AssetDetailSummary.vue | AssetDocumentsTable.vue | AssetInfoSection.vue | AssetListHeader.vue | AssetListTableSection.vue | AssetMaintenancesTable.vue | AssetModelModal.vue | AssetSimpleModal.vue | AssetStockHistoryTable.vue | AssetSupplierModal.vue | HandoverModal.vue | UploadDocumentModal.vue
+D zinusit/resources/js/pages/Audit/ → AssetEdit.vue | Index.vue | Show.vue
+D zinusit/resources/js/pages/auth/ → ChangePassword.vue | ConfirmPassword.vue | ForgotPassword.vue | Login.vue | Register.vue | ResetPassword.vue | TwoFactorChallenge.vue | VerifyEmail.vue
+D zinusit/resources/js/pages/AuthLogs/ → Index.vue
+D zinusit/resources/js/pages/AuthLogs/Partials/ → AuthLogDetailSheet.vue | AuthLogsTable.vue
+D zinusit/resources/js/pages/BankDocuments/ → Index.vue
+D zinusit/resources/js/pages/BankDocuments/Partials/ → BankDocumentDetailSheet.vue | BankDocumentsTable.vue
+D zinusit/resources/js/pages/FormLogs/ → Index.vue
+D zinusit/resources/js/pages/FormLogs/Partials/ → FormLogDetailSheet.vue | FormLogsTable.vue
+D zinusit/resources/js/pages/Helpdesk/ → Index.vue | Print.vue | Show.vue
+D zinusit/resources/js/pages/Helpdesk/Partials/ → HelpdeskDetail.vue | HelpdeskForm.vue | HelpdeskTable.vue
+D zinusit/resources/js/pages/Inspection/ → Create.vue | Edit.vue | Index.vue | Print.vue | Share.vue | Show.vue
+D zinusit/resources/js/pages/Inspection/Partials/ → InspectionDocument.vue | InspectionForm.vue | InspectionItemPickerModal.vue | InspectionPrintDocument.vue | InspectionPrintToolbar.vue
+D zinusit/resources/js/pages/KnowledgeBase/ → Create.vue | Edit.vue | Index.vue | Show.vue
+D zinusit/resources/js/pages/LabelGenerator/ → Index.vue
+D zinusit/resources/js/pages/Logs/ → Index.vue
+D zinusit/resources/js/pages/Logs/Partials/ → LogDetailSheet.vue | LogsTable.vue
+D zinusit/resources/js/pages/Peminjaman/ → Create.vue | Edit.vue | Index.vue | Print.vue | Show.vue | types.ts
+D zinusit/resources/js/pages/Peminjaman/Partials/ → PeminjamanAssetHistory.vue | PeminjamanAssignedAssetsTable.vue | PeminjamanConfirmDialog.vue | PeminjamanDashboardRecap.vue | PeminjamanDetailSummary.vue | PeminjamanForm.vue | PeminjamanFormAttachmentSection.vue | PeminjamanFormDocumentSection.vue | PeminjamanFormItemsSection.vue | PeminjamanFormRecipientSection.vue | PeminjamanHeroSummary.vue | PeminjamanItemPickerModal.vue | PeminjamanPhotoRemarkPanel.vue | PeminjamanPrintableBase.vue | PeminjamanPrintableDocument.vue | PeminjamanPrintToolbar.vue | PeminjamanSearchableSelect.vue | PeminjamanSignatureModal.vue | PeminjamanTimeline.vue | QuickReturnModal.vue
+D zinusit/resources/js/pages/Peminjaman/utils/ → peminjaman.ts | peminjamanDirectory.ts
+D zinusit/resources/js/pages/Procurement/ → Index.vue
+D zinusit/resources/js/pages/Public/ → AssetShow.vue | CheckAssets.vue | StbShow.vue | Verify.vue
+D zinusit/resources/js/pages/Public/KnowledgeBase/ → Index.vue | Show.vue
+D zinusit/resources/js/pages/Public/Partials/ → AssetDetailCard.vue
+D zinusit/resources/js/pages/Report/ → Bandwidth.vue | Cctv.vue | Index.vue
+D zinusit/resources/js/pages/Report/CctvOperation/ → Index.vue | TabDevice.vue | TabSummary.vue
+D zinusit/resources/js/pages/Report/InfraReport/ → CctvRegularReportFormModal.vue | DeviceSettings.vue | Index.vue | TabCctvRegularReport.vue | TabMonthly.vue | TabWeekly.vue
+D zinusit/resources/js/pages/Report/NetworkOperation/ → Index.vue | TabBandwidth.vue | TabIspSla.vue | TabSummary.vue | TabUptime.vue
+D zinusit/resources/js/pages/Report/ServerOperation/ → Index.vue | Index.vue.new | TabMaintenance.vue | TabServerData.vue | TabSummary.vue | TabTemperature.vue
+D zinusit/resources/js/pages/Report/SupportOperation/ → Index.vue | TabSummary.vue | TabSupportData.vue
+D zinusit/resources/js/pages/ReportLogs/ → Index.vue
+D zinusit/resources/js/pages/ReportLogs/Partials/ → ReportLogDetailSheet.vue | ReportLogsTable.vue
+D zinusit/resources/js/pages/settings/ → Appearance.vue | Profile.vue | TwoFactor.vue
+D zinusit/resources/js/pages/Stb/ → Create.vue | Edit.vue | Index.vue | Print.vue | Show.vue | types.ts
+D zinusit/resources/js/pages/Stb/Partials/ → StbApprovalSection.vue | StbAssignedAssetsTable.vue | StbConfirmDialog.vue | StbDetailSummary.vue | StbForm.vue | StbFormAttachmentSection.vue | StbFormDocumentSection.vue | StbFormItemsSection.vue | StbFormRecipientSection.vue | StbHandoverForm.vue | StbHeroSummary.vue | StbItemPickerModal.vue | StbItemsModal.vue | StbLicenseAssetPickerModal.vue | StbListHeader.vue | StbListTableSection.vue | StbPhotoRemarkPanel.vue | StbPrintableDocument.vue | StbPrintToolbar.vue | StbReturnForm.vue | StbReturnItemsTable.vue | StbSearchableSelect.vue | StbSignatureModal.vue | StbSignaturesModal.vue
+D zinusit/resources/js/pages/Tools/ → NotificationSettings.vue
+D zinusit/resources/js/pages/Users/ → Create.vue | Edit.vue | Index.vue | Ldap.vue | Show.vue
+D zinusit/resources/js/pages/Users/Partials/ → UserForm.vue
+D zinusit/resources/js/pages/Vendors/ → Index.vue
+D zinusit/resources/js/types/ → auth.ts | global.d.ts | index.ts | navigation.ts | ui.ts | vue-shims.d.ts
+D zinusit/resources/js/utils/ → documentFlow.ts | flash.ts | stb.ts | stbDirectory.ts
+D zinusit/resources/ts/utils/ → errorHandler.ts
+D zinusit/resources/views/ → app.blade.php
+D zinusit/resources/views/asset/ → label.blade.php | label_grid.blade.php | label_grid_batch.blade.php | label_pdf.blade.php | label_pdf_batch.blade.php
+D zinusit/resources/views/audit/ → report_pdf.blade.php
+D zinusit/resources/views/helpdesk/ → print_batch.blade.php
+D zinusit/resources/views/inspection/ → pdf_final.blade.php
+D zinusit/resources/views/peminjaman/ → pdf_final.blade.php
+D zinusit/resources/views/report/ → cctv_regular_report.blade.php
+D zinusit/resources/views/stb/ → pdf.blade.php | pdf_final.blade.php
+D zinusit/routes/ → api.php | console.php | settings.php | web.php
+D zinusit/storage/app/ → .gitignore
+D zinusit/storage/app/private/ → .gitignore
+D zinusit/storage/app/public/ → .gitignore
+D zinusit/storage/framework/ → .gitignore
+D zinusit/storage/framework/cache/ → .gitignore
+D zinusit/storage/framework/cache/data/ → .gitignore
+D zinusit/storage/framework/sessions/ → .gitignore
+D zinusit/storage/framework/testing/ → .gitignore
+D zinusit/storage/framework/views/ → .gitignore
+D zinusit/tests/ → TestCase.php
+D zinusit/tests/Feature/ → ActionLogTest.php | AssetStockTypesTest.php | AuditFlowTest.php | AuthLogTest.php | BankDocumentTest.php | CctvRegularReportTest.php | DashboardTest.php | ExampleTest.php | FormLogTest.php | HelpdeskTest.php | InfraReportDataTest.php | InfraReportDeviceSettingsTest.php | InfraReportExportExcludeTest.php | InfraReportExportSheetsTest.php | InspectionTest.php | KnowledgeBaseRouteTest.php | LabelGeneratorControllerTest.php | LaptopAssetTest.php | PeminjamanTest.php | PublicAssetCheckTest.php | PublicHelpRouteTest.php | ReportLogTest.php | StbAssetGenerationTest.php | StbTest.php | ToolsRoutesTest.php | UniversalSearchTest.php | UsersTest.php
+D zinusit/tests/Feature/Auth/ → AuthenticationTest.php | EmailVerificationTest.php | PasswordConfirmationTest.php | PasswordResetTest.php | RegistrationTest.php | TwoFactorChallengeTest.php | VerificationNotificationTest.php
+D zinusit/tests/Feature/Settings/ → PasswordUpdateTest.php | ProfileUpdateTest.php | TwoFactorAuthenticationTest.php
+D zinusit/tests/Unit/ → ExampleTest.php | ServerMonitorServiceMemoryConversionTest.php | SnipeItServiceTest.php
+
+## PROJECT MAP DIFF (APPEND-ONLY)
+descr: Append-only diff ops since last rebase; verify paths before acting.

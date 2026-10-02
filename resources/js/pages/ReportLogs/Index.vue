@@ -3,10 +3,6 @@ import { Head, router } from '@inertiajs/vue3';
 import {
     LucideBarChart as ReportIcon,
     LucideHistory as HistoryIcon,
-    LucideServer as ServerIcon,
-    LucideCamera as CctvIcon,
-    LucideWifi as NetworkIcon,
-    LucideShield as InfraIcon,
 } from 'lucide-vue-next';
 import { computed, reactive, watch, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -202,98 +198,55 @@ const openDetail = (log: ReportLogItem) => {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="app-page-shell">
-            <!-- Header Section -->
-            <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div class="space-y-1">
-                    <div class="flex items-center gap-2 text-[10px] font-black tracking-widest text-[#003628] uppercase mb-2">
-                        <ReportIcon class="size-3" />
-                        Audit Modul & Aktivitas Report
+            <!-- Combined Header + Table Card -->
+            <div class="bg-white rounded-[28px] border border-slate-200/70 shadow-xl shadow-slate-200/50">
+                <!-- Header Section -->
+                <div class="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100">
+                    <!-- Brand -->
+                    <div class="flex items-center gap-2.5">
+                        <div class="h-10 w-10 rounded-2xl bg-[#003628] flex items-center justify-center shadow-md shadow-[#003628]/25 shrink-0">
+                            <ReportIcon class="size-5 text-white"/>
+                        </div>
+                        <div>
+                            <h1 class="text-[15px] font-black tracking-tight text-slate-900 leading-none">
+                                Log <span class="text-[#003628]">Report</span>
+                            </h1>
+                            <p class="text-[9px] text-slate-400 mt-0.5">Audit Modul & Aktivitas Report</p>
+                        </div>
                     </div>
-                    <h1 class="text-3xl font-black tracking-tight text-slate-900 lg:text-4xl">
-                        Log Aktivitas <span class="text-[#003628] italic">Report</span>
-                    </h1>
+
+                    <!-- Stats Summary -->
+                    <div class="hidden lg:flex items-center gap-3 text-[10px] font-bold">
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-slate-400"/>
+                            <span class="text-slate-400">Total:</span>
+                            <span class="text-slate-700">{{ stats.total.toLocaleString() }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-500"/>
+                            <span class="text-slate-400">Server:</span>
+                            <span class="text-slate-700">{{ stats.server.toLocaleString() }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-purple-500"/>
+                            <span class="text-slate-400">CCTV:</span>
+                            <span class="text-slate-700">{{ stats.cctv.toLocaleString() }}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <div class="w-1.5 h-1.5 rounded-full bg-orange-500"/>
+                            <span class="text-slate-400">Bandwidth:</span>
+                            <span class="text-slate-700">{{ stats.bandwidth.toLocaleString() }}</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <div class="h-12 w-12 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center justify-center">
-                        <HistoryIcon class="size-5 text-[#003628]" />
-                    </div>
-                </div>
-            </header>
-
-            <!-- Stats Overview Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-3.5 mb-6">
-                <button
-                    type="button"
-                    @click="filterForm.filter_report = ''"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_report === '' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_report === '' ? 'text-emerald-300' : 'text-slate-400'">Semua Report</span>
-                        <ReportIcon class="size-4" :class="filterForm.filter_report === '' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.total }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_report = 'server'"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_report === 'server' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_report === 'server' ? 'text-emerald-300' : 'text-slate-400'">Server Operation</span>
-                        <ServerIcon class="size-4" :class="filterForm.filter_report === 'server' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.server }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_report = 'cctv'"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_report === 'cctv' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_report === 'cctv' ? 'text-emerald-300' : 'text-slate-400'">CCTV Operation</span>
-                        <CctvIcon class="size-4" :class="filterForm.filter_report === 'cctv' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.cctv }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_report = 'bandwidth'"
-                    class="p-4 rounded-2xl border transition-all text-left group"
-                    :class="filterForm.filter_report === 'bandwidth' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_report === 'bandwidth' ? 'text-emerald-300' : 'text-slate-400'">Bandwidth & Net</span>
-                        <NetworkIcon class="size-4" :class="filterForm.filter_report === 'bandwidth' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.bandwidth + stats.uptime }}</p>
-                </button>
-
-                <button
-                    type="button"
-                    @click="filterForm.filter_report = 'all'"
-                    class="p-4 rounded-2xl border transition-all text-left group col-span-2 sm:col-span-1"
-                    :class="filterForm.filter_report === 'all' ? 'bg-[#003628] text-white border-[#003628] shadow-lg shadow-emerald-950/20' : 'bg-white text-slate-800 border-slate-200/70 hover:border-slate-300 shadow-sm'"
-                >
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-[9px] font-black uppercase tracking-widest" :class="filterForm.filter_report === 'all' ? 'text-emerald-300' : 'text-slate-400'">All Reports Sync</span>
-                        <InfraIcon class="size-4" :class="filterForm.filter_report === 'all' ? 'text-emerald-200' : 'text-slate-400'" />
-                    </div>
-                    <p class="text-xl font-black tabular-nums">{{ stats.all_reports }}</p>
-                </button>
-            </div>
-
-            <!-- Main Table Component -->
-            <ReportLogsTable
+                <!-- Table Content -->
+                <div class="p-6 lg:p-8">
+                    <ReportLogsTable
                 :logs="logs"
                 :filter-form="filterForm"
                 :filter-options="filter_options"
+                :stats="stats"
                 :summary-text="summaryText"
                 :export-url="exportUrl"
                 :apply-date-preset="applyDatePreset"
@@ -302,6 +255,8 @@ const openDetail = (log: ReportLogItem) => {
                 :active-filter-count="activeFilterCount"
                 @open-detail="openDetail"
             />
+                </div>
+            </div>
         </div>
 
         <!-- Detail Sheet Modal -->

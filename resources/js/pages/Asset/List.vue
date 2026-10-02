@@ -59,6 +59,34 @@ const showHandoverModal = ref(false);
 const showReturnLoanModal = ref(false);
 const returnLoanSelectedItems = ref<AssetItem[]>([]);
 
+// ⚡ Phase 1: Lazy Load Metadata
+const metadata = ref<Metadata | null>(null);
+const metadataLoading = ref(false);
+const metadataError = ref<string | null>(null);
+
+/**
+ * Fetch metadata from API endpoint (lazy loaded + cached)
+ */
+const fetchMetadata = async () => {
+    if (metadata.value) return; // Already loaded
+    if (metadataLoading.value) return; // Already loading
+
+    metadataLoading.value = true;
+    metadataError.value = null;
+
+    try {
+        const response = await fetch('/api/asset/metadata');
+        if (!response.ok) throw new Error('Failed to fetch metadata');
+        
+        metadata.value = await response.json();
+    } catch (error) {
+        metadataError.value = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Failed to fetch metadata:', error);
+    } finally {
+        metadataLoading.value = false;
+    }
+};
+
 const deleteAsset = (asset: AssetItem) => {
     if (!window.confirm(`Hapus asset "${asset.name}" dari Snipe-IT?`)) return;
 
@@ -251,6 +279,55 @@ const handleReturnLoan = () => {
     showReturnLoanModal.value = true;
 };
 
+const handleGenerateLabel = () => {
+    if (selectedIds.value.length === 0) {
+        notify('error', 'Pilih minimal satu item untuk mencetak label.');
+        return;
+    }
+
+    const params = new URLSearchParams();
+
+    selectedIds.value.forEach((id) => {
+        params.append('ids[]', String(id));
+    });
+
+    // ⚡ NEW URL: /asset/print-labels (was /asset/labels)
+    window.location.href = `/asset/print-labels?${params.toString()}`;
+};
+
+const handleInspection = () => {
+    if (selectedIds.value.length === 0) {
+        notify('error', 'Pilih minimal satu item untuk membuat Inspection.');
+        return;
+    }
+
+    if (selectedIds.value.length > 1) {
+        notify(
+            'error',
+            'Pilih satu asset saja untuk membuat Inspection dari list.',
+        );
+        return;
+    }
+
+    const selectedItem = selectedItems.value[0];
+    const selectedState = normalizeAssetStatusForStb(
+        selectedItem?.state_name ?? selectedItem?.status_name,
+    );
+
+    if (selectedState !== 'active') {
+        notify(
+            'error',
+            'Hanya aset dengan status Active yang bisa dibuat Inspection.',
+        );
+        return;
+    }
+
+    const assetId = selectedIds.value[0];
+    router.visit(
+        `/inspection/create?from_asset=${encodeURIComponent(String(assetId))}`,
+    );
+};
+
 const handleReturnLoanSelect = (peminjaman: any) => {
     router.visit(
         `/peminjaman/create?linkedLoanId=${peminjaman.id}&movementType=return`,
@@ -294,7 +371,20 @@ const canShowGenerateStbOut = computed(
                 selectedItemStates.value[0] === 'stock')),
 );
 
-const canShowGenerateLoan = computed(() => false);
+const canShowGenerateLoan = computed(
+    () =>
+        selectedIds.value.length > 0 &&
+        selectedItemStates.value.length === 1 &&
+        selectedItemStates.value[0] === 'stock',
+);
+
+const canShowGenerateInspection = computed(
+    () =>
+        selectedIds.value.length === 1 &&
+        selectedItemStates.value.length === 1 &&
+        selectedItemStates.value[0] === 'active' &&
+        !isStockType.value,
+);
 
 const canShowReturnLoan = computed(
     () =>
@@ -792,31 +882,49 @@ const resetFilters = () => {
     currentPage.value = 1;
 };
 
+// Options with counts (location)
 const locationOptions = computed(() => {
-    const locations = props.assets
-        .map((asset) => String(asset.group_name || '').trim())
-        .filter(Boolean);
-
-    return [...new Set(locations)].sort((left, right) =>
-        left.localeCompare(right, undefined, {
-            sensitivity: 'base',
-        }),
-    );
+    const countMap = new Map<string, number>();
+    for (const asset of props.assets) {
+        const val = String(asset.group_name || '').trim();
+        if (val) countMap.set(val, (countMap.get(val) ?? 0) + 1);
+    }
+    return [...countMap.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 });
 
 const selectedLocation = computed(() => columnFilters.value.group_name || '');
-const categoryOptions = computed(() => {
-    const categories = props.assets
-        .map((asset) => String(asset.type_name || '').trim())
-        .filter(Boolean);
 
-    return [...new Set(categories)].sort((left, right) =>
-        left.localeCompare(right, undefined, {
-            sensitivity: 'base',
-        }),
-    );
+// Options with counts (category)
+const categoryOptions = computed(() => {
+    const countMap = new Map<string, number>();
+    for (const asset of props.assets) {
+        const val = String(asset.type_name || '').trim();
+        if (val) countMap.set(val, (countMap.get(val) ?? 0) + 1);
+    }
+    return [...countMap.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 });
+
 const selectedCategory = computed(() => columnFilters.value.type_name || '');
+
+// Options with counts (status / state_name) — for hardware pages
+const statusOptions = computed(() => {
+    if (props.showStatusFilter) return null; // use server-side statuses prop instead
+    const countMap = new Map<string, number>();
+    for (const asset of props.assets) {
+        const val = String(asset.state_name || '').trim();
+        if (val) countMap.set(val, (countMap.get(val) ?? 0) + 1);
+    }
+    return [...countMap.entries()]
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
+});
+
+// For hardware (assets / laptop): filter state_name client-side
+const selectedStateName = computed(() => columnFilters.value.state_name || '');
 
 const handleLocationChange = (value: string) => {
     updateColumnFilter('group_name', value);
@@ -824,6 +932,10 @@ const handleLocationChange = (value: string) => {
 
 const handleCategoryChange = (value: string) => {
     updateColumnFilter('type_name', value);
+};
+
+const handleStateNameChange = (value: string) => {
+    updateColumnFilter('state_name', value);
 };
 
 const csvFileName = computed(() => {
@@ -892,6 +1004,8 @@ const createHref = computed(
                 :show-status-filter="showStatusFilter"
                 :statuses="statuses"
                 :selected-status="selectedStatus"
+                :status-options="statusOptions"
+                :selected-state-name="selectedStateName"
                 :category-options="categoryOptions"
                 :selected-category="selectedCategory"
                 :location-options="locationOptions"
@@ -914,9 +1028,11 @@ const createHref = computed(
                 :total-pages="totalPages"
                 :page-numbers="pageNumbers"
                 :is-stock-type="isStockType"
+                :is-hardware-type="isHardwareType"
                 :can-show-generate-stb-in="canShowGenerateStbIn"
                 :can-show-generate-stb-out="canShowGenerateStbOut"
                 :can-show-generate-loan="canShowGenerateLoan"
+                :can-show-generate-inspection="canShowGenerateInspection"
                 :can-show-return-loan="canShowReturnLoan"
                 :get-detail-href="getDetailHref"
                 :get-edit-href="getEditHref"
@@ -925,6 +1041,7 @@ const createHref = computed(
                 :handle-status-change="handleStatusChange"
                 :handle-category-change="handleCategoryChange"
                 :handle-location-change="handleLocationChange"
+                :handle-state-name-change="handleStateNameChange"
                 :reset-filters="resetFilters"
                 :go-to-previous-page="goToPreviousPage"
                 :go-to-next-page="goToNextPage"
@@ -936,6 +1053,8 @@ const createHref = computed(
                 @show-detail="openDetail"
                 @handover="handleHandover"
                 @loan="handleLoan"
+                @inspection="handleInspection"
+                @label="handleGenerateLabel"
                 @return-loan="handleReturnLoan"
                 @delete="deleteAsset"
             />

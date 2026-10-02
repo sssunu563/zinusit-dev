@@ -38,6 +38,13 @@ return Application::configure(basePath: dirname(__DIR__))
             ->runInBackground()
             ->appendOutputTo(storage_path('logs/fetch-all-reports.log'));
 
+        // ── Sync Snipe-IT metadata every 6 hours ──────────────────────────────
+        $schedule->command('snipeit:sync-metadata')
+            ->everySixHours()
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/snipeit-metadata-sync.log'));
+
         // ── Tugas rutin lainnya ───────────────────────────────────────────────
         $schedule->command('loan:reminders')->dailyAt('08:00');
         $schedule->command('storage:cleanup')->dailyAt('01:00');

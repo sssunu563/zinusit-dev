@@ -109,23 +109,38 @@ class AuditController extends Controller
 
         $query = trim($request->input('search'));
 
+        \Log::info('🔍 Audit Scan Request', [
+            'session_id' => $session->id,
+            'raw_query' => $query,
+        ]);
+
         // Handle URL scans like http://domain/a/{ref} or /a/{ref}
-        if (preg_match('|/a/([^/?# ]+)|', $query, $matches)) {
+        // Also handle domain variations (localhost, 127.0.0.1, production domain, etc)
+        if (preg_match('|/a/([^/?#\s]+)|i', $query, $matches)) {
             $query = urldecode($matches[1]);
+            \Log::info('📍 Extracted from path', ['extracted' => $query]);
+        }
+        // Also handle query parameter format: ?tag=xxx
+        elseif (preg_match('|[?&]tag=([^&#\s]+)|i', $query, $matches)) {
+            $query = urldecode($matches[1]);
+            \Log::info('📍 Extracted from query param', ['extracted' => $query]);
         }
         
         // Search in Snipe-IT:
         // 1. By Asset Tag
         $assetResponse = $this->snipe->getHardwareByAssetTag($query);
+        \Log::info('🏷️ Search by Asset Tag', ['found' => !empty($assetResponse['rows'])]);
 
         // 2. By Serial
         if (empty($assetResponse['rows'])) {
             $assetResponse = $this->snipe->getHardwareBySerial($query);
+            \Log::info('🔢 Search by Serial', ['found' => !empty($assetResponse['rows'])]);
         }
 
         // 3. By General Search
         if (empty($assetResponse['rows'])) {
             $assetResponse = $this->snipe->request('hardware', ['search' => $query, 'limit' => 1]);
+            \Log::info('🔍 General Search', ['found' => !empty($assetResponse['rows'])]);
         }
 
         // 4. By ID if numeric
@@ -133,10 +148,12 @@ class AuditController extends Controller
             $record = $this->snipe->getHardware((int) $query);
             if (!empty($record['id'])) {
                 $assetResponse = ['rows' => [$record]];
+                \Log::info('🆔 Search by ID', ['found' => true]);
             }
         }
 
         if (empty($assetResponse['rows'])) {
+            \Log::warning('❌ Asset not found in Snipe-IT', ['query' => $query]);
             return response()->json(['message' => 'Asset tidak tersedia atau tidak ditemukan di Snipe-IT.'], 422);
         }
 
@@ -147,10 +164,14 @@ class AuditController extends Controller
         $assetId = (int) ($asset['id'] ?? data_get($asset, 'rows.0.id', $assetId));
 
         if ($assetId <= 0) {
+            \Log::warning('❌ Invalid asset ID', ['assetId' => $assetId]);
             return response()->json(['message' => 'Asset tidak memiliki ID yang valid.'], 422);
         }
 
+        \Log::info('✅ Asset found', ['assetId' => $assetId, 'asset_tag' => $asset['asset_tag'] ?? 'N/A']);
+
         if ($this->isExcludedAsset($asset)) {
+            \Log::warning('⛔ Asset is excluded (broken status)');
             return response()->json(['message' => 'Asset berstatus Broken dan tidak termasuk dalam sesi Stock Opname.'], 422);
         }
 
@@ -160,12 +181,22 @@ class AuditController extends Controller
             ->first();
 
         if (!$sessionItem) {
+            \Log::warning('❌ Asset not in audit session', [
+                'assetId' => $assetId,
+                'sessionId' => $session->id,
+                'totalItemsInSession' => $session->items()->count()
+            ]);
             return response()->json(['message' => 'Asset tidak termasuk dalam daftar sesi Stock Opname ini.'], 422);
         }
 
         if ($sessionItem->verified_at) {
             $verifiedBy = $sessionItem->verifier?->name ?? 'user lain';
             $verifiedAt = $sessionItem->verified_at->format('d/m/Y H:i');
+
+            \Log::info('⚠️ Asset already audited', [
+                'verifiedBy' => $verifiedBy,
+                'verifiedAt' => $verifiedAt
+            ]);
 
             return response()->json([
                 'message' => "Asset sudah diaudit oleh {$verifiedBy} pada {$verifiedAt}.",
@@ -174,6 +205,8 @@ class AuditController extends Controller
                 'verified_at' => $sessionItem->verified_at->toIso8601String(),
             ], 422);
         }
+
+        \Log::info('🎉 Scan successful, returning asset data');
 
         $assetData = [
             'id'          => $assetId,

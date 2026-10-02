@@ -3,20 +3,19 @@
 namespace App\Http\Controllers\Report;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
-
-use App\Models\NetworkDevice;
 use App\Models\CctvDevice;
-use App\Models\ServerDevice;
-use App\Models\IspSlaContract;
-use App\Models\NetworkMaintenanceLog;
-use App\Models\ServerMaintenanceLog;
 use App\Models\CctvMaintenanceLog;
+use App\Models\IspSlaContract;
+use App\Models\NetworkDevice;
+use App\Models\NetworkMaintenanceLog;
+use App\Models\ServerDevice;
+use App\Models\ServerMaintenanceLog;
 use App\Models\Ticket;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class InfraReportController extends Controller
 {
@@ -60,9 +59,9 @@ class InfraReportController extends Controller
         $validated = $request->validate(['included' => 'required|boolean']);
         $model = $this->deviceModel($type);
         $device = $model::findOrFail($id);
-        $device->update(['is_excluded' => !$validated['included']]);
+        $device->update(['is_excluded' => ! $validated['included']]);
 
-        return response()->json(['success' => true, 'included' => !$device->is_excluded]);
+        return response()->json(['success' => true, 'included' => ! $device->is_excluded]);
     }
 
     public function batchUpdateDeviceSettings(Request $request)
@@ -91,10 +90,10 @@ class InfraReportController extends Controller
         $toInclude = array_intersect($allIds, $includedIds);
         $toExclude = array_diff($allIds, $includedIds);
 
-        if (!empty($toInclude)) {
+        if (! empty($toInclude)) {
             $model::whereIn('id', $toInclude)->update(['is_excluded' => false]);
         }
-        if (!empty($toExclude)) {
+        if (! empty($toExclude)) {
             $model::whereIn('id', $toExclude)->update(['is_excluded' => true]);
         }
 
@@ -135,9 +134,9 @@ class InfraReportController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $status = $validated['status'] ?? (!empty($validated['resolved_at']) ? 'closed' : 'open');
+        $status = $validated['status'] ?? (! empty($validated['resolved_at']) ? 'closed' : 'open');
         $started = Carbon::parse($validated['started_at'])->toDateTimeString();
-        $resolved = !empty($validated['resolved_at']) ? Carbon::parse($validated['resolved_at'])->toDateTimeString() : null;
+        $resolved = ! empty($validated['resolved_at']) ? Carbon::parse($validated['resolved_at'])->toDateTimeString() : null;
 
         $payload = [
             'device_id' => $validated['device_id'],
@@ -155,7 +154,7 @@ class InfraReportController extends Controller
             'cctv', 'nvr' => CctvMaintenanceLog::class,
         };
 
-        if (!empty($validated['id'])) {
+        if (! empty($validated['id'])) {
             $log = $logClass::findOrFail($validated['id']);
             $log->update($payload);
         } else {
@@ -175,6 +174,7 @@ class InfraReportController extends Controller
         };
 
         $logClass::findOrFail($id)->delete();
+
         return response()->json(['success' => true]);
     }
 
@@ -182,7 +182,7 @@ class InfraReportController extends Controller
     {
         try {
             $from = $request->input('from') ?: now()->subDays(6)->toDateString();
-            $to   = $request->input('to')   ?: now()->toDateString();
+            $to = $request->input('to') ?: now()->toDateString();
 
             Log::debug('InfraReport Data Request', ['from' => $from, 'to' => $to]);
 
@@ -190,39 +190,39 @@ class InfraReportController extends Controller
             $sites = ['F1 Bogor', 'F2 Karawang', 'F3 Tangerang'];
 
             $data = [
-                'network'   => $this->getUptimeReport($sites, 'network', $from, $to),
-                'nvr'       => $this->getUptimeReport($sites, 'nvr',     $from, $to),
-                'cctv'      => $this->getUptimeReport($sites, 'cctv',    $from, $to),
+                'network' => $this->getUptimeReport($sites, 'network', $from, $to),
+                'nvr' => $this->getUptimeReport($sites, 'nvr', $from, $to),
+                'cctv' => $this->getUptimeReport($sites, 'cctv', $from, $to),
                 'bandwidth' => $this->getBandwidthReport($sites, $from, $to),
-                'server'    => $this->getUptimeReport($sites, 'server',  $from, $to),
-                'helpdesk'  => $this->getHelpdeskReport($sites, $from, $to),
+                'server' => $this->getUptimeReport($sites, 'server', $from, $to),
+                'helpdesk' => $this->getHelpdeskReport($sites, $from, $to),
             ];
- 
+
             Log::debug('InfraReport Compiled Data', [
-                'network_count'   => count($data['network']),
+                'network_count' => count($data['network']),
                 'bandwidth_count' => count($data['bandwidth']),
-                'helpdesk_count'  => count($data['helpdesk']),
+                'helpdesk_count' => count($data['helpdesk']),
             ]);
 
             return response()->json($data);
 
         } catch (\Throwable $e) {
-            Log::error('InfraReport data error: ' . $e->getMessage(), [
-                'file'  => $e->getFile(),
-                'line'  => $e->getLine(),
+            Log::error('InfraReport data error: '.$e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'error'     => $e->getMessage(),
-                'file'      => basename($e->getFile()),
-                'line'      => $e->getLine(),
-                'network'   => [],
-                'nvr'       => [],
-                'cctv'      => [],
+                'error' => $e->getMessage(),
+                'file' => basename($e->getFile()),
+                'line' => $e->getLine(),
+                'network' => [],
+                'nvr' => [],
+                'cctv' => [],
                 'bandwidth' => [],
-                'server'    => [],
-                'helpdesk'  => [],
+                'server' => [],
+                'helpdesk' => [],
             ], 200);
         }
     }
@@ -230,9 +230,9 @@ class InfraReportController extends Controller
     public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $from = $request->from ?? now()->subDays(7)->toDateString();
-        $to   = $request->to   ?? now()->subDays(1)->toDateString();
+        $to = $request->to ?? now()->subDays(1)->toDateString();
 
-        $fileName = 'Weekly_Infra_Report_' . $from . '_to_' . $to . '.xlsx';
+        $fileName = 'Weekly_Infra_Report_'.$from.'_to_'.$to.'.xlsx';
 
         return (new \App\Exports\InfraReportExport($from, $to))->download($fileName);
     }
@@ -257,64 +257,87 @@ class InfraReportController extends Controller
             }
 
             $deviceIds = $devices->pluck('id');
-            $qty       = $deviceIds->count();
+            $qty = $deviceIds->count();
 
             if ($qty === 0) {
                 $results[] = [
-                    'location'    => $site,
-                    'qty'         => 0,
-                    'uptime'      => 100.0,
-                    'failed_list' => []
+                    'location' => $site,
+                    'qty' => 0,
+                    'uptime' => 100.0,
+                    'failed_list' => [],
                 ];
+
                 continue;
             }
 
             // ── 2. Compute average uptime & failed list ───────────────────
             if ($type === 'server') {
-                $sourceIds = $devices->pluck('source_id');
-                $rows = DB::table('server_resource_daily')
-                    ->whereIn('host_id', $sourceIds)
-                    ->whereBetween('report_date', [$from, $to])
+                // Server Operation doesn't track uptime - use maintenance logs as downtime indicator
+                // Calculate uptime based on days without maintenance logs
+                $daysCount = Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1;
+
+                // Get maintenance logs in period
+                $maintenanceLogs = DB::table('server_maintenance_logs')
+                    ->whereIn('device_id', $deviceIds)
+                    ->where(function ($q) use ($from, $to) {
+                        $q->where('started_at', '<=', $to.' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from.' 00:00:00'));
+                    })
                     ->get();
 
-                $daysCount    = Carbon::parse($from)->diffInDays(Carbon::parse($to)) + 1;
-                $totalSlots   = $qty * $daysCount;
-                $presentSlots = $rows->count();
-                $avgUptime    = $totalSlots > 0 ? round(($presentSlots / $totalSlots) * 100, 2) : 100.0;
+                // Calculate total downtime days across all devices
+                $totalDowntimeDays = 0;
+                foreach ($maintenanceLogs as $log) {
+                    $start = Carbon::parse($log->started_at);
+                    $end = $log->resolved_at ? Carbon::parse($log->resolved_at) : Carbon::parse($to);
+                    $start = $start->max(Carbon::parse($from));
+                    $end = $end->min(Carbon::parse($to));
+                    if ($start <= $end) {
+                        $totalDowntimeDays += $start->diffInDays($end) + 1;
+                    }
+                }
 
-                $presentHostIds = $rows->pluck('host_id')->unique();
-                $downDevices    = $devices->filter(fn ($d) => !$presentHostIds->contains($d->source_id));
-                $failedList     = $downDevices->map(function ($d) use ($from, $to) {
-                    $log = DB::table('server_maintenance_logs')
-                        ->where('device_id', $d->id)
-                        ->where('started_at', '<=', $to . ' 23:59:59')
-                        ->where(fn($q) => $q->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'))
-                        ->orderByDesc('started_at')
+                $totalSlots = $qty * $daysCount;
+                $avgUptime = $totalSlots > 0 ? round((($totalSlots - $totalDowntimeDays) / $totalSlots) * 100, 2) : 100.0;
+
+                // Failed devices = those with maintenance logs in period
+                $downDevices = $devices->filter(function ($d) use ($maintenanceLogs) {
+                    return $maintenanceLogs->contains('device_id', $d->id);
+                });
+                $failedList = $downDevices->map(function ($d) use ($from, $maintenanceLogs) {
+                    $log = $maintenanceLogs->where('device_id', $d->id)
+                        ->sortByDesc('started_at')
                         ->first();
 
-                        $duration = '-';
-                        if ($log) {
-                            $start = Carbon::parse($log->started_at);
-                            $end   = $log->resolved_at ? Carbon::parse($log->resolved_at) : now();
-                            $diff  = $start->diff($end);
-                            $parts = [];
-                            if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                            if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
-                            if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
-                            $duration = empty($parts) ? '0s' : implode(' ', $parts);
+                    $duration = '-';
+                    if ($log) {
+                        $start = Carbon::parse($log->started_at);
+                        $end = $log->resolved_at ? Carbon::parse($log->resolved_at) : now();
+                        $diff = $start->diff($end);
+                        $parts = [];
+                        if ($diff->d > 0) {
+                            $parts[] = "{$diff->d}d";
                         }
+                        if ($diff->h > 0) {
+                            $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+                        }
+                        if ($diff->i > 0) {
+                            $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+                        }
+                        $duration = empty($parts) ? '0s' : implode(' ', $parts);
+                    }
 
                     return [
-                        'id'             => $log?->id,
-                        'device_id'      => $d->id,
-                        'device_name'    => $d->device_name,
-                        'ip_address'     => $d->ip_address,
-                        'report_date'    => $from,
+                        'id' => $log?->id,
+                        'device_id' => $d->id,
+                        'device_name' => $d->device_name,
+                        'ip_address' => $d->ip_address,
+                        'report_date' => $from,
                         'uptime_percent' => 0,
-                        'duration'       => $duration,
-                        'started_at'     => $log?->started_at,
-                        'resolved_at'    => $log?->resolved_at,
-                        'remark'         => $log?->notes ?? '-',
+                        'duration' => $duration,
+                        'started_at' => $log?->started_at,
+                        'resolved_at' => $log?->resolved_at,
+                        'remark' => $log?->notes ?? '-',
                     ];
                 })->values()->toArray();
 
@@ -326,16 +349,16 @@ class InfraReportController extends Controller
 
                 $failedList = DB::table('network_uptime_daily')
                     ->join('network_devices', 'network_uptime_daily.device_id', '=', 'network_devices.id')
-                    ->leftJoin('network_maintenance_logs', function($join) {
+                    ->leftJoin('network_maintenance_logs', function ($join) {
                         $join->on('network_uptime_daily.device_id', '=', 'network_maintenance_logs.device_id')
-                             ->where(function($q) {
-                                 $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
-                                   ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
-                             });
+                            ->where(function ($q) {
+                                $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
+                                    ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
+                            });
                     })
                     ->whereIn('network_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('network_uptime_daily.report_date', [$from, $to])
-                    ->where('network_uptime_daily.uptime_percent', '<', 100)
+                    ->where('network_uptime_daily.uptime_percent', '<', 90) // Match Network Operation target 90%
                     ->select(
                         'network_maintenance_logs.id',
                         'network_devices.id as device_id',
@@ -352,26 +375,35 @@ class InfraReportController extends Controller
                     ->map(function ($r) {
                         $arr = (array) $r;
                         $duration = '-';
-                        if (!empty($r->started_at)) {
+                        if (! empty($r->started_at)) {
                             $start = Carbon::parse($r->started_at);
-                            $end   = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
-                            $diff  = $start->diff($end);
+                            $end = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
+                            $diff = $start->diff($end);
                             $parts = [];
-                            if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                            if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
-                            if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
+                            if ($diff->d > 0) {
+                                $parts[] = "{$diff->d}d";
+                            }
+                            if ($diff->h > 0) {
+                                $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+                            }
+                            if ($diff->i > 0) {
+                                $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+                            }
                             $duration = empty($parts) ? '0s' : implode(' ', $parts);
                         } else {
-                            $uptime = (float)($r->uptime_percent ?? 100);
+                            $uptime = (float) ($r->uptime_percent ?? 100);
                             if ($uptime < 100) {
                                 $downSeconds = round((1 - $uptime / 100) * 86400);
                                 $h = floor($downSeconds / 3600);
                                 $m = floor(($downSeconds % 3600) / 60);
-                                $duration = ($h > 0 ? "{$h}h " : "") . ($m > 0 ? "{$m}m" : "");
-                                if (empty($duration)) $duration = "0s";
+                                $duration = ($h > 0 ? "{$h}h " : '').($m > 0 ? "{$m}m" : '');
+                                if (empty($duration)) {
+                                    $duration = '0s';
+                                }
                             }
                         }
                         $arr['duration'] = trim($duration);
+
                         return $arr;
                     })
                     ->toArray();
@@ -385,16 +417,16 @@ class InfraReportController extends Controller
 
                 $failedList = DB::table('cctv_uptime_daily')
                     ->join('cctv_devices', 'cctv_uptime_daily.device_id', '=', 'cctv_devices.id')
-                    ->leftJoin('cctv_maintenance_logs', function($join) {
+                    ->leftJoin('cctv_maintenance_logs', function ($join) {
                         $join->on('cctv_uptime_daily.device_id', '=', 'cctv_maintenance_logs.device_id')
-                             ->where(function($q) {
-                                 $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
-                                   ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
-                             });
+                            ->where(function ($q) {
+                                $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
+                                    ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
+                            });
                     })
                     ->whereIn('cctv_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('cctv_uptime_daily.report_date', [$from, $to])
-                    ->where('cctv_uptime_daily.uptime_percent', '<', 100)
+                    ->where('cctv_uptime_daily.uptime_percent', '<', 95) // Match CCTV Operation warning threshold 95%
                     ->select(
                         'cctv_maintenance_logs.id',
                         'cctv_devices.id as device_id',
@@ -411,35 +443,44 @@ class InfraReportController extends Controller
                     ->map(function ($r) {
                         $arr = (array) $r;
                         $duration = '-';
-                        if (!empty($r->started_at)) {
+                        if (! empty($r->started_at)) {
                             $start = Carbon::parse($r->started_at);
-                            $end   = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
-                            $diff  = $start->diff($end);
+                            $end = $r->resolved_at ? Carbon::parse($r->resolved_at) : now();
+                            $diff = $start->diff($end);
                             $parts = [];
-                            if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                            if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
-                            if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
+                            if ($diff->d > 0) {
+                                $parts[] = "{$diff->d}d";
+                            }
+                            if ($diff->h > 0) {
+                                $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+                            }
+                            if ($diff->i > 0) {
+                                $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+                            }
                             $duration = empty($parts) ? '0s' : implode(' ', $parts);
                         } else {
-                            $uptime = (float)($r->uptime_percent ?? 100);
+                            $uptime = (float) ($r->uptime_percent ?? 100);
                             if ($uptime < 100) {
                                 $downSeconds = round((1 - $uptime / 100) * 86400);
                                 $h = floor($downSeconds / 3600);
                                 $m = floor(($downSeconds % 3600) / 60);
-                                $duration = ($h > 0 ? "{$h}h " : "") . ($m > 0 ? "{$m}m" : "");
-                                if (empty($duration)) $duration = "0s";
+                                $duration = ($h > 0 ? "{$h}h " : '').($m > 0 ? "{$m}m" : '');
+                                if (empty($duration)) {
+                                    $duration = '0s';
+                                }
                             }
                         }
                         $arr['duration'] = trim($duration);
+
                         return $arr;
                     })
                     ->toArray();
             }
 
             $results[] = [
-                'location'    => $site,
-                'qty'         => $qty,
-                'uptime'      => round((float) $avgUptime, 2),
+                'location' => $site,
+                'qty' => $qty,
+                'uptime' => round((float) $avgUptime, 2),
                 'failed_list' => $failedList,
             ];
         }
@@ -453,9 +494,13 @@ class InfraReportController extends Controller
         foreach ($sites as $site) {
             $cleanSite = str_ireplace(['F1 ', 'F2 ', 'F3 '], '', $site);
             $fct = '';
-            if (str_starts_with($site, 'F1')) $fct = 'F1';
-            elseif (str_starts_with($site, 'F2')) $fct = 'F2';
-            elseif (str_starts_with($site, 'F3')) $fct = 'F3';
+            if (str_starts_with($site, 'F1')) {
+                $fct = 'F1';
+            } elseif (str_starts_with($site, 'F2')) {
+                $fct = 'F2';
+            } elseif (str_starts_with($site, 'F3')) {
+                $fct = 'F3';
+            }
 
             $rows = DB::table('bandwidth_daily')
                 ->where('location', 'like', "%$cleanSite%")
@@ -472,27 +517,27 @@ class InfraReportController extends Controller
 
             $contractsQuery = DB::table('isp_sla_contracts')
                 ->where('location', 'like', "%$cleanSite%");
-            
+
             if ($fct) {
                 $contractsQuery->where('fct', $fct);
             }
 
-            $contracts = $contractsQuery->get()->keyBy(fn($c) => strtoupper($c->provider));
+            $contracts = $contractsQuery->get()->keyBy(fn ($c) => strtoupper($c->provider));
 
             $providers = [];
             foreach ($rows as $row) {
                 $p = $row->provider;
                 $pKey = strtoupper($p);
-                if (!isset($providers[$p])) {
-                    $limit = isset($contracts[$pKey]) ? (float)$contracts[$pKey]->bandwidth : 0;
+                if (! isset($providers[$p])) {
+                    $limit = isset($contracts[$pKey]) ? (float) $contracts[$pKey]->bandwidth : 0;
                     $providers[$p] = [
-                        'provider'        => $p,
-                        'device_name'     => $p,
-                        'ip_address'      => '-',
-                        'remark'          => $row->remark ?? '-',
-                        'avg_download'    => null,
-                        'avg_upload'      => null,
-                        'bandwidth_limit' => $limit
+                        'provider' => $p,
+                        'device_name' => $p,
+                        'ip_address' => '-',
+                        'remark' => $row->remark ?? '-',
+                        'avg_download' => null,
+                        'avg_upload' => null,
+                        'bandwidth_limit' => $limit,
                     ];
                 }
                 if (str_contains(strtolower($row->description ?? ''), 'download')) {
@@ -503,10 +548,11 @@ class InfraReportController extends Controller
             }
 
             $results[] = [
-                'location'  => $site,
+                'location' => $site,
                 'providers' => array_values($providers),
             ];
         }
+
         return $results;
     }
 
@@ -540,7 +586,7 @@ class InfraReportController extends Controller
             'site' => $device->site,
             'location' => $device->location,
             'host_group' => $device->host_group,
-            'included' => !$device->is_excluded,
+            'included' => ! $device->is_excluded,
         ];
     }
 
@@ -552,21 +598,21 @@ class InfraReportController extends Controller
 
         // 1. Network devices
         $downNetDevices = NetworkDevice::where('is_active', true)
+            ->where('is_excluded', false)
             ->where(function ($q) use ($from, $to) {
-                $q->where('is_excluded', true)
-                    ->orWhereExists(function ($sub) use ($from, $to) {
-                        $sub->select(DB::raw(1))
-                            ->from('network_uptime_daily')
-                            ->whereColumn('network_uptime_daily.device_id', 'network_devices.id')
-                            ->whereBetween('report_date', [$from, $to])
-                            ->where('uptime_percent', '<', 100);
-                    })
+                $q->whereExists(function ($sub) use ($from, $to) {
+                    $sub->select(DB::raw(1))
+                        ->from('network_uptime_daily')
+                        ->whereColumn('network_uptime_daily.device_id', 'network_devices.id')
+                        ->whereBetween('report_date', [$from, $to])
+                        ->where('uptime_percent', '<', 95); // Changed from 100 to 95
+                })
                     ->orWhereExists(function ($sub) use ($from, $to) {
                         $sub->select(DB::raw(1))
                             ->from('network_maintenance_logs')
                             ->whereColumn('network_maintenance_logs.device_id', 'network_devices.id')
-                            ->where('started_at', '<=', $to . ' 23:59:59')
-                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
+                            ->where('started_at', '<=', $to.' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from.' 00:00:00'));
                     });
             })
             ->orderBy('site')
@@ -591,8 +637,8 @@ class InfraReportController extends Controller
                 'site' => $d->site,
                 'category' => 'Network',
                 'type' => 'network',
-                'is_excluded' => (bool)$d->is_excluded,
-                'uptime_percent' => $worstUptime !== null ? (float)$worstUptime : 0,
+                'is_excluded' => (bool) $d->is_excluded,
+                'uptime_percent' => $worstUptime !== null ? (float) $worstUptime : 0,
                 'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
                 'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
                 'event_type' => $log?->event_type ?? 'maintenance',
@@ -603,21 +649,21 @@ class InfraReportController extends Controller
 
         // 2. CCTV & NVR devices
         $downCctvDevices = CctvDevice::where('is_active', true)
+            ->where('is_excluded', false)
             ->where(function ($q) use ($from, $to) {
-                $q->where('is_excluded', true)
-                    ->orWhereExists(function ($sub) use ($from, $to) {
-                        $sub->select(DB::raw(1))
-                            ->from('cctv_uptime_daily')
-                            ->whereColumn('cctv_uptime_daily.device_id', 'cctv_devices.id')
-                            ->whereBetween('report_date', [$from, $to])
-                            ->where('uptime_percent', '<', 100);
-                    })
+                $q->whereExists(function ($sub) use ($from, $to) {
+                    $sub->select(DB::raw(1))
+                        ->from('cctv_uptime_daily')
+                        ->whereColumn('cctv_uptime_daily.device_id', 'cctv_devices.id')
+                        ->whereBetween('report_date', [$from, $to])
+                        ->where('uptime_percent', '<', 95); // Changed from 100 to 95
+                })
                     ->orWhereExists(function ($sub) use ($from, $to) {
                         $sub->select(DB::raw(1))
                             ->from('cctv_maintenance_logs')
                             ->whereColumn('cctv_maintenance_logs.device_id', 'cctv_devices.id')
-                            ->where('started_at', '<=', $to . ' 23:59:59')
-                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
+                            ->where('started_at', '<=', $to.' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from.' 00:00:00'));
                     });
             })
             ->orderBy('site')
@@ -643,8 +689,8 @@ class InfraReportController extends Controller
                 'site' => $d->site,
                 'category' => $cat,
                 'type' => strtolower($cat),
-                'is_excluded' => (bool)$d->is_excluded,
-                'uptime_percent' => $worstUptime !== null ? (float)$worstUptime : 0,
+                'is_excluded' => (bool) $d->is_excluded,
+                'uptime_percent' => $worstUptime !== null ? (float) $worstUptime : 0,
                 'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
                 'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
                 'event_type' => $log?->event_type ?? 'maintenance',
@@ -655,15 +701,13 @@ class InfraReportController extends Controller
 
         // 3. Server devices
         $downServerDevices = ServerDevice::where('is_active', true)
-            ->where(function ($q) use ($from, $to) {
-                $q->where('is_excluded', true)
-                    ->orWhereExists(function ($sub) use ($from, $to) {
-                        $sub->select(DB::raw(1))
-                            ->from('server_maintenance_logs')
-                            ->whereColumn('server_maintenance_logs.device_id', 'server_devices.id')
-                            ->where('started_at', '<=', $to . ' 23:59:59')
-                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from . ' 00:00:00'));
-                    });
+            ->where('is_excluded', false)
+            ->whereExists(function ($sub) use ($from, $to) {
+                $sub->select(DB::raw(1))
+                    ->from('server_maintenance_logs')
+                    ->whereColumn('server_maintenance_logs.device_id', 'server_devices.id')
+                    ->where('started_at', '<=', $to.' 23:59:59')
+                    ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $from.' 00:00:00'));
             })
             ->orderBy('site')
             ->orderBy('device_name')
@@ -682,7 +726,7 @@ class InfraReportController extends Controller
                 'site' => $d->site,
                 'category' => 'Server',
                 'type' => 'server',
-                'is_excluded' => (bool)$d->is_excluded,
+                'is_excluded' => (bool) $d->is_excluded,
                 'uptime_percent' => 0,
                 'started_at' => $log?->started_at ? Carbon::parse($log->started_at)->format('Y-m-d\TH:i') : null,
                 'resolved_at' => $log?->resolved_at ? Carbon::parse($log->resolved_at)->format('Y-m-d\TH:i') : null,
@@ -697,16 +741,18 @@ class InfraReportController extends Controller
 
     private function getHelpdeskReport(array $sites, string $from, string $to): array
     {
+        // Use raw locations from tickets like SupportOperation does
+        $locations = Ticket::whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59'])
+            ->distinct()
+            ->orderBy('location')
+            ->pluck('location')
+            ->filter()
+            ->values();
+
         $results = [];
-        foreach ($sites as $site) {
-            $siteKey = str_replace(' Bogor', '', $site);
-            $siteKey = str_replace(' Karawang', '', $siteKey);
-            $siteKey = str_replace(' Tangerang', '', $siteKey);
-            
-            $query = Ticket::where(function($q) use ($site, $siteKey) {
-                $q->where('location', 'like', "%$site%")
-                  ->orWhere('location', 'like', "%$siteKey%");
-            })->whereBetween('created_at', [$from . ' 00:00:00', $to . ' 23:59:59']);
+        foreach ($locations as $location) {
+            $query = Ticket::where('location', $location)
+                ->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
 
             $total = (clone $query)->count();
             $closed = (clone $query)->whereIn('status', ['closed', 'resolved'])->count();
@@ -722,42 +768,49 @@ class InfraReportController extends Controller
                     $duration = '-';
                     if ($t->created_at) {
                         $start = $t->created_at;
-                        $end   = $t->date_closed ? Carbon::parse($t->date_closed) : now();
-                        $diff  = $start->diff($end);
+                        $end = $t->date_closed ? Carbon::parse($t->date_closed) : now();
+                        $diff = $start->diff($end);
                         $parts = [];
-                        if ($diff->d > 0) $parts[] = "{$diff->d}d";
-                        if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
-                        if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
+                        if ($diff->d > 0) {
+                            $parts[] = "{$diff->d}d";
+                        }
+                        if ($diff->h > 0) {
+                            $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+                        }
+                        if ($diff->i > 0) {
+                            $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+                        }
                         $duration = empty($parts) ? '0s' : implode(' ', $parts);
                     }
 
                     return [
-                        'id'         => $t->id,
-                        'location'   => $t->location,
-                        'date'       => $t->created_at?->toDateString(),
-                        'duration'   => $duration,
-                        'case'       => $t->issue_description,
-                        'remark'     => $t->action_taken ?? '-',
-                        'status'     => $t->status,
+                        'id' => $t->id,
+                        'location' => $t->location,
+                        'date' => $t->created_at?->toDateString(),
+                        'duration' => $duration,
+                        'case' => $t->issue_description,
+                        'remark' => $t->action_taken ?? '-',
+                        'status' => $t->status,
                     ];
                 });
 
             $results[] = [
-                'location'     => $site,
-                'case'         => $total,
-                'closed'       => $closed,
-                'performance'  => $performance,
+                'location' => $location,
+                'case' => $total,
+                'closed' => $closed,
+                'performance' => $performance,
                 'pending_list' => $pending,
             ];
         }
+
         return $results;
     }
 
     public function updateBandwidthRemark(Request $request)
     {
         $request->validate([
-            'id'     => 'required',
-            'remark' => 'nullable|string'
+            'id' => 'required',
+            'remark' => 'nullable|string',
         ]);
 
         DB::table('bandwidth_daily')
@@ -770,9 +823,9 @@ class InfraReportController extends Controller
     public function updateHelpdeskRemark(Request $request)
     {
         $request->validate([
-            'id'     => 'required',
-            'case'   => 'nullable|string',
-            'remark' => 'nullable|string'
+            'id' => 'required',
+            'case' => 'nullable|string',
+            'remark' => 'nullable|string',
         ]);
 
         $ticket = Ticket::findOrFail($request->id);

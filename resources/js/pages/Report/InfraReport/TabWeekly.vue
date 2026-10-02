@@ -175,10 +175,15 @@ const failedDevices = computed(() => {
     if (!reportData.value) return [];
     const d = reportData.value;
     const out: any[] = [];
+    const seen = new Set<string>();
     const push = (cat: string, rows: any[]) => {
         for (const row of rows ?? []) {
             for (const f of row.failed_list ?? []) {
-                out.push({ category: cat, site: row.location, ...f });
+                const key = `${cat}_${f.ip_address ?? ''}_${f.device_name ?? ''}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    out.push({ category: cat, site: row.location, ...f });
+                }
             }
         }
     };

@@ -208,6 +208,9 @@ class SnipeItManagedUserService
         $user = new User();
         $this->fillLocalUser($user, $data, $remoteUser, true, $markVerified);
 
+        // ⚡ AUTO-SYNC: Add to snipeit_users mirror table
+        $this->syncUserToMirrorTable($remoteUser);
+
         return $user;
     }
 
@@ -229,7 +232,50 @@ class SnipeItManagedUserService
             $resetEmailVerification,
         );
 
+        // ⚡ AUTO-SYNC: Update snipeit_users mirror table
+        $this->syncUserToMirrorTable($remoteUser);
+
         return $user;
+    }
+
+    /**
+     * Sync user data to snipeit_users mirror table for performance
+     */
+    private function syncUserToMirrorTable(array $remoteUser): void
+    {
+        try {
+            \App\Models\SnipeitUser::updateOrCreate(
+                ['snipeit_id' => $remoteUser['id']],
+                [
+                    'name' => $remoteUser['name'] ?? '-',
+                    'first_name' => $remoteUser['first_name'] ?? null,
+                    'last_name' => $remoteUser['last_name'] ?? null,
+                    'username' => $remoteUser['username'] ?? null,
+                    'email' => $remoteUser['email'] ?? null,
+                    'phone' => $remoteUser['phone'] ?? null,
+                    'jobtitle' => $remoteUser['jobtitle'] ?? null,
+                    'employee_num' => $remoteUser['employee_num'] ?? null,
+                    'manager_id' => $remoteUser['manager']['id'] ?? null,
+                    'manager_name' => $remoteUser['manager']['name'] ?? null,
+                    'location_id' => $remoteUser['location']['id'] ?? null,
+                    'location_name' => $remoteUser['location']['name'] ?? null,
+                    'department_id' => $remoteUser['department']['id'] ?? null,
+                    'department' => $remoteUser['department']['name'] ?? null,
+                    'company_id' => $remoteUser['company']['id'] ?? null,
+                    'company' => $remoteUser['company']['name'] ?? null,
+                    'activated' => $remoteUser['activated'] ?? false,
+                    'avatar' => $remoteUser['avatar'] ?? null,
+                    'raw_data' => $remoteUser,
+                    'snipeit_created_at' => isset($remoteUser['created_at']['datetime']) ? $remoteUser['created_at']['datetime'] : null,
+                    'snipeit_updated_at' => isset($remoteUser['updated_at']['datetime']) ? $remoteUser['updated_at']['datetime'] : null,
+                ]
+            );
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to sync user to mirror table', [
+                'user_id' => $remoteUser['id'] ?? null,
+                'error' => $e->getMessage()
+            ]);
+        }
     }
 
     private function fillLocalUser(

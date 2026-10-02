@@ -60,43 +60,45 @@
             }
         }
 
-        /* Table styles to ensure they fit A4 */
+        /* Table styles - compact & clean */
         .batch-table {
             width: 100% !important;
             border-collapse: collapse !important;
             table-layout: fixed !important;
-            margin-top: 15px !important;
-            border: 1px solid #cbd5e1 !important;
+            margin-top: 12px !important;
+            border: 1px solid #d1d5db !important;
+            font-size: 8px !important;
         }
         .batch-table th {
-            background: #f8fafc !important;
-            border: 1px solid #cbd5e1 !important;
-            padding: 8px 6px !important;
+            background: #f9fafb !important;
+            border: 1px solid #d1d5db !important;
+            padding: 5px 4px !important;
             text-align: left !important;
             font-weight: 700 !important;
-            font-size: 9px !important;
-            color: #475569 !important;
+            font-size: 7.5px !important;
+            color: #374151 !important;
             text-transform: uppercase !important;
+            letter-spacing: 0.025em !important;
+            line-height: 1.2 !important;
         }
         .batch-table td {
-            border: 1px solid #cbd5e1 !important;
-            padding: 8px 6px !important;
+            border: 1px solid #e5e7eb !important;
+            padding: 4px 4px !important;
             vertical-align: top !important;
             word-wrap: break-word !important;
             overflow-wrap: break-word !important;
-            font-size: 9px !important;
-            line-height: 1.4 !important;
+            font-size: 8px !important;
+            line-height: 1.3 !important;
+            color: #111827 !important;
         }
         
-        /* Column Widths */
-        .col-no { width: 30px !important; text-align: center !important; }
-        .col-date { width: 65px !important; }
-        .col-loc { width: 90px !important; }
-        .col-req { width: 90px !important; }
-        .col-dept { width: 90px !important; }
-        .col-cat { width: 90px !important; }
-        .col-desc { width: auto !important; } /* Flexible */
-        .col-stat { width: 60px !important; text-align: center !important; }
+        /* Column Widths - optimized for new structure */
+        .col-no { width: 22px !important; text-align: center !important; }
+        .col-date { width: 60px !important; font-size: 7.5px !important; }
+        .col-user { width: 85px !important; }
+        .col-dept { width: 65px !important; }
+        .col-cat { width: 75px !important; }
+        .col-desc { width: auto !important; min-width: 180px !important; }
     </style>
 </head>
 <body class="font-sans text-[#111827] text-[10px]">
@@ -126,10 +128,10 @@
                         </td>
                         <td class="shared-title-cell">
                             <div class="shared-title-main">LAPORAN KERJA</div>
-                            <div class="shared-title-sub">PT. {{ $techCompany ?: 'ZINUS DREAM INDONESIA' }}</div>
+                            <div class="shared-title-sub">PT. {{ $techCompany !== '—' ? $techCompany : 'ZINUS DREAM INDONESIA' }}</div>
                         </td>
                         <td class="shared-meta-cell">
-                            <div class="font-semibold">IT Dept.</div>
+                            <div class="font-semibold">{{ $techLocation }}</div>
                             <div>Dicetak Pada:</div>
                             <div>{{ $printedAt }}</div>
                         </td>
@@ -138,15 +140,15 @@
             </table>
 
             <div class="shared-recipient-note mt-3">
-                <div class="flex items-center justify-between w-full">
+                <div class="flex items-center justify-between w-full text-[8.5px]">
                     <div class="text-left">
-                        <strong>Teknisi:</strong> {{ $technician ?: 'Semua Teknisi' }}
+                        <strong class="font-bold">Teknisi</strong> <span class="mx-1">:</span> <span class="font-medium">{{ $technician ?: 'Semua Teknisi' }}</span>
                     </div>
                     <div class="text-center">
-                        <strong>Periode:</strong> {{ $fromDate ?? '—' }} - {{ $toDate ?? '—' }}
+                        <strong class="font-bold">Periode</strong> <span class="mx-1">:</span> <span class="font-medium">{{ $fromDate ?? '—' }} - {{ $toDate ?? '—' }}</span>
                     </div>
                     <div class="text-right">
-                        <strong>Total:</strong> {{ $tickets->count() }} tiket
+                        <strong class="font-bold">Total</strong> <span class="mx-1">:</span> <span class="font-medium">{{ $tickets->count() }} tiket</span>
                     </div>
                 </div>
             </div>
@@ -156,12 +158,10 @@
                     <tr>
                         <th class="col-no">No</th>
                         <th class="col-date">Tanggal</th>
-                        <th class="col-loc">Lokasi</th>
-                        <th class="col-req">Peminta</th>
-                        <th class="col-dept">Departemen</th>
+                        <th class="col-user">User</th>
+                        <th class="col-dept">Dept</th>
                         <th class="col-cat">Kategori</th>
                         <th class="col-desc">Deskripsi Masalah</th>
-                        <th class="col-stat">Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -169,23 +169,21 @@
                         <tr>
                             <td class="text-center font-medium">{{ $i + 1 }}</td>
                             <td class="whitespace-nowrap">{{ optional($ticket->created_at)->format('d/m/y') ?? '—' }}</td>
-                            <td>{{ $ticket->location ?: '—' }}</td>
                             <td>{{ $ticket->requester ?: '—' }}</td>
                             <td>{{ $ticket->department ?: '—' }}</td>
                             <td>{{ $ticket->category ?: '—' }}</td>
                             <td>{{ $ticket->issue_description ?: '—' }}</td>
-                            <td class="text-center font-bold">{{ $ticket->status }}</td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-3 py-10 text-center text-slate-400 italic font-medium">Tidak ada data ditemukan untuk periode yang dipilih.</td>
+                            <td colspan="6" class="px-3 py-10 text-center text-slate-400 italic font-medium">Tidak ada data ditemukan untuk periode yang dipilih.</td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
 
-        <div class="shared-signature-grid mt-auto pt-8 w-full" style="grid-template-columns: repeat(2, 1fr) !important">
+        <div class="shared-signature-grid mt-auto pt-5 w-full" style="grid-template-columns: repeat(2, 1fr) !important">
             <table class="shared-signature-table">
                 <tbody>
                     <tr><td class="shared-signature-head">Teknisi</td></tr>

@@ -1,0 +1,1 @@
+import{_ as o}from"./HelpdeskDetail.vue_vue_type_script_setup_true_lang-ijWGB0hA.js";import"./printer-BrMqej7c.js";import"./createLucideIcon-nU8Oa5B2.js";import"./app-DDoMD97G.js";/* empty css            */import"./pencil-Cuuw453d.js";export{o as default};

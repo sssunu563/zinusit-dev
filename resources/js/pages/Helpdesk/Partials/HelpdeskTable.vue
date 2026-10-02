@@ -17,6 +17,7 @@ interface Ticket {
     issue_description: string;
     status: string;
     created_at: string | null;
+    date_closed: string | null;
 }
 
 interface Props {
@@ -53,6 +54,24 @@ const getStatusLabel = (status: string) => {
         default: return status;
     }
 };
+
+const calculateDuration = (createdAt: string | null, dateClosed: string | null, status: string) => {
+    if (!createdAt) return '-';
+    
+    // If status is Closed and has date_closed, use it. Otherwise use current date.
+    const endDate = (status === 'Closed' && dateClosed) 
+        ? new Date(dateClosed) 
+        : new Date();
+    
+    const startDate = new Date(createdAt);
+    
+    // Calculate difference in days
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Same day or 1 day minimum
+    return diffDays === 0 ? '1 hari' : `${diffDays} hari`;
+};
 </script>
 
 <template>
@@ -61,13 +80,16 @@ const getStatusLabel = (status: string) => {
             <thead class="app-table-head-surface border-b border-slate-50">
                 <tr>
                     <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">#</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Date Created</th>
                     <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Lokasi</th>
-                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Peminta</th>
-                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Teknisi</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">User</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Dept</th>
                     <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Kategori</th>
                     <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Masalah</th>
                     <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Dibuat Pada</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Teknisi</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Date Closed</th>
+                    <th class="app-table-head md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Durasi</th>
                     <th class="app-table-head text-right md:px-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Aksi</th>
                 </tr>
             </thead>
@@ -88,13 +110,16 @@ const getStatusLabel = (status: string) => {
                         </button>
                     </td>
                     <td class="app-table-cell md:px-6 py-4">
+                        <span class="text-[13px] text-slate-500 font-black tabular-nums">{{ formatDate(ticket.created_at) }}</span>
+                    </td>
+                    <td class="app-table-cell md:px-6 py-4">
                         <span class="text-[11px] text-slate-500 font-black">{{ ticket.location || '-' }}</span>
                     </td>
                     <td class="app-table-cell md:px-6 py-4">
                         <span class="text-[13px] font-black text-slate-900">{{ ticket.requester || '-' }}</span>
                     </td>
                     <td class="app-table-cell md:px-6 py-4">
-                        <span class="text-[11px] text-slate-500 font-black">{{ ticket.technician || '-' }}</span>
+                        <span class="text-[11px] text-slate-500 font-black">{{ ticket.department || '-' }}</span>
                     </td>
                     <td class="app-table-cell md:px-6 py-4">
                         <span class="app-badge app-badge-neutral border-slate-200 bg-slate-100 text-slate-600 font-black">
@@ -112,7 +137,17 @@ const getStatusLabel = (status: string) => {
                         </span>
                     </td>
                     <td class="app-table-cell md:px-6 py-4">
-                        <span class="text-[13px] text-slate-500 font-black tabular-nums">{{ formatDate(ticket.created_at) }}</span>
+                        <span class="text-[11px] text-slate-500 font-black">{{ ticket.technician || '-' }}</span>
+                    </td>
+                    <td class="app-table-cell md:px-6 py-4">
+                        <span class="text-[11px] text-slate-400 font-black tabular-nums">
+                            {{ ticket.date_closed ? formatDate(ticket.date_closed) : '-' }}
+                        </span>
+                    </td>
+                    <td class="app-table-cell md:px-6 py-4">
+                        <span class="text-[11px] text-slate-600 font-bold tabular-nums">
+                            {{ calculateDuration(ticket.created_at, ticket.date_closed, ticket.status) }}
+                        </span>
                     </td>
                     <td class="app-table-cell md:px-6 py-4 shrink-0">
                         <div class="flex items-center justify-end gap-2">

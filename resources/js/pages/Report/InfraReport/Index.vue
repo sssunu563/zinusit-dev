@@ -15,11 +15,13 @@ import {
     ChevronLeft,
     ChevronRight,
     Settings,
+    Camera,
 } from 'lucide-vue-next';
 import TabWeekly from './TabWeekly.vue';
 import TabMonthly from './TabMonthly.vue';
+import TabCctvRegularReport from './TabCctvRegularReport.vue';
 
-const activeTab = ref<'weekly' | 'monthly'>('weekly');
+const activeTab = ref<'weekly' | 'monthly' | 'cctv_regular'>('weekly');
 
 // --- Weekly Logic ---
 // --- Weekly Logic ---
@@ -137,11 +139,16 @@ const doExport = () => {
     closeFlyout();
 };
 
-const currentComponent = computed(() =>
-    activeTab.value === 'weekly' ? TabWeekly : TabMonthly,
-);
+const currentComponent = computed(() => {
+    if (activeTab.value === 'weekly') return TabWeekly;
+    if (activeTab.value === 'monthly') return TabMonthly;
+    return TabCctvRegularReport;
+});
 
 const periodLabel = computed(() => {
+    if (activeTab.value === 'cctv_regular') {
+        return 'CCTV Regular Check';
+    }
     if (activeTab.value === 'weekly') {
         const f = new Date(weeklyFrom.value + 'T00:00:00');
         const t = new Date(weeklyTo.value + 'T00:00:00');
@@ -206,7 +213,7 @@ const periodLabel = computed(() => {
                         </span>
 
                         <!-- Filter -->
-                        <div class="relative z-50">
+                        <div v-if="activeTab !== 'cctv_regular'" class="relative z-50">
                             <button
                                 @click="toggleFlyout('filter')"
                                 class="flex h-8 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-black tracking-widest uppercase transition-all"
@@ -332,12 +339,14 @@ const periodLabel = computed(() => {
 
                         <!-- Export -->
                         <Link
+                            v-if="activeTab !== 'cctv_regular'"
                             href="/infra-report/device-settings"
                             class="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black tracking-widest text-slate-500 uppercase transition-all hover:text-[#003628]"
                         >
                             <Settings class="size-3.5" /> Settings
                         </Link>
                         <button
+                            v-if="activeTab !== 'cctv_regular'"
                             @click="doExport"
                             class="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black tracking-widest text-slate-500 uppercase transition-all hover:bg-white hover:text-[#003628]"
                         >
@@ -371,6 +380,17 @@ const periodLabel = computed(() => {
                         "
                     >
                         <FileText class="size-3.5" /> Monthly Report
+                    </button>
+                    <button
+                        @click="activeTab = 'cctv_regular'"
+                        class="-mb-px flex h-full items-center gap-2 border-b-2 px-6 text-[10px] font-black tracking-[0.2em] uppercase transition-all"
+                        :class="
+                            activeTab === 'cctv_regular'
+                                ? 'border-[#003628] text-[#003628]'
+                                : 'border-transparent text-slate-400 hover:text-slate-600'
+                        "
+                    >
+                        <Camera class="size-3.5" /> CCTV Regular Report
                     </button>
                 </div>
 

@@ -100,6 +100,21 @@ const columnFilters = ref<Partial<Record<SortKey, string>>>({});
 const pageSize = ref(10);
 const currentPage = ref(1);
 
+const getLast31DaysRange = () => {
+    const today = new Date();
+    const last31Days = new Date(today);
+    last31Days.setDate(today.getDate() - 31);
+    
+    return {
+        from: last31Days.toISOString().split('T')[0],
+        to: today.toISOString().split('T')[0],
+    };
+};
+
+const defaultDateRange = getLast31DaysRange();
+const dateFrom = ref(defaultDateRange.from);
+const dateTo = ref(defaultDateRange.to);
+
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'STB', href: '/stb' },
@@ -433,11 +448,29 @@ const toSearchable = (value: unknown) =>
 const searchedStbs = computed(() => {
     const query = searchQuery.value.trim().toLowerCase();
 
-    if (!query) {
-        return props.stbs.data;
+    let filtered = props.stbs.data;
+
+    // Filter by date range
+    if (dateFrom.value || dateTo.value) {
+        filtered = filtered.filter((stb) => {
+            const stbDate = stb.deliver_date || stb.created_at;
+            if (!stbDate) return false;
+            
+            const date = new Date(stbDate).toISOString().split('T')[0];
+            
+            if (dateFrom.value && date < dateFrom.value) return false;
+            if (dateTo.value && date > dateTo.value) return false;
+            
+            return true;
+        });
     }
 
-    return props.stbs.data.filter((stb) => {
+    // Filter by search query
+    if (!query) {
+        return filtered;
+    }
+
+    return filtered.filter((stb) => {
         const haystack = [
             resolveDocId(stb),
             getStbUserLabel(stb.user_id),
@@ -568,13 +601,15 @@ const setPage = (page: number) => {
 const resetFilters = () => {
     searchQuery.value = '';
     columnFilters.value = {};
+    dateFrom.value = defaultDateRange.from;
+    dateTo.value = defaultDateRange.to;
     sortKey.value = 'updatedAt';
     sortDirection.value = 'desc';
     currentPage.value = 1;
 };
 
 watch(
-    [searchQuery, columnFilters, sortKey, sortDirection, pageSize],
+    [searchQuery, columnFilters, sortKey, sortDirection, pageSize, dateFrom, dateTo],
     () => {
         currentPage.value = 1;
     },
@@ -618,6 +653,8 @@ onBeforeUnmount(() => {
 
             <StbListTableSection
                 :search-query="searchQuery"
+                v-model:date-from="dateFrom"
+                v-model:date-to="dateTo"
                 :download-csv="downloadCsv"
                 :download-pdf="downloadPdf"
                 :server-links="stbs.links"
@@ -632,6 +669,7 @@ onBeforeUnmount(() => {
                 :selected-status="selectedStatus"
                 :selected-company="selectedCompany"
                 :selected-location="selectedLocation"
+                :default-date-range="defaultDateRange"
                 :page-start="pageStart"
                 :page-end="pageEnd"
                 :total-rows="sortedStbs.length"

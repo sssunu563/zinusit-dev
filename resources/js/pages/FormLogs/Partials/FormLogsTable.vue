@@ -76,6 +76,14 @@ const props = defineProps<{
         to_date: string;
     };
     filterOptions: FilterOptions;
+    stats?: {
+        total: number;
+        stb: number;
+        peminjaman: number;
+        inspection: number;
+        ticket: number;
+        signature: number;
+    };
     summaryText: string;
     exportUrl: string;
     applyDatePreset: (preset: 'today' | 'last7Days' | 'thisMonth') => void;
@@ -83,6 +91,12 @@ const props = defineProps<{
     isPresetActive: (preset: 'today' | 'last7Days' | 'thisMonth') => boolean;
     activeFilterCount: number;
 }>();
+
+const getFormCount = (key: string) => {
+    if (!props.stats) return '';
+    const val = (props.stats as unknown as Record<string, number>)[key];
+    return val !== undefined ? `(${val})` : '';
+};
 
 const emit = defineEmits<{
     (e: 'open-detail', log: FormLogItem): void;
@@ -137,11 +151,8 @@ const getActionIcon = (actionType: string) => {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <!-- TABLE CARD -->
-        <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-            
-            <!-- Toolbar Section -->
+    <div>
+        <!-- Toolbar Section -->
             <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="relative w-full lg:max-w-md">
                     <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
@@ -215,8 +226,10 @@ const getActionIcon = (actionType: string) => {
                                     <div class="space-y-1.5">
                                         <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Jenis Formulir</label>
                                         <select v-model="filterForm.filter_form" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                            <option value="">Semua Formulir</option>
-                                            <option v-for="f in filterOptions.forms" :key="f.key" :value="f.key">{{ f.label }}</option>
+                                            <option value="">Semua Formulir {{ stats ? `(${stats.total})` : '' }}</option>
+                                            <option v-for="f in filterOptions.forms" :key="f.key" :value="f.key">
+                                                {{ f.label }} {{ getFormCount(f.key) }}
+                                            </option>
                                         </select>
                                     </div>
 
@@ -451,5 +464,4 @@ const getActionIcon = (actionType: string) => {
                 </nav>
             </div>
         </div>
-    </div>
 </template>

@@ -61,6 +61,11 @@ const props = defineProps<{
         to_date: string;
     };
     filterOptions: FilterOptions;
+    stats?: {
+        total: number;
+        assets: number;
+        users: number;
+    };
     summaryText: string;
     exportUrl: string;
     applyDatePreset: (preset: 'today' | 'last7Days' | 'thisMonth') => void;
@@ -80,6 +85,13 @@ const filterPanelRef = ref<HTMLElement | null>(null);
 onClickOutside(filterPanelRef, () => {
     showFilters.value = false;
 });
+
+const getCategoryCount = (key: string) => {
+    if (!props.stats) return '';
+    if (key === 'assets') return `(${props.stats.assets})`;
+    if (key === 'users') return `(${props.stats.users})`;
+    return '';
+};
 
 const getEntityIcon = (type: string) => {
     const t = (type || '').toLowerCase();
@@ -146,11 +158,8 @@ const getEntityLabel = (type: string, rawType?: string): string => {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <!-- TABLE CARD -->
-        <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-
-            <!-- Toolbar Section -->
+    <div>
+        <!-- Toolbar Section -->
             <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="relative w-full lg:max-w-md">
                     <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
@@ -224,8 +233,8 @@ const getEntityLabel = (type: string, rawType?: string): string => {
                                     <div class="space-y-1.5">
                                         <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Kategori Entitas</label>
                                         <select v-model="filterForm.filter_category" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                            <option value="">Semua Kategori</option>
-                                            <option v-for="cat in filterOptions.categories" :key="cat.key" :value="cat.key">{{ cat.label }}</option>
+                                            <option value="">Semua Kategori {{ stats ? `(${stats.total})` : '' }}</option>
+                                            <option v-for="cat in filterOptions.categories" :key="cat.key" :value="cat.key">{{ cat.label }} {{ getCategoryCount(cat.key) }}</option>
                                         </select>
                                     </div>
 
@@ -481,5 +490,4 @@ const getEntityLabel = (type: string, rawType?: string): string => {
                 </nav>
             </div>
         </div>
-    </div>
 </template>

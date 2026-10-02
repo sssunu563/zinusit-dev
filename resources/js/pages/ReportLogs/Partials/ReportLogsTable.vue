@@ -51,6 +51,14 @@ const props = defineProps<{
         to_date: string;
     };
     filterOptions: FilterOptions;
+    stats?: {
+        total: number;
+        server: number;
+        cctv: number;
+        bandwidth: number;
+        uptime: number;
+        all_reports: number;
+    };
     summaryText: string;
     exportUrl: string;
     applyDatePreset: (preset: 'today' | 'last7Days' | 'thisMonth') => void;
@@ -70,6 +78,16 @@ onClickOutside(filterPanelRef, () => {
     showFilters.value = false;
 });
 
+const getReportCount = (key: string) => {
+    if (!props.stats) return '';
+    if (key === 'server') return `(${props.stats.server})`;
+    if (key === 'cctv') return `(${props.stats.cctv})`;
+    if (key === 'bandwidth') return `(${props.stats.bandwidth})`;
+    if (key === 'uptime') return `(${props.stats.uptime})`;
+    if (key === 'all') return `(${props.stats.all_reports})`;
+    return '';
+};
+
 const getReportIcon = (type: string) => {
     switch (type) {
         case 'server':
@@ -86,11 +104,8 @@ const getReportIcon = (type: string) => {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <!-- TABLE CARD -->
-        <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-            
-            <!-- Toolbar Section -->
+    <div>
+        <!-- Toolbar Section -->
             <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="relative w-full lg:max-w-md">
                     <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
@@ -164,8 +179,8 @@ const getReportIcon = (type: string) => {
                                     <div class="space-y-1.5">
                                         <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Modul Report</label>
                                         <select v-model="filterForm.filter_report" class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white appearance-none">
-                                            <option value="">Semua Modul Report</option>
-                                            <option v-for="r in filterOptions.reports" :key="r.key" :value="r.key">{{ r.label }}</option>
+                                            <option value="">Semua Modul Report {{ stats ? `(${stats.total})` : '' }}</option>
+                                            <option v-for="r in filterOptions.reports" :key="r.key" :value="r.key">{{ r.label }} {{ getReportCount(r.key) }}</option>
                                         </select>
                                     </div>
 
@@ -377,5 +392,4 @@ const getReportIcon = (type: string) => {
                 </nav>
             </div>
         </div>
-    </div>
 </template>

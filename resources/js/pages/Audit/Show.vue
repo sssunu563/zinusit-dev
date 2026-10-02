@@ -269,35 +269,23 @@ const toggleTorch = async () => {
 
 const onQrCodeScanned = (decodedText: string) => {
     playBeep();
-    scanInput.value = decodedText;
-    if (!continuousScan.value) {
-        stopCamera();
-    }
-    handleScan();
-};
-
-const scanForm = useForm({
-    physical_location: '',
-    physical_user: '',
-    note: '',
-    status: 'Match',
-});
-
-const handleScan = async () => {
-    if (!scanInput.value || scanning.value) return;
-
-    const rawInput = scanInput.value.trim();
+    stopCamera();
+    
+    const rawInput = decodedText.trim();
+    
+    console.log('📷 QR Scanned:', { rawInput });
 
     // Support scanned QR code URLs (e.g. http://127.0.0.1:8000/a/test111 or /a/test111)
-    const urlMatch = rawInput.match(/\/a\/([^/?#\s]+)/);
+    const urlMatch = rawInput.match(/\/a\/([^/?#\s]+)/) || rawInput.match(/[?&]tag=([^&#\s]+)/);
     const searchRef = urlMatch ? decodeURIComponent(urlMatch[1]) : rawInput;
+
+    console.log('🔍 Extracted:', { searchRef });
 
     // Check for duplicate scan (already verified)
     const duplicate = (props.session.items || []).find(
         (item) =>
             (item.asset_tag?.toLowerCase() === searchRef.toLowerCase() ||
-                item.serial?.toLowerCase() === searchRef.toLowerCase() ||
-                item.asset_tag?.toLowerCase() === rawInput.toLowerCase()) &&
+                item.serial?.toLowerCase() === searchRef.toLowerCase()) &&
             item.verified_at,
     );
 
@@ -313,12 +301,30 @@ const handleScan = async () => {
             },
         );
         scanError.value = `Asset ${duplicate.asset_tag} sudah diaudit oleh ${verifiedBy} pada ${verifiedAt}.`;
-        scanInput.value = '';
         setTimeout(() => {
             scanError.value = '';
         }, 3500);
         return;
     }
+
+    // Set scanInput untuk manual search juga bisa pakai
+    scanInput.value = searchRef;
+    
+    // Langsung execute scan
+    executeScan(searchRef);
+};
+
+const scanForm = useForm({
+    physical_location: '',
+    physical_user: '',
+    note: '',
+    status: 'Match',
+});
+
+const executeScan = async (searchRef: string) => {
+    if (!searchRef || scanning.value) return;
+
+    console.log('📤 Executing scan:', { searchRef, sessionId: props.session.id });
 
     scanning.value = true;
     scanError.value = '';
@@ -326,8 +332,10 @@ const handleScan = async () => {
 
     try {
         const res = await axios.post(`/audit/${props.session.id}/scan`, {
-            search: rawInput,
+            search: searchRef,
         });
+
+        console.log('✅ Scan response:', res.data);
 
         const asset = res.data.asset || res.data;
 
@@ -344,6 +352,8 @@ const handleScan = async () => {
         scanForm.status = 'Match';
         scanForm.note = '';
     } catch (err: any) {
+        console.error('❌ Scan error:', err);
+        console.error('Error response:', err.response?.data);
         scanError.value =
             err.response?.data?.message ||
             'Aset tidak ditemukan dalam sistem Snipe-IT.';
@@ -351,6 +361,48 @@ const handleScan = async () => {
         scanning.value = false;
         scanInput.value = '';
     }
+};
+
+const handleScan = async () => {
+    if (!scanInput.value || scanning.value) return;
+
+    const rawInput = scanInput.value.trim();
+
+    console.log('⌨️ Manual scan:', { rawInput });
+
+    // Support scanned QR code URLs (e.g. http://127.0.0.1:8000/a/test111 or /a/test111)
+    const urlMatch = rawInput.match(/\/a\/([^/?#\s]+)/) || rawInput.match(/[?&]tag=([^&#\s]+)/);
+    const searchRef = urlMatch ? decodeURIComponent(urlMatch[1]) : rawInput;
+
+    console.log('🔍 Extracted from manual:', { searchRef });
+
+    // Check for duplicate scan (already verified)
+    const duplicate = (props.session.items || []).find(
+        (item) =>
+            (item.asset_tag?.toLowerCase() === searchRef.toLowerCase() ||
+                item.serial?.toLowerCase() === searchRef.toLowerCase()) &&
+            item.verified_at,
+    );
+
+    if (duplicate) {
+        const verifiedBy =
+            (duplicate as AuditItem & { verifier?: { name?: string } }).verifier
+                ?.name || 'user lain';
+        const verifiedAt = new Date(duplicate.verified_at!).toLocaleString(
+            'id-ID',
+            {
+                dateStyle: 'short',
+                timeStyle: 'short',
+            },
+        );
+        scanError.value = `Asset ${duplicate.asset_tag} sudah diaudit oleh ${verifiedBy} pada ${verifiedAt}.`;
+        setTimeout(() => {
+            scanError.value = '';
+        }, 3500);
+        return;
+    }
+
+    executeScan(searchRef);
 };
 
 // Keyboard shortcuts

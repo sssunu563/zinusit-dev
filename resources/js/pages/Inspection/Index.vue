@@ -67,11 +67,24 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Inspection', href: '/inspection' },
 ];
 
+const getLast31DaysRange = () => {
+    const today = new Date();
+    const last31Days = new Date(today);
+    last31Days.setDate(today.getDate() - 31);
+    
+    return {
+        from: last31Days.toISOString().split('T')[0],
+        to: today.toISOString().split('T')[0],
+    };
+};
+
+const defaultDateRange = getLast31DaysRange();
+
 const search = ref(props.filters?.search || '');
 const location = ref(props.filters?.location || '');
 const department = ref(props.filters?.department || '');
-const fromDate = ref(props.filters?.from_date || '');
-const toDate = ref(props.filters?.to_date || '');
+const fromDate = ref(props.filters?.from_date || defaultDateRange.from);
+const toDate = ref(props.filters?.to_date || defaultDateRange.to);
 const status = ref<'active' | 'completed' | 'cancelled'>(
     props.filters?.status || 'active',
 );
@@ -79,8 +92,8 @@ const status = ref<'active' | 'completed' | 'cancelled'>(
 const localFilters = ref({
     location: props.filters?.location || '',
     department: props.filters?.department || '',
-    from_date: props.filters?.from_date || '',
-    to_date: props.filters?.to_date || '',
+    from_date: props.filters?.from_date || defaultDateRange.from,
+    to_date: props.filters?.to_date || defaultDateRange.to,
     status: props.filters?.status || 'active',
 });
 
@@ -91,10 +104,25 @@ onClickOutside(filterPanelRef, () => {
 });
 
 const activeFilterCount = computed(
-    () =>
-        [location.value, department.value, fromDate.value, toDate.value].filter(
-            Boolean,
-        ).length,
+    () => {
+        let count = 0;
+        
+        // Count non-date filters
+        if (location.value) count++;
+        if (department.value) count++;
+        
+        // Only count date filters if they differ from the default 31-day range
+        const isDefaultDateRange = 
+            fromDate.value === defaultDateRange.from && 
+            toDate.value === defaultDateRange.to;
+        
+        if (!isDefaultDateRange && (fromDate.value || toDate.value)) {
+            if (fromDate.value) count++;
+            if (toDate.value) count++;
+        }
+        
+        return count;
+    },
 );
 
 const applyFilters = () => {
@@ -127,14 +155,14 @@ const resetFilters = () => {
     search.value = '';
     location.value = '';
     department.value = '';
-    fromDate.value = '';
-    toDate.value = '';
+    fromDate.value = defaultDateRange.from;
+    toDate.value = defaultDateRange.to;
     status.value = 'active';
     localFilters.value = {
         location: '',
         department: '',
-        from_date: '',
-        to_date: '',
+        from_date: defaultDateRange.from,
+        to_date: defaultDateRange.to,
         status: 'active',
     };
     router.get(
@@ -291,238 +319,158 @@ const downloadCsv = () => {
             <div
                 class="rounded-[32px] border border-slate-200/60 bg-white p-6 shadow-xl shadow-slate-200/50 lg:p-8"
             >
-                <!-- Toolbar -->
-                <div
-                    class="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-center"
-                >
-                    <div class="relative w-full lg:max-w-md">
-                        <Search
-                            class="absolute top-1/2 left-4 size-4 -translate-y-1/2 text-slate-400"
-                        />
-                        <input
-                            v-model="search"
-                            type="text"
-                            placeholder="Cari report ID, user, atau issue..."
-                            class="h-12 w-full rounded-2xl border border-slate-100 bg-white pr-4 pl-12 text-sm text-slate-900 transition-all outline-none placeholder:text-slate-400 focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
-                        />
+                <!-- Compact Single-Row Header -->
+                <div class="pb-4 border-b border-slate-100 flex items-center justify-between gap-6 mb-8">
+                    <!-- Left: Icon + Title -->
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="h-8 w-8 rounded-lg bg-[#003628]/10 flex items-center justify-center shrink-0">
+                            <CheckCircle2 class="size-4 text-[#003628]" />
+                        </div>
+                        <div>
+                            <h2 class="text-sm font-bold text-slate-900">Inspection Reports</h2>
+                        </div>
                     </div>
 
-                    <div class="flex items-center gap-2">
+                    <!-- Right: Compact Controls -->
+                    <div class="flex items-center gap-2 shrink-0">
+                        <!-- Small Search Box -->
+                        <div class="relative w-40">
+                            <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                            <input
+                                v-model="search"
+                                type="text"
+                                placeholder="Cari..."
+                                class="w-full h-8 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus:border-[#003628]/50 focus:ring-2 focus:ring-[#003628]/10 transition-all outline-none shadow-sm"
+                            />
+                        </div>
+
+                        <!-- Export Button -->
                         <button
                             type="button"
-                            class="flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628] active:scale-95"
+                            class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all shadow-sm"
+                            title="Export CSV"
                             @click="downloadCsv"
                         >
                             <Download class="size-4" />
                         </button>
 
-                        <!-- Filter flyout -->
+                        <!-- Filter Panel -->
                         <div ref="filterPanelRef" class="relative">
                             <button
                                 type="button"
-                                class="relative flex size-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition-all hover:bg-[#003628]/5 hover:text-[#003628]"
+                                class="h-8 w-8 rounded-lg border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:text-[#003628] hover:bg-[#003628]/5 transition-all relative shadow-sm"
                                 @click="showFilters = !showFilters"
                             >
-                                <SlidersHorizontal class="size-5" />
-                                <span
-                                    v-if="activeFilterCount"
-                                    class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white"
-                                    >{{ activeFilterCount }}</span
-                                >
+                                <SlidersHorizontal class="size-4" />
+                                <span v-if="activeFilterCount" class="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#003628] text-[10px] font-black text-white ring-4 ring-white">
+                                    {{ activeFilterCount }}
+                                </span>
                             </button>
 
                             <Transition
-                                enter-active-class="transition duration-300 ease-out"
-                                enter-from-class="opacity-0 translate-y-4 scale-95"
+                                enter-active-class="transition duration-200 ease-out"
+                                enter-from-class="opacity-0 translate-y-2 scale-95"
                                 enter-to-class="opacity-100 translate-y-0 scale-100"
-                                leave-active-class="transition duration-200 ease-in"
+                                leave-active-class="transition duration-150 ease-in"
                                 leave-from-class="opacity-100 translate-y-0 scale-100"
-                                leave-to-class="opacity-0 translate-y-4 scale-95"
+                                leave-to-class="opacity-0 translate-y-2 scale-95"
                             >
-                                <div
-                                    v-if="showFilters"
-                                    class="absolute top-full right-0 z-50 mt-4 w-80 overflow-hidden rounded-[32px] border border-slate-200 bg-white p-8 shadow-2xl"
-                                >
-                                    <div
-                                        class="mb-8 flex items-center justify-between"
-                                    >
-                                        <h3
-                                            class="text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                        >
-                                            Filter
-                                        </h3>
+                                <div v-if="showFilters" class="absolute top-full right-0 z-50 mt-4 w-88 rounded-[32px] border border-slate-200 bg-white p-6 shadow-2xl backdrop-blur-xl overflow-hidden">
+                                    <div class="flex items-center justify-between mb-6">
+                                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Filter Inspection</h3>
                                         <button
                                             @click="resetFilters"
-                                            class="flex items-center gap-1.5 text-[10px] font-black tracking-widest text-primary uppercase transition-colors hover:opacity-70"
+                                            class="text-[10px] font-black uppercase tracking-widest text-[#003628] hover:opacity-70 transition-colors flex items-center gap-1.5 cursor-pointer"
                                         >
                                             <RefreshCw class="size-3" /> Reset
                                         </button>
                                     </div>
-                                    <div class="mb-6 space-y-2">
-                                        <p
-                                            class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                        >
-                                            Views
-                                        </p>
-                                        <div class="space-y-2">
-                                            <button
-                                                v-for="view in [
-                                                    {
-                                                        value: 'active',
-                                                        label: 'Active',
-                                                        count: activeCount,
-                                                    },
-                                                    {
-                                                        value: 'completed',
-                                                        label: 'Completed',
-                                                        count: completedCount,
-                                                    },
-                                                    {
-                                                        value: 'cancelled',
-                                                        label: 'Cancelled',
-                                                        count: cancelledCount,
-                                                    },
-                                                ]"
-                                                :key="view.value"
-                                                type="button"
-                                                class="flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left text-[12px] font-bold transition-all"
-                                                :class="
-                                                    localFilters.status ===
-                                                    view.value
-                                                        ? 'border-primary/30 bg-primary/5 text-primary'
-                                                        : 'border-slate-100 bg-white text-slate-600 hover:border-primary/20'
-                                                "
-                                                @click="
-                                                    selectStatus(
-                                                        view.value as typeof status,
-                                                    )
-                                                "
-                                            >
-                                                <span>{{ view.label }}</span>
-                                                <span
-                                                    class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px]"
-                                                    >{{ view.count }}</span
-                                                >
-                                            </button>
-                                        </div>
-                                    </div>
+
                                     <div class="space-y-4">
+                                        <!-- Status Filter -->
                                         <div class="space-y-1.5">
-                                            <label
-                                                class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Lokasi</label
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Status</label>
+                                            <select
+                                                v-model="localFilters.status"
+                                                @change="selectStatus(localFilters.status)"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
                                             >
-                                            <div class="relative">
-                                                <select
-                                                    v-model="
-                                                        localFilters.location
-                                                    "
-                                                    class="h-11 w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-4 pr-10 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                                >
-                                                    <option value="">
-                                                        Semua Lokasi
-                                                    </option>
-                                                    <option
-                                                        v-for="opt in locationOptions"
-                                                        :key="opt"
-                                                        :value="opt"
-                                                    >
-                                                        {{ opt }}
-                                                    </option>
-                                                </select>
-                                                <svg
-                                                    class="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-slate-400"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
-                                                    <path
-                                                        fill-rule="evenodd"
-                                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                        clip-rule="evenodd"
-                                                    />
-                                                </svg>
+                                                <option value="active">Active ({{ activeCount }})</option>
+                                                <option value="completed">Completed ({{ completedCount }})</option>
+                                                <option value="cancelled">Cancelled ({{ cancelledCount }})</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Location Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Location</label>
+                                            <select
+                                                v-model="localFilters.location"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">All Locations</option>
+                                                <option v-for="loc in locationOptions" :key="loc" :value="loc">{{ loc }}</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Department Filter -->
+                                        <div class="space-y-1.5">
+                                            <label class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Department</label>
+                                            <select
+                                                v-model="localFilters.department"
+                                                class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                            >
+                                                <option value="">All Departments</option>
+                                                <option v-for="dept in departmentOptions" :key="dept" :value="dept">{{ dept }}</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Date Inputs -->
+                                        <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                                            <div class="space-y-1">
+                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Dari</label>
+                                                <input
+                                                    v-model="localFilters.from_date"
+                                                    type="date"
+                                                    :max="defaultDateRange.to"
+                                                    class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                                />
+                                            </div>
+                                            <div class="space-y-1">
+                                                <label class="text-[9px] font-black uppercase tracking-widest text-slate-400">Hingga</label>
+                                                <input
+                                                    v-model="localFilters.to_date"
+                                                    type="date"
+                                                    :max="defaultDateRange.to"
+                                                    class="w-full h-9 px-2 rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
+                                                />
                                             </div>
                                         </div>
-                                        <div class="space-y-1.5">
-                                            <label
-                                                class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Department</label
-                                            >
-                                            <div class="relative">
-                                                <select
-                                                    v-model="
-                                                        localFilters.department
-                                                    "
-                                                    class="h-11 w-full appearance-none rounded-2xl border border-slate-100 bg-slate-50 px-4 pr-10 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                                >
-                                                    <option value="">
-                                                        Semua Department
-                                                    </option>
-                                                    <option
-                                                        v-for="opt in departmentOptions"
-                                                        :key="opt"
-                                                        :value="opt"
-                                                    >
-                                                        {{ opt }}
-                                                    </option>
-                                                </select>
-                                                <svg
-                                                    class="pointer-events-none absolute top-1/2 right-4 size-4 -translate-y-1/2 text-slate-400"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
-                                                    <path
-                                                        fill-rule="evenodd"
-                                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                        clip-rule="evenodd"
-                                                    />
-                                                </svg>
-                                            </div>
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <label
-                                                class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Dari Tanggal</label
-                                            >
-                                            <input
-                                                v-model="localFilters.from_date"
-                                                type="date"
-                                                class="h-11 w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                            />
-                                        </div>
-                                        <div class="space-y-1.5">
-                                            <label
-                                                class="ml-1 text-[10px] font-black tracking-widest text-slate-400 uppercase"
-                                                >Sampai Tanggal</label
-                                            >
-                                            <input
-                                                v-model="localFilters.to_date"
-                                                type="date"
-                                                class="h-11 w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 text-[13px] font-bold text-slate-900 outline-none focus:border-primary/50"
-                                            />
-                                        </div>
+
+                                        <!-- Apply Button -->
                                         <button
-                                            class="mt-2 h-12 w-full rounded-2xl bg-[#003628] text-sm font-black tracking-widest text-white uppercase shadow-lg shadow-primary/10 transition-all hover:opacity-90 active:scale-95"
                                             @click="applyFilters"
+                                            class="w-full h-9 rounded-xl bg-[#003628] text-white text-xs font-bold hover:bg-[#003628]/90 transition-colors mt-2"
                                         >
-                                            Terapkan Filter
+                                            Apply
                                         </button>
                                     </div>
                                 </div>
                             </Transition>
                         </div>
 
+                        <!-- Add Button -->
                         <Link
                             href="/inspection/create"
-                            class="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#003628] px-6 text-[13px] font-bold text-white shadow-lg shadow-emerald-900/20 transition-all hover:bg-[#003628]/90 active:scale-95"
+                            class="h-8 px-3 rounded-lg bg-[#003628] text-white flex items-center gap-1.5 transition-all hover:opacity-90 shadow-sm active:scale-95"
                         >
                             <Plus class="size-4" />
-                            <span>Buat Inspection</span>
+                            <span class="text-xs font-bold">Inspection</span>
                         </Link>
                     </div>
                 </div>
 
-                <!-- Desktop Table -->
+                
                 <div
                     v-if="inspections.data.length"
                     class="hidden overflow-hidden rounded-xl border border-slate-200/50 md:block"
@@ -920,3 +868,4 @@ const downloadCsv = () => {
         />
     </AppLayout>
 </template>
+

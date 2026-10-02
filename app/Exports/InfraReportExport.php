@@ -2,21 +2,22 @@
 
 namespace App\Exports;
 
-use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
-use App\Models\NetworkDevice;
 use App\Models\CctvDevice;
+use App\Models\NetworkDevice;
 use App\Models\ServerDevice;
 use App\Models\Ticket;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class InfraReportExport
 {
     private string $from;
+
     private string $to;
 
     private const SITES = ['F1 Bogor', 'F2 Karawang', 'F3 Tangerang'];
@@ -54,7 +55,7 @@ class InfraReportExport
     public function __construct(string $from, string $to)
     {
         $this->from = $from;
-        $this->to   = $to;
+        $this->to = $to;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -70,8 +71,8 @@ class InfraReportExport
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
         }, $fileName, [
-            'Content-Type'        => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$fileName.'"',
         ]);
     }
 
@@ -81,16 +82,16 @@ class InfraReportExport
 
     private function buildSpreadsheet(): Spreadsheet
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $spreadsheet->getDefaultStyle()->getFont()->setName('Segoe UI')->setSize(9.5);
 
         // Fetch summarized data
-        $rawNetwork   = $this->getUptimeReport(self::SITES, 'network');
-        $rawNvr       = $this->getUptimeReport(self::SITES, 'nvr');
-        $rawCctv      = $this->getUptimeReport(self::SITES, 'cctv');
-        $rawServer    = $this->getUptimeReport(self::SITES, 'server');
+        $rawNetwork = $this->getUptimeReport(self::SITES, 'network');
+        $rawNvr = $this->getUptimeReport(self::SITES, 'nvr');
+        $rawCctv = $this->getUptimeReport(self::SITES, 'cctv');
+        $rawServer = $this->getUptimeReport(self::SITES, 'server');
         $rawBandwidth = $this->getBandwidthReport(self::SITES);
-        $rawHelpdesk  = $this->getHelpdeskReport(self::SITES);
+        $rawHelpdesk = $this->getHelpdeskReport(self::SITES);
 
         // Sheet 1: Dashboard (Weekly Infra Report - Exact replica of reference layout)
         $wsDashboard = $spreadsheet->getActiveSheet();
@@ -188,7 +189,7 @@ class InfraReportExport
         $ws->getStyle('B2')->getFont()->setSize(16)->setBold(true)->getColor()->setRGB('0B1E33');
 
         $fromFormatted = Carbon::parse($this->from)->format('d M y');
-        $toFormatted   = Carbon::parse($this->to)->format('d M y');
+        $toFormatted = Carbon::parse($this->to)->format('d M y');
         $ws->getRowDimension(4)->setRowHeight(16);
         $ws->setCellValue('B4', "Infrastructure health & incident overview • {$fromFormatted} – {$toFormatted}");
         $ws->getStyle('B4')->getFont()->setSize(9)->setItalic(true)->getColor()->setRGB('64748B');
@@ -199,16 +200,16 @@ class InfraReportExport
         foreach ($sites as $site) {
             $matrix[$site] = [
                 'network' => $this->findUptimeForSite($rawNetwork, $site),
-                'nvr'     => $this->findUptimeForSite($rawNvr, $site),
-                'cctv'    => $this->findUptimeForSite($rawCctv, $site),
-                'server'  => $this->findUptimeForSite($rawServer, $site),
+                'nvr' => $this->findUptimeForSite($rawNvr, $site),
+                'cctv' => $this->findUptimeForSite($rawCctv, $site),
+                'server' => $this->findUptimeForSite($rawServer, $site),
             ];
         }
 
         $avgNetwork = $this->calcAverage(array_column($matrix, 'network'));
-        $avgNvr     = $this->calcAverage(array_column($matrix, 'nvr'));
-        $avgCctv    = $this->calcAverage(array_column($matrix, 'cctv'));
-        $avgServer  = $this->calcAverage(array_column($matrix, 'server'));
+        $avgNvr = $this->calcAverage(array_column($matrix, 'nvr'));
+        $avgCctv = $this->calcAverage(array_column($matrix, 'cctv'));
+        $avgServer = $this->calcAverage(array_column($matrix, 'server'));
         $overallUptime = round(($avgNetwork + $avgNvr + $avgCctv + $avgServer) / 4, 1);
 
         // Bandwidth Snapshot Rows with default SLA capacity fallback
@@ -219,22 +220,26 @@ class InfraReportExport
             $cleanLoc = $this->cleanLocation($b['location']);
             foreach ($b['providers'] as $p) {
                 $limit = $p['bandwidth_limit'] ?? null;
-                if (!$limit || $limit <= 0) {
+                if (! $limit || $limit <= 0) {
                     $limit = $this->getDefaultCapacity($cleanLoc, $p['provider']);
                 }
 
                 $dl = isset($p['avg_download']) && is_numeric($p['avg_download']) ? (float) $p['avg_download'] : null;
                 $ul = isset($p['avg_upload']) && is_numeric($p['avg_upload']) ? (float) $p['avg_upload'] : null;
 
-                if ($dl !== null && $dl > 0) $dlValues[] = $dl;
-                if ($ul !== null && $ul > 0) $ulValues[] = $ul;
+                if ($dl !== null && $dl > 0) {
+                    $dlValues[] = $dl;
+                }
+                if ($ul !== null && $ul > 0) {
+                    $ulValues[] = $ul;
+                }
 
                 $bwRows[] = [
-                    'branch'   => $cleanLoc,
-                    'isp'      => $p['provider'],
+                    'branch' => $cleanLoc,
+                    'isp' => $p['provider'],
                     'capacity' => $limit ? number_format($limit, 1) : '-',
-                    'down'     => $dl !== null ? number_format($dl, 1) . ' Mbps' : '-',
-                    'up'       => $ul !== null ? number_format($ul, 1) . ' Mbps' : '-',
+                    'down' => $dl !== null ? number_format($dl, 1).' Mbps' : '-',
+                    'up' => $ul !== null ? number_format($ul, 1).' Mbps' : '-',
                 ];
             }
         }
@@ -243,7 +248,7 @@ class InfraReportExport
         $avgUl = count($ulValues) ? round(array_sum($ulValues) / count($ulValues), 1) : 0;
 
         // PC Issues Resolved
-        $totalIssues  = array_sum(array_map('intval', array_column($rawHelpdesk, 'case')));
+        $totalIssues = array_sum(array_map('intval', array_column($rawHelpdesk, 'case')));
         $closedIssues = array_sum(array_map('intval', array_column($rawHelpdesk, 'closed')));
 
         // Failed Devices: Group by device to avoid duplicate daily rows
@@ -253,22 +258,22 @@ class InfraReportExport
                 $cleanSite = $this->cleanLocation($siteItem['location']);
                 foreach ($siteItem['failed_list'] ?? [] as $f) {
                     if (($f['uptime_percent'] ?? 100) < 100) {
-                        $key = $category . '_' . ($f['ip_address'] ?? '') . '_' . ($f['device_name'] ?? '');
-                        if (!isset($failedDevicesMap[$key])) {
+                        $key = $category.'_'.($f['ip_address'] ?? '').'_'.($f['device_name'] ?? '');
+                        if (! isset($failedDevicesMap[$key])) {
                             $failedDevicesMap[$key] = [
-                                'location'    => $cleanSite,
-                                'date'        => isset($f['report_date']) ? Carbon::parse($f['report_date'])->format('d-M-y') : '-',
-                                'category'    => $category,
+                                'location' => $cleanSite,
+                                'date' => isset($f['report_date']) ? Carbon::parse($f['report_date'])->format('d-M-y') : '-',
+                                'category' => $category,
                                 'device_name' => $f['device_name'] ?? '-',
-                                'ip_address'  => $f['ip_address'] ?? '-',
-                                'duration'    => $f['duration'] ?? '-',
-                                'remark'      => $f['notes_maintenance_log'] ?? $f['remark'] ?? '-',
+                                'ip_address' => $f['ip_address'] ?? '-',
+                                'duration' => $f['duration'] ?? '-',
+                                'remark' => $f['notes_maintenance_log'] ?? $f['remark'] ?? '-',
                             ];
                         } else {
                             if (isset($f['report_date'])) {
                                 $failedDevicesMap[$key]['date'] = Carbon::parse($f['report_date'])->format('d-M-y');
                             }
-                            if (($failedDevicesMap[$key]['remark'] === '-' || empty($failedDevicesMap[$key]['remark'])) && !empty($f['notes_maintenance_log'])) {
+                            if (($failedDevicesMap[$key]['remark'] === '-' || empty($failedDevicesMap[$key]['remark'])) && ! empty($f['notes_maintenance_log'])) {
                                 $failedDevicesMap[$key]['remark'] = $f['notes_maintenance_log'];
                             }
                         }
@@ -297,7 +302,7 @@ class InfraReportExport
 
         // Card values (Row 7)
         $ws->mergeCells('B7:D7');
-        $ws->setCellValue('B7', number_format($overallUptime, 1) . '%');
+        $ws->setCellValue('B7', number_format($overallUptime, 1).'%');
         $ws->mergeCells('E7:G7');
         $ws->setCellValue('E7', "{$avgDl} ↓ / {$avgUl} ↑");
         $ws->mergeCells('H7:J7');
@@ -323,12 +328,12 @@ class InfraReportExport
         ]);
 
         $ws->getStyle('B6:L6')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 8.5, 'color' => ['rgb' => '64748B']],
+            'font' => ['bold' => true, 'size' => 8.5, 'color' => ['rgb' => '64748B']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
 
         $ws->getStyle('B7:L7')->applyFromArray([
-            'font'      => ['bold' => true, 'size' => 17],
+            'font' => ['bold' => true, 'size' => 17],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ]);
 
@@ -348,8 +353,8 @@ class InfraReportExport
         $ws->setCellValue('H10', 'BANDWIDTH SNAPSHOT');
 
         $darkGreenBanner = [
-            'font'      => ['bold' => true, 'size' => 9.5, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
+            'font' => ['bold' => true, 'size' => 9.5, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_LEFT, 'vertical' => Alignment::VERTICAL_CENTER, 'indent' => 1],
         ];
         $ws->getStyle('B10:F10')->applyFromArray($darkGreenBanner);
@@ -358,8 +363,8 @@ class InfraReportExport
         // Subheaders (Row 11) - Warm Golden Amber Background
         $ws->getRowDimension(11)->setRowHeight(20);
         $amberHeader = [
-            'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C88528']],
+            'font' => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'C88528']],
             'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
         ];
 
@@ -389,10 +394,10 @@ class InfraReportExport
         foreach ($sites as $site) {
             $ws->getRowDimension($rowL)->setRowHeight(20);
             $ws->setCellValue("B{$rowL}", $site);
-            $ws->setCellValue("C{$rowL}", number_format($matrix[$site]['network'], 1) . '%');
-            $ws->setCellValue("D{$rowL}", number_format($matrix[$site]['nvr'], 1) . '%');
-            $ws->setCellValue("E{$rowL}", number_format($matrix[$site]['cctv'], 1) . '%');
-            $ws->setCellValue("F{$rowL}", number_format($matrix[$site]['server'], 1) . '%');
+            $ws->setCellValue("C{$rowL}", number_format($matrix[$site]['network'], 1).'%');
+            $ws->setCellValue("D{$rowL}", number_format($matrix[$site]['nvr'], 1).'%');
+            $ws->setCellValue("E{$rowL}", number_format($matrix[$site]['cctv'], 1).'%');
+            $ws->setCellValue("F{$rowL}", number_format($matrix[$site]['server'], 1).'%');
 
             $ws->getStyle("B{$rowL}")->getFont()->setBold(true);
             $ws->getStyle("B{$rowL}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT)->setVertical(Alignment::VERTICAL_CENTER);
@@ -404,10 +409,10 @@ class InfraReportExport
         // Left Table: Average Row
         $ws->getRowDimension($rowL)->setRowHeight(20);
         $ws->setCellValue("B{$rowL}", 'Average');
-        $ws->setCellValue("C{$rowL}", number_format($avgNetwork, 1) . '%');
-        $ws->setCellValue("D{$rowL}", number_format($avgNvr, 1) . '%');
-        $ws->setCellValue("E{$rowL}", number_format($avgCctv, 1) . '%');
-        $ws->setCellValue("F{$rowL}", number_format($avgServer, 1) . '%');
+        $ws->setCellValue("C{$rowL}", number_format($avgNetwork, 1).'%');
+        $ws->setCellValue("D{$rowL}", number_format($avgNvr, 1).'%');
+        $ws->setCellValue("E{$rowL}", number_format($avgCctv, 1).'%');
+        $ws->setCellValue("F{$rowL}", number_format($avgServer, 1).'%');
 
         $ws->getStyle("B{$rowL}:F{$rowL}")->applyFromArray(array_merge($borderThin, [
             'font' => ['bold' => true],
@@ -459,8 +464,8 @@ class InfraReportExport
         $subHRow = $startActionRow + 1;
         $ws->getRowDimension($subHRow)->setRowHeight(20);
         $redHeader = [
-            'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '991B1B']],
+            'font' => ['bold' => true, 'size' => 9, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '991B1B']],
             'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
         ];
 
@@ -482,7 +487,7 @@ class InfraReportExport
 
         // Data Rows for Failed Devices
         $curRow = $subHRow + 1;
-        if (!empty($failedDevices)) {
+        if (! empty($failedDevices)) {
             foreach ($failedDevices as $dev) {
                 $ws->getRowDimension($curRow)->setRowHeight(20);
                 $ws->setCellValue("B{$curRow}", $dev['location']);
@@ -562,7 +567,7 @@ class InfraReportExport
             while ($cursor->lte($end) && count($uptimes) < 7) {
                 $dateKey = $cursor->toDateString();
                 $uptime = $dailyMap->get($dateKey)?->uptime_percent;
-                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1) . '%' : '-';
+                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1).'%' : '-';
                 $cursor->addDay();
             }
 
@@ -590,7 +595,7 @@ class InfraReportExport
                 $dev->ip_address,
             ];
             $rowValues = array_merge($rowValues, $uptimes, [
-                number_format($avgUptime, 1) . '%',
+                number_format($avgUptime, 1).'%',
                 $statusText,
                 $duration,
                 $log?->notes ?? '-',
@@ -645,7 +650,7 @@ class InfraReportExport
             while ($cursor->lte($end) && count($uptimes) < 7) {
                 $dateKey = $cursor->toDateString();
                 $uptime = $dailyMap->get($dateKey)?->uptime_percent;
-                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1) . '%' : '-';
+                $uptimes[] = $uptime !== null ? number_format((float) $uptime, 1).'%' : '-';
                 $cursor->addDay();
             }
 
@@ -673,7 +678,7 @@ class InfraReportExport
                 $dev->ip_address,
             ];
             $rowValues = array_merge($rowValues, $uptimes, [
-                number_format($avgUptime, 1) . '%',
+                number_format($avgUptime, 1).'%',
                 $statusText,
                 $duration,
                 $log?->notes ?? '-',
@@ -721,11 +726,11 @@ class InfraReportExport
             $avgRam = null;
             if ($resRows->isNotEmpty()) {
                 $cpuVals = $resRows->pluck('cpu_usage_percent')
-                    ->filter(fn($v) => $v !== null && is_numeric($v))
-                    ->map(fn($v) => (float) $v);
+                    ->filter(fn ($v) => $v !== null && is_numeric($v))
+                    ->map(fn ($v) => (float) $v);
                 $ramVals = $resRows->pluck('memory_usage_percent')
-                    ->filter(fn($v) => $v !== null && is_numeric($v))
-                    ->map(fn($v) => (float) $v);
+                    ->filter(fn ($v) => $v !== null && is_numeric($v))
+                    ->map(fn ($v) => (float) $v);
 
                 if ($cpuVals->isNotEmpty()) {
                     $avgCpu = round((float) $cpuVals->avg(), 1);
@@ -746,10 +751,10 @@ class InfraReportExport
                 $dev->location ?? '-',
                 $dev->device_name,
                 $dev->ip_address,
-                $avgCpu !== null ? number_format($avgCpu, 1) . '%' : '-',
-                $avgRam !== null ? number_format($avgRam, 1) . '%' : '-',
+                $avgCpu !== null ? number_format($avgCpu, 1).'%' : '-',
+                $avgRam !== null ? number_format($avgRam, 1).'%' : '-',
                 $latestHdd ?: '-',
-                number_format($uptime, 1) . '%',
+                number_format($uptime, 1).'%',
                 $statusText,
             ], null, "A{$row}");
 
@@ -842,7 +847,7 @@ class InfraReportExport
         }
 
         if ($records->isEmpty()) {
-            $ws->mergeCells('A2:' . $this->columnLetter(count($headers)) . '2');
+            $ws->mergeCells('A2:'.$this->columnLetter(count($headers)).'2');
             $ws->setCellValue('A2', 'Tidak ada data bandwidth harian untuk periode ini');
             $ws->getStyle('A2')->getFont()->setItalic(true);
         }
@@ -863,7 +868,7 @@ class InfraReportExport
         $headers = ['No', 'Ticket ID', 'Location', 'Requester', 'Department', 'Issue Description', 'Action Taken', 'Created At', 'Date Closed', 'Status'];
         $this->writeHeaderRow($ws, $headers);
 
-        $tickets = Ticket::whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59'])
+        $tickets = Ticket::whereBetween('created_at', [$this->from.' 00:00:00', $this->to.' 23:59:59'])
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -872,7 +877,7 @@ class InfraReportExport
         foreach ($tickets as $t) {
             $ws->fromArray([
                 $no++,
-                '#' . $t->id,
+                '#'.$t->id,
                 $t->location ?? '-',
                 $t->requester ?? '-',
                 $t->department ?? '-',
@@ -928,7 +933,7 @@ class InfraReportExport
             ->select('cctv_devices.site', 'cctv_devices.device_name', 'cctv_devices.ip_address', 'cctv_devices.device_type', 'cctv_maintenance_logs.*')
             ->get();
         foreach ($cctvLogs as $l) {
-            $cat = !empty($l->device_type) ? strtoupper($l->device_type) : 'CCTV';
+            $cat = ! empty($l->device_type) ? strtoupper($l->device_type) : 'CCTV';
             $allLogs[] = array_merge((array) $l, ['category' => $cat]);
         }
 
@@ -942,7 +947,7 @@ class InfraReportExport
             $allLogs[] = array_merge((array) $l, ['category' => 'Server']);
         }
 
-        usort($allLogs, fn($a, $b) => strcmp($b['started_at'] ?? '', $a['started_at'] ?? ''));
+        usort($allLogs, fn ($a, $b) => strcmp($b['started_at'] ?? '', $a['started_at'] ?? ''));
 
         $row = 2;
         $no = 1;
@@ -987,10 +992,10 @@ class InfraReportExport
 
         $endCol = chr(64 + count($headers));
         $ws->getStyle("A1:{$endCol}1")->applyFromArray([
-            'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 9],
-            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 9],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '003628']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D0D5DD']]],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D0D5DD']]],
         ]);
     }
 
@@ -1004,7 +1009,7 @@ class InfraReportExport
         $ws->getRowDimension($row)->setRowHeight(20);
 
         $style = [
-            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
             'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
         ];
 
@@ -1030,7 +1035,7 @@ class InfraReportExport
         $letter = '';
         while ($column > 0) {
             $column--;
-            $letter = chr(65 + ($column % 26)) . $letter;
+            $letter = chr(65 + ($column % 26)).$letter;
             $column = intdiv($column, 26);
         }
 
@@ -1039,25 +1044,41 @@ class InfraReportExport
 
     private function cleanLocation(?string $loc): string
     {
-        if (!$loc) return '-';
+        if (! $loc) {
+            return '-';
+        }
+
         return trim(preg_replace('/^F\d+\s+/i', '', $loc));
     }
 
     private function getDefaultCapacity(string $location, string $provider): ?float
     {
         $loc = strtoupper($location);
-        $p   = strtoupper($provider);
+        $p = strtoupper($provider);
 
         if (str_contains($loc, 'BOGOR')) {
-            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) return 180.0;
-            if (str_contains($p, 'TGG')) return 100.0;
+            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) {
+                return 180.0;
+            }
+            if (str_contains($p, 'TGG')) {
+                return 100.0;
+            }
         } elseif (str_contains($loc, 'KARAWANG')) {
-            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) return 180.0;
-            if (str_contains($p, 'TGG')) return 80.0;
+            if (str_contains($p, 'ISAT') || str_contains($p, 'INDOSAT')) {
+                return 180.0;
+            }
+            if (str_contains($p, 'TGG')) {
+                return 80.0;
+            }
         } elseif (str_contains($loc, 'TANGERANG')) {
-            if (str_contains($p, 'BIZNET')) return 240.0;
-            if (str_contains($p, 'TGG')) return 100.0;
+            if (str_contains($p, 'BIZNET')) {
+                return 240.0;
+            }
+            if (str_contains($p, 'TGG')) {
+                return 100.0;
+            }
         }
+
         return null;
     }
 
@@ -1068,26 +1089,38 @@ class InfraReportExport
                 return (float) ($r['uptime'] ?? 100.0);
             }
         }
+
         return 100.0;
     }
 
     private function calcAverage(array $numbers): float
     {
-        if (empty($numbers)) return 100.0;
+        if (empty($numbers)) {
+            return 100.0;
+        }
+
         return round(array_sum($numbers) / count($numbers), 1);
     }
 
     private function formatDuration(?string $startedAt, ?string $resolvedAt): string
     {
-        if (!$startedAt) return '-';
+        if (! $startedAt) {
+            return '-';
+        }
         $start = Carbon::parse($startedAt);
-        $end   = $resolvedAt ? Carbon::parse($resolvedAt) : now();
+        $end = $resolvedAt ? Carbon::parse($resolvedAt) : now();
 
         $diff = $start->diff($end);
         $parts = [];
-        if ($diff->d > 0) $parts[] = "{$diff->d}d";
-        if ($diff->h > 0) $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT) . "h";
-        if ($diff->i > 0) $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT) . "m";
+        if ($diff->d > 0) {
+            $parts[] = "{$diff->d}d";
+        }
+        if ($diff->h > 0) {
+            $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+        }
+        if ($diff->i > 0) {
+            $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+        }
 
         return empty($parts) ? '0s' : implode(' ', $parts);
     }
@@ -1114,32 +1147,86 @@ class InfraReportExport
             }
 
             $deviceIds = $devices->pluck('id');
-            $qty       = $deviceIds->count();
+            $qty = $deviceIds->count();
 
             if ($qty === 0) {
                 $results[] = [
-                    'location'    => $site,
-                    'qty'         => 0,
-                    'uptime'      => 100.0,
+                    'location' => $site,
+                    'qty' => 0,
+                    'uptime' => 100.0,
                     'failed_list' => [],
                 ];
+
                 continue;
             }
 
             if ($type === 'server') {
                 $sourceIds = $devices->pluck('source_id');
                 $daysCount = Carbon::parse($this->from)->diffInDays(Carbon::parse($this->to)) + 1;
-                $rows = DB::table('server_resource_daily')
-                    ->whereIn('host_id', $sourceIds)
-                    ->whereBetween('report_date', [$this->from, $this->to])
+
+                // Server Operation doesn't track uptime - use maintenance logs as downtime indicator
+                $maintenanceLogs = DB::table('server_maintenance_logs')
+                    ->whereIn('device_id', $deviceIds)
+                    ->where(function ($q) {
+                        $q->where('started_at', '<=', $this->to.' 23:59:59')
+                            ->where(fn ($sq) => $sq->whereNull('resolved_at')->orWhere('resolved_at', '>=', $this->from.' 00:00:00'));
+                    })
                     ->get();
 
-                $totalExpectedSlots = $qty * $daysCount;
-                $actualSlots        = $rows->count();
-                $avgUptime          = $totalExpectedSlots > 0 ? ($actualSlots / $totalExpectedSlots) * 100 : 100;
-                $avgUptime          = min(100.0, round($avgUptime, 2));
+                $totalDowntimeDays = 0;
+                foreach ($maintenanceLogs as $log) {
+                    $start = Carbon::parse($log->started_at)->max(Carbon::parse($this->from));
+                    $end = $log->resolved_at ? Carbon::parse($log->resolved_at) : Carbon::parse($this->to);
+                    $end = $end->min(Carbon::parse($this->to));
+                    if ($start <= $end) {
+                        $totalDowntimeDays += $start->diffInDays($end) + 1;
+                    }
+                }
 
-                $failedList = [];
+                $totalExpectedSlots = $qty * $daysCount;
+                $avgUptime = $totalExpectedSlots > 0 ? (($totalExpectedSlots - $totalDowntimeDays) / $totalExpectedSlots) * 100 : 100;
+                $avgUptime = min(100.0, round($avgUptime, 2));
+
+                $downDevices = $devices->filter(function ($d) use ($maintenanceLogs) {
+                    return $maintenanceLogs->contains('device_id', $d->id);
+                });
+                $failedList = $downDevices->map(function ($d) use ($maintenanceLogs) {
+                    $log = $maintenanceLogs->where('device_id', $d->id)
+                        ->sortByDesc('started_at')
+                        ->first();
+
+                    $duration = '-';
+                    if ($log) {
+                        $start = Carbon::parse($log->started_at);
+                        $end = $log->resolved_at ? Carbon::parse($log->resolved_at) : now();
+                        $diff = $start->diff($end);
+                        $parts = [];
+                        if ($diff->d > 0) {
+                            $parts[] = "{$diff->d}d";
+                        }
+                        if ($diff->h > 0) {
+                            $parts[] = str_pad($diff->h, 2, '0', STR_PAD_LEFT).'h';
+                        }
+                        if ($diff->i > 0) {
+                            $parts[] = str_pad($diff->i, 2, '0', STR_PAD_LEFT).'m';
+                        }
+                        $duration = empty($parts) ? '0s' : implode(' ', $parts);
+                    }
+
+                    return [
+                        'id' => $log?->id,
+                        'device_id' => $d->id,
+                        'device_name' => $d->device_name,
+                        'ip_address' => $d->ip_address,
+                        'report_date' => $this->from,
+                        'uptime_percent' => 0,
+                        'duration' => $duration,
+                        'started_at' => $log?->started_at,
+                        'resolved_at' => $log?->resolved_at,
+                        'remark' => $log?->notes ?? '-',
+                        'notes_maintenance_log' => $log?->notes ?? '-',
+                    ];
+                })->values()->toArray();
             } elseif ($type === 'network') {
                 $avgUptime = DB::table('network_uptime_daily')
                     ->whereIn('device_id', $deviceIds)
@@ -1150,14 +1237,14 @@ class InfraReportExport
                     ->join('network_devices', 'network_uptime_daily.device_id', '=', 'network_devices.id')
                     ->leftJoin('network_maintenance_logs', function ($join) {
                         $join->on('network_uptime_daily.device_id', '=', 'network_maintenance_logs.device_id')
-                             ->where(function ($q) {
-                                 $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
-                                   ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
-                             });
+                            ->where(function ($q) {
+                                $q->whereRaw('network_uptime_daily.report_date >= DATE(network_maintenance_logs.started_at)')
+                                    ->whereRaw('(network_maintenance_logs.resolved_at IS NULL OR network_uptime_daily.report_date <= DATE(network_maintenance_logs.resolved_at))');
+                            });
                     })
                     ->whereIn('network_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('network_uptime_daily.report_date', [$this->from, $this->to])
-                    ->where('network_uptime_daily.uptime_percent', '<', 100)
+                    ->where('network_uptime_daily.uptime_percent', '<', 90)
                     ->select(
                         'network_devices.device_name',
                         'network_devices.ip_address',
@@ -1169,7 +1256,7 @@ class InfraReportExport
                     )
                     ->orderBy('network_uptime_daily.report_date', 'desc')
                     ->get()
-                    ->map(fn($r) => (array) $r)
+                    ->map(fn ($r) => (array) $r)
                     ->toArray();
             } else {
                 $avgUptime = DB::table('cctv_uptime_daily')
@@ -1181,14 +1268,14 @@ class InfraReportExport
                     ->join('cctv_devices', 'cctv_uptime_daily.device_id', '=', 'cctv_devices.id')
                     ->leftJoin('cctv_maintenance_logs', function ($join) {
                         $join->on('cctv_uptime_daily.device_id', '=', 'cctv_maintenance_logs.device_id')
-                             ->where(function ($q) {
-                                 $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
-                                   ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
-                             });
+                            ->where(function ($q) {
+                                $q->whereRaw('cctv_uptime_daily.report_date >= DATE(cctv_maintenance_logs.started_at)')
+                                    ->whereRaw('(cctv_maintenance_logs.resolved_at IS NULL OR cctv_uptime_daily.report_date <= DATE(cctv_maintenance_logs.resolved_at))');
+                            });
                     })
                     ->whereIn('cctv_uptime_daily.device_id', $deviceIds)
                     ->whereBetween('cctv_uptime_daily.report_date', [$this->from, $this->to])
-                    ->where('cctv_uptime_daily.uptime_percent', '<', 100)
+                    ->where('cctv_uptime_daily.uptime_percent', '<', 95)
                     ->select(
                         'cctv_devices.device_name',
                         'cctv_devices.ip_address',
@@ -1200,14 +1287,14 @@ class InfraReportExport
                     )
                     ->orderBy('cctv_uptime_daily.report_date', 'desc')
                     ->get()
-                    ->map(fn($r) => (array) $r)
+                    ->map(fn ($r) => (array) $r)
                     ->toArray();
             }
 
             $results[] = [
-                'location'    => $site,
-                'qty'         => $qty,
-                'uptime'      => round((float) $avgUptime, 2),
+                'location' => $site,
+                'qty' => $qty,
+                'uptime' => round((float) $avgUptime, 2),
                 'failed_list' => $failedList,
             ];
         }
@@ -1221,9 +1308,13 @@ class InfraReportExport
         foreach ($sites as $site) {
             $cleanSite = str_ireplace(['F1 ', 'F2 ', 'F3 '], '', $site);
             $fct = '';
-            if (str_starts_with($site, 'F1')) $fct = 'F1';
-            elseif (str_starts_with($site, 'F2')) $fct = 'F2';
-            elseif (str_starts_with($site, 'F3')) $fct = 'F3';
+            if (str_starts_with($site, 'F1')) {
+                $fct = 'F1';
+            } elseif (str_starts_with($site, 'F2')) {
+                $fct = 'F2';
+            } elseif (str_starts_with($site, 'F3')) {
+                $fct = 'F3';
+            }
 
             $rows = DB::table('bandwidth_daily')
                 ->where('location', 'like', "%$cleanSite%")
@@ -1238,19 +1329,19 @@ class InfraReportExport
             if ($fct) {
                 $contractsQuery->where('fct', $fct);
             }
-            $contracts = $contractsQuery->get()->keyBy(fn($c) => strtoupper($c->provider));
+            $contracts = $contractsQuery->get()->keyBy(fn ($c) => strtoupper($c->provider));
 
             $providers = [];
             foreach ($rows as $row) {
                 $p = $row->provider;
                 $pKey = strtoupper($p);
-                if (!isset($providers[$p])) {
+                if (! isset($providers[$p])) {
                     $limit = isset($contracts[$pKey]) ? (float) $contracts[$pKey]->bandwidth : $this->getDefaultCapacity($cleanSite, $p);
                     $providers[$p] = [
-                        'provider'        => $p,
-                        'remark'          => $row->remark ?? '-',
-                        'avg_download'    => null,
-                        'avg_upload'      => null,
+                        'provider' => $p,
+                        'remark' => $row->remark ?? '-',
+                        'avg_download' => null,
+                        'avg_upload' => null,
                         'bandwidth_limit' => $limit,
                     ];
                 }
@@ -1262,10 +1353,11 @@ class InfraReportExport
             }
 
             $results[] = [
-                'location'  => $site,
+                'location' => $site,
                 'providers' => array_values($providers),
             ];
         }
+
         return $results;
     }
 
@@ -1277,19 +1369,20 @@ class InfraReportExport
 
             $query = Ticket::where(function ($q) use ($site, $siteKey) {
                 $q->where('location', 'like', "%$site%")
-                  ->orWhere('location', 'like', "%$siteKey%");
-            })->whereBetween('created_at', [$this->from . ' 00:00:00', $this->to . ' 23:59:59']);
+                    ->orWhere('location', 'like', "%$siteKey%");
+            })->whereBetween('created_at', [$this->from.' 00:00:00', $this->to.' 23:59:59']);
 
-            $total  = (clone $query)->count();
+            $total = (clone $query)->count();
             $closed = (clone $query)->whereIn('status', ['closed', 'resolved'])->count();
 
             $results[] = [
-                'location'    => $site,
-                'case'        => $total,
-                'closed'      => $closed,
+                'location' => $site,
+                'case' => $total,
+                'closed' => $closed,
                 'performance' => $total > 0 ? round(($closed / $total) * 100, 2) : 100.0,
             ];
         }
+
         return $results;
     }
 }

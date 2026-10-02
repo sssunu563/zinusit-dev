@@ -1,0 +1,215 @@
+# PROJECT MAP (HINT)
+descr: Non-authoritative workspace snapshot. It may be intentionally stale within a bounded tolerance. Never treat paths in this block as verified; verify with fs_* and/or index_* / symbol_* / file_load* before acting.
+
+FORMAT:
+format: orientation report
+format_descr: A deterministic, bounded orientation report derived from the file listing (paths only).
+
+GUIDANCE:
+- Use this report for orientation; verify before edits or claims.
+- If the snapshot and the workspace disagree, the workspace wins.
+
+## WORKSPACE ROOTS
+descr: List of workspace roots (multi-root). Each root is the prefix of a CAN path: "<projectName>/<relativePosixPath>".
+- zinusit/
+
+## ROOT: zinusit/
+descr: This block summarizes one workspace root: counts, directory structure (macro + detail), and detected configuration files.
+
+### SNAPSHOT METRICS
+descr: High-level counts derived from the project map listing snapshot (paths only; no file content reads).
+- Files: 869
+- Directories: 144
+
+### ROOT FILES
+descr: Files directly under the workspace root (no subdirectories), printed as full CAN paths.
+- zinusit/.dockerignore
+- zinusit/.editorconfig
+- zinusit/.env.example
+- zinusit/.gitattributes
+- zinusit/.gitignore
+- zinusit/.npmrc
+- zinusit/.prettierignore
+- zinusit/.prettierrc
+- zinusit/ACTIVITY_HISTORY_CHANGES.md
+- zinusit/BUILD_FIX_GUIDE.md
+- zinusit/BUILD_FIX_IMPORT_CASE.md
+- zinusit/CARA_DEPLOY.txt
+- zinusit/CARA_UPDATE.txt
+- zinusit/COMPOSER_FIX_REQUIRED.md
+- zinusit/CONSUMABLE_STB_FIX.md
+- zinusit/DEBUG_BLANK_INDEX_PAGE.md
+- zinusit/DEPLOYMENT_CLEANUP_SUMMARY.md
+- zinusit/DEPLOYMENT_READY_CHECKLIST.md
+- zinusit/DOCKER_ANALYSIS_COMPLETE.md
+- zinusit/DOCKER_DEPLOYMENT_GUIDE.md
+- zinusit/DOCKER_FIXES_SUMMARY.md
+- zinusit/Dockerfile
+- zinusit/FIX_SERVER_COMMAND.md
+- zinusit/ISSUES_LIST.md
+- zinusit/NEXT_STEP_BUILD.md
+- zinusit/PAGINATION_IMPLEMENTATION.md
+- zinusit/PANDUAN_DEPLOY_INDONESIA.md
+- zinusit/PERFORMANCE_OPTIMIZATION_SUMMARY.md
+- zinusit/PHP_EXTENSIONS_FIX.md
+- zinusit/PRODUCTION_DEPLOYMENT_CHECKLIST.md
+- zinusit/QUICK_DEPLOY_REFERENCE.md
+- zinusit/README_DOCKER.md
+- zinusit/README_STOCK_OPNAME.md
+- zinusit/SEARCH_FIX_COMPLETE.md
+- zinusit/SERVER_DEPLOYMENT_GUIDE.md
+- zinusit/SNIPEIT_SYNC_GUIDE.md
+- zinusit/SOLUTION_SUMMARY.md
+- zinusit/SORTING_FIX_COMPLETE.md
+- zinusit/SORTING_ISSUE_ANALYSIS.md
+- zinusit/SO_FIXES_SUMMARY_ID.md
+- zinusit/STB_GENERATION_FIX.md
+- zinusit/STB_SHORTCUT_IMPLEMENTATION.md
+- zinusit/STOCK_OPNAME_ANALYSIS.md
+- zinusit/STOCK_OPNAME_FIX_SUMMARY.md
+- zinusit/STOCK_OPNAME_FLOW_EXPLANATION.md
+- zinusit/STOCK_OPNAME_IMPROVEMENTS_IMPLEMENTED.md
+- zinusit/STOCK_OPNAME_MOBILE_REDESIGN.md
+- zinusit/STOCK_OPNAME_SUMMARY.md
+- zinusit/STOCK_OPNAME_VISUAL_FLOW.txt
+- zinusit/TESTING_REPORT.md
+- zinusit/artisan
+- zinusit/check_inspection.php
+- zinusit/components.json
+- zinusit/composer.json
+- zinusit/composer.lock
+- zinusit/cookies.txt
+- zinusit/debug_serialization.php
+- zinusit/debug_signature.php
+- zinusit/deploy.sh
+- zinusit/docker-compose.yml
+- zinusit/docker-compose.yml.prod
+- zinusit/docker-entrypoint.sh
+- zinusit/eslint.config.js
+- zinusit/fix_inspection_signature_dates.sql
+- zinusit/infra_report_home.html
+- zinusit/infra_report_page.html
+- zinusit/manifest.live.json
+- zinusit/package.json
+- zinusit/phpunit.xml
+- zinusit/pint.json
+- zinusit/tsconfig.json
+- zinusit/vite.config.ts
+
+### EXTENSIONS HISTOGRAM
+descr: File extension counts computed from basenames (e.g. ".ts"). This is a purely statistical signal used for orientation.
+- .vue=348, .php=340, .md=65, .ts=60, (dotfile)=19, .json=7, .png=5, .txt=5, .yml=3, (no-ext)=2, .html=2, .sh=2, .bak=1, .css=1, .example=1, .ico=1, .js=1, .lock=1, .new=1, .prod=1, .sql=1, .svg=1, .xml=1
+
+### MACRO PARTITION
+descr: Deterministic selection of major child directories (coverage-based) to provide a coarse structure view.
+- Split (zinusit/): selected=['zinusit/resources/', 'zinusit/app/', 'zinusit/database/', 'zinusit/tests/', 'zinusit/docs/', 'zinusit/config/', 'zinusit/public/', 'zinusit/storage/', 'zinusit/routes/', 'zinusit/bootstrap/', 'zinusit/.github/'], other_files=72, other_dirs=0
+- Split (zinusit/resources/): selected=['zinusit/resources/js/', 'zinusit/resources/views/'], other_files=2, other_dirs=2
+
+### DETAIL TREE CUT
+descr: Deterministic subtree cut (PARTIAL view; NOT a full directory listing). Expansion is limited by a fixed node budget (see budget_nodes=... on each root line) and max_depth=7.
+zinusit/resources/ — 423 files — child_dirs=4 tree_height=4 — budget_nodes=14 — .vue(348) .ts(59) .php(13)
+↳ zinusit/resources/css/ — 1 files — child_dirs=0 tree_height=0 — .css(1)
+↳ zinusit/resources/js/ — 408 files — child_dirs=8 tree_height=3 — .vue(348) .ts(58) .bak(1)
+↳↳ zinusit/resources/js/components/ — 186 files — child_dirs=3 tree_height=2 — .vue(163) .ts(23)
+↳↳ zinusit/resources/js/composables/ — 13 files — child_dirs=0 tree_height=0 — .ts(13)
+↳↳ zinusit/resources/js/constants/ — 4 files — child_dirs=0 tree_height=0 — .ts(4)
+↳↳ zinusit/resources/js/layouts/ — 6 files — child_dirs=3 tree_height=1 — .vue(6)
+↳↳ zinusit/resources/js/lib/ — 1 files — child_dirs=0 tree_height=0 — .ts(1)
+↳↳ zinusit/resources/js/pages/ — 186 files — child_dirs=21 tree_height=2 — .vue(179) .ts(5) .bak(1)
+↳↳ zinusit/resources/js/types/ — 6 files — child_dirs=0 tree_height=0 — .ts(6)
+↳↳ zinusit/resources/js/utils/ — 4 files — child_dirs=0 tree_height=0 — .ts(4)
+↳ zinusit/resources/ts/ — 1 files — child_dirs=1 tree_height=1 — .ts(1)
+↳ zinusit/resources/views/ — 13 files — child_dirs=7 tree_height=1 — .php(13)
+zinusit/app/ — 158 files — child_dirs=11 tree_height=3 — budget_nodes=14 — .php(158)
+↳ zinusit/app/Actions/ — 2 files — child_dirs=1 tree_height=1 — .php(2)
+↳ zinusit/app/Concerns/ — 2 files — child_dirs=0 tree_height=0 — .php(2)
+↳ zinusit/app/Console/ — 19 files — child_dirs=1 tree_height=1 — .php(19)
+↳ zinusit/app/Events/ — 1 files — child_dirs=0 tree_height=0 — .php(1)
+↳ zinusit/app/Exports/ — 1 files — child_dirs=0 tree_height=0 — .php(1)
+↳ zinusit/app/Http/ — 53 files — child_dirs=4 tree_height=2 — .php(53)
+↳ zinusit/app/Listeners/ — 1 files — child_dirs=0 tree_height=0 — .php(1)
+↳ zinusit/app/Models/ — 59 files — child_dirs=0 tree_height=0 — .php(59)
+↳ zinusit/app/Providers/ — 3 files — child_dirs=0 tree_height=0 — .php(3)
+↳ zinusit/app/Services/ — 15 files — child_dirs=0 tree_height=0 — .php(15)
+↳ zinusit/app/Traits/ — 2 files — child_dirs=0 tree_height=0 — .php(2)
+zinusit/database/ — 105 files — child_dirs=3 tree_height=1 — budget_nodes=13 — .php(104) (dotfile)(1)
+↳ zinusit/database/factories/ — 1 files — child_dirs=0 tree_height=0 — .php(1)
+↳ zinusit/database/migrations/ — 102 files — child_dirs=0 tree_height=0 — .php(102)
+↳ zinusit/database/seeders/ — 1 files — child_dirs=0 tree_height=0 — .php(1)
+zinusit/tests/ — 41 files — child_dirs=2 tree_height=2 — budget_nodes=12 — .php(41)
+↳ zinusit/tests/Feature/ — 37 files — child_dirs=2 tree_height=1 — .php(37)
+↳↳ zinusit/tests/Feature/Auth/ — 7 files — child_dirs=0 tree_height=0 — .php(7)
+↳↳ zinusit/tests/Feature/Settings/ — 3 files — child_dirs=0 tree_height=0 — .php(3)
+↳ zinusit/tests/Unit/ — 3 files — child_dirs=0 tree_height=0 — .php(3)
+zinusit/docs/ — 27 files — child_dirs=0 tree_height=0 — budget_nodes=12 — .md(27)
+zinusit/config/ — 14 files — child_dirs=0 tree_height=0 — budget_nodes=13 — .php(14)
+zinusit/public/ — 11 files — child_dirs=1 tree_height=2 — budget_nodes=12 — .png(5) (dotfile)(1) .ico(1)
+↳ zinusit/public/assets/ — 1 files — child_dirs=1 tree_height=1 — .png(1)
+↳↳ zinusit/public/assets/images/ — 1 files — child_dirs=0 tree_height=0 — .png(1)
+zinusit/storage/ — 9 files — child_dirs=2 tree_height=3 — budget_nodes=12 — (dotfile)(9)
+↳ zinusit/storage/app/ — 3 files — child_dirs=2 tree_height=1 — (dotfile)(3)
+↳↳ zinusit/storage/app/private/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+↳↳ zinusit/storage/app/public/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+↳ zinusit/storage/framework/ — 6 files — child_dirs=4 tree_height=2 — (dotfile)(6)
+↳↳ zinusit/storage/framework/cache/ — 2 files — child_dirs=1 tree_height=1 — (dotfile)(2)
+↳↳↳ zinusit/storage/framework/cache/data/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+↳↳ zinusit/storage/framework/sessions/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+↳↳ zinusit/storage/framework/testing/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+↳↳ zinusit/storage/framework/views/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+zinusit/routes/ — 4 files — child_dirs=0 tree_height=0 — budget_nodes=12 — .php(4)
+zinusit/bootstrap/ — 3 files — child_dirs=1 tree_height=1 — budget_nodes=13 — .php(2) (dotfile)(1)
+↳ zinusit/bootstrap/cache/ — 1 files — child_dirs=0 tree_height=0 — (dotfile)(1)
+zinusit/.github/ — 2 files — child_dirs=1 tree_height=1 — budget_nodes=13 — .yml(2)
+↳ zinusit/.github/workflows/ — 2 files — child_dirs=0 tree_height=0 — .yml(2)
+
+### POSSIBLE CONFIGURATION FILES
+descr: Deterministic detection of common configuration files across ecosystems. Only existing paths are printed. max_per_section=60.
+
+#### REPO META / DOCS
+descr: Project-level documentation and governance files that describe the repository purpose, policies, and conventions.
+- zinusit/docs/README.md
+
+#### VCS / SCM
+descr: Version control configuration files that affect ignore rules, diffs, blame behavior, and checkout behavior.
+- zinusit/.gitattributes
+- zinusit/.gitignore
+- zinusit/database/.gitignore
+- zinusit/bootstrap/cache/.gitignore
+- zinusit/storage/app/.gitignore
+- zinusit/storage/framework/.gitignore
+- zinusit/storage/app/private/.gitignore
+- zinusit/storage/app/public/.gitignore
+- zinusit/storage/framework/cache/.gitignore
+- zinusit/storage/framework/sessions/.gitignore
+- zinusit/storage/framework/testing/.gitignore
+- zinusit/storage/framework/views/.gitignore
+- zinusit/storage/framework/cache/data/.gitignore
+
+#### EDITOR / IDE
+descr: Editor and IDE configuration files (VS Code, JetBrains, EditorConfig) and common local environment files (.env*).
+- zinusit/.editorconfig
+- zinusit/.env.example
+
+#### CI / CD
+descr: Continuous Integration / Continuous Delivery configuration (GitHub Actions, GitLab CI, Jenkins, CircleCI, dependency automation).
+- zinusit/.github/workflows/lint.yml
+- zinusit/.github/workflows/tests.yml
+
+#### CONTAINERS / RUNTIME / ORCHESTRATION
+descr: Container and orchestration configuration files (Docker, Compose, Kubernetes/Kustomize, Helm charts).
+- zinusit/Dockerfile
+- zinusit/docker-compose.yml
+
+#### NODE / JS / TS TOOLING
+descr: JavaScript/TypeScript ecosystem configuration: package managers, toolchain configs (lint/format), bundlers, and test runners.
+- zinusit/package.json
+- zinusit/.npmrc
+- zinusit/tsconfig.json
+- zinusit/eslint.config.js
+- zinusit/.prettierrc
+- zinusit/vite.config.ts
+
+#### PHP / COMPOSER
+descr: PHP dependency manager (Composer) configuration and lockfiles.
+- zinusit/composer.json
+- zinusit/composer.lock

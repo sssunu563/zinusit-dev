@@ -137,18 +137,6 @@ export const mainNavItems: NavItem[] = [
         title: 'Pengguna',
         href: '/users',
         icon: Users,
-        children: [
-            {
-                title: 'User Snipe-IT',
-                href: '/users',
-                icon: Users,
-            },
-            {
-                title: 'User LDAP',
-                href: '/users/ldap',
-                icon: Shield,
-            },
-        ],
     },
     {
         title: 'Laporan',

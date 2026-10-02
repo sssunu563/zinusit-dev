@@ -15,7 +15,7 @@ class KnowledgeBaseController extends Controller
         $this->ensureDefaultArticlesExist();
 
         $articles = Article::query()
-            ->with('author:id,name')
+            ->select(['id', 'title', 'slug', 'category', 'view_count', 'created_at', \DB::raw('LEFT(content, 150) as content_preview')])
             ->where('is_published', true)
             ->when($request->search, function($query, $search) {
                 $query->where(function ($query) use ($search) {
@@ -29,7 +29,10 @@ class KnowledgeBaseController extends Controller
             ->paginate(12)
             ->withQueryString();
 
-        $categories = Article::where('is_published', true)->distinct()->pluck('category')->filter()->values();
+        // Cache categories untuk 1 jam
+        $categories = \Cache::remember('kb_categories', 3600, function() {
+            return Article::where('is_published', true)->distinct()->pluck('category')->filter()->values();
+        });
 
         return Inertia::render('KnowledgeBase/Index', [
             'articles' => $articles,

@@ -63,14 +63,10 @@
         .brand-icon {
             width: 32px;
             height: 32px;
-            border-radius: 7px;
-            background: #ecfdf5;
-            color: #003628;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 14px;
+            border-radius: 8px;
+            object-fit: contain;
+            display: block;
+            flex-shrink: 0;
         }
 
         .brand-title {
@@ -378,12 +374,12 @@
             height: 4px;
             border-radius: 50%;
             flex-shrink: 0;
-            background: {{ $statusColor }};
+            background: #0f172a;
         }
 
         .status-text {
             font-weight: 700;
-            color: {{ $statusColor }};
+            color: #0f172a;
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
@@ -484,7 +480,7 @@
 <header class="screen-header">
     <div class="header-main">
         <div class="header-brand">
-            <div class="brand-icon">Z</div>
+            <img src="{{ asset('apple-touch-icon.png') }}" alt="Zinus IT" class="brand-icon">
             <div>
                 <div class="brand-title">Cetak Label Asset</div>
                 <div class="brand-sub">{{ $asset['name'] ?? $asset['asset_tag'] }} &bull; {{ $asset['asset_tag'] }}</div>

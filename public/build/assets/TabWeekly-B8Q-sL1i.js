@@ -1,1 +1,0 @@
-import{_ as o}from"./TabWeekly.vue_vue_type_script_setup_true_lang-BDesqb7R.js";import"./app-Ds0vR2yb.js";/* empty css            */import"./loader-circle-R6Rhr_b-.js";import"./createLucideIcon-BAQZ6FTP.js";import"./circle-alert-BJWE1n_I.js";import"./settings-D0jbpAjJ.js";import"./circle-check--HmFHXia.js";import"./pencil-CTSTdaD5.js";export{o as default};

@@ -40,6 +40,13 @@ const props = defineProps<{
     };
     events: string[];
     statuses: string[];
+    stats?: {
+        total: number;
+        success: number;
+        failed: number;
+        logout: number;
+        sync: number;
+    };
     summaryText: string;
     exportUrl: string;
     applyDatePreset: (preset: 'today' | 'last7Days' | 'thisMonth') => void;
@@ -102,6 +109,21 @@ const formatStatusLabel = (status: string) => {
     }
 };
 
+const getEventCount = (event: string) => {
+    if (!props.stats) return '';
+    if (event === 'logout') return `(${props.stats.logout})`;
+    if (event === 'user_sync') return `(${props.stats.sync})`;
+    if (event === 'login') return `(${props.stats.success + props.stats.failed})`;
+    return '';
+};
+
+const getStatusCount = (status: string) => {
+    if (!props.stats) return '';
+    if (status === 'success') return `(${props.stats.success})`;
+    if (status === 'failed') return `(${props.stats.failed})`;
+    return '';
+};
+
 const parseBrowser = (userAgent?: string | null) => {
     if (!userAgent) return 'Perangkat Lain';
     if (userAgent.includes('Edg/')) return 'Edge';
@@ -118,11 +140,9 @@ const isSuccess = (status?: string) => {
 </script>
 
 <template>
-    <div class="space-y-4">
-        <!-- TABLE CARD CONTAINER -->
-        <div class="bg-white rounded-[32px] border border-slate-200/60 shadow-xl shadow-slate-200/50 p-6 lg:p-8">
-            <!-- Toolbar Section -->
-            <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div>
+        <!-- Toolbar Section -->
+        <div class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div class="relative w-full lg:max-w-md">
                     <Search class="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                     <input
@@ -195,8 +215,8 @@ const isSuccess = (status?: string) => {
                                             v-model="filterForm.event"
                                             class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
                                         >
-                                            <option value="">Semua Aktivitas</option>
-                                            <option v-for="ev in events" :key="ev" :value="ev">{{ formatEventLabel(ev) }}</option>
+                                            <option value="">Semua Aktivitas {{ stats ? `(${stats.total})` : '' }}</option>
+                                            <option v-for="ev in events" :key="ev" :value="ev">{{ formatEventLabel(ev) }} {{ getEventCount(ev) }}</option>
                                         </select>
                                     </div>
 
@@ -208,7 +228,7 @@ const isSuccess = (status?: string) => {
                                             class="w-full h-9 px-3 rounded-xl border border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-700 outline-none focus:border-[#003628]/50 focus:bg-white"
                                         >
                                             <option value="">Semua Status</option>
-                                            <option v-for="st in statuses" :key="st" :value="st">{{ formatStatusLabel(st) }}</option>
+                                            <option v-for="st in statuses" :key="st" :value="st">{{ formatStatusLabel(st) }} {{ getStatusCount(st) }}</option>
                                         </select>
                                     </div>
 
@@ -444,5 +464,4 @@ const isSuccess = (status?: string) => {
                 </nav>
             </div>
         </div>
-    </div>
 </template>
