@@ -12,31 +12,31 @@ return new class extends Migration
     public function up(): void
     {
         // Status Labels - untuk filter status assets
-        Schema::create('snipeit_status_labels', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_status_labels', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->string('status_type')->nullable(); // deployable, pending, archived, undeployable
             $table->json('raw_data')->nullable(); // simpan full response dari API
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('status_type');
         });
 
         // Categories - untuk grouping asset types
-        Schema::create('snipeit_categories', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_categories', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->string('category_type')->nullable(); // asset, accessory, consumable, component, license
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('category_type');
         });
 
         // Locations - untuk tracking lokasi assets
-        Schema::create('snipeit_locations', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_locations', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->string('address')->nullable();
@@ -47,7 +47,7 @@ return new class extends Migration
         });
 
         // Users - untuk assigned user info
-        Schema::create('snipeit_users', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_users', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('username')->nullable();
             $table->string('first_name')->nullable();
@@ -58,13 +58,13 @@ return new class extends Migration
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('username');
             $table->index('email');
         });
 
         // Hardware Assets - tabel utama untuk assets
-        Schema::create('snipeit_assets', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_assets', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name')->nullable();
             $table->string('asset_tag')->nullable();
@@ -79,7 +79,7 @@ return new class extends Migration
             $table->json('raw_data')->nullable(); // full JSON dari API
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('status_id');
             $table->index('category_id');
             $table->index('location_id');
@@ -89,7 +89,7 @@ return new class extends Migration
         });
 
         // Consumables
-        Schema::create('snipeit_consumables', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_consumables', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->unsignedInteger('category_id')->nullable();
@@ -98,12 +98,12 @@ return new class extends Migration
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('category_id');
         });
 
         // Licenses
-        Schema::create('snipeit_licenses', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_licenses', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->string('product_key')->nullable();
@@ -114,13 +114,13 @@ return new class extends Migration
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('category_id');
             $table->index('expiration_date');
         });
 
         // Accessories
-        Schema::create('snipeit_accessories', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_accessories', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->unsignedInteger('category_id')->nullable();
@@ -129,12 +129,12 @@ return new class extends Migration
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('category_id');
         });
 
         // Components
-        Schema::create('snipeit_components', function (Blueprint $table) {
+        $this->createIfMissing('snipeit_components', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
             $table->string('name');
             $table->unsignedInteger('category_id')->nullable();
@@ -143,9 +143,16 @@ return new class extends Migration
             $table->json('raw_data')->nullable();
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
-            
+
             $table->index('category_id');
         });
+    }
+
+    private function createIfMissing(string $tableName, \Closure $definition): void
+    {
+        if (! Schema::hasTable($tableName)) {
+            Schema::create($tableName, $definition);
+        }
     }
 
     /**
