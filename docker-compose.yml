@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   cache:
     image: redis:7-alpine
@@ -38,6 +36,8 @@ services:
     depends_on:
       cache:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - '${APP_PORT:-8001}:80'
     volumes:
@@ -82,6 +82,41 @@ services:
         max-size: '10m'
         max-file: '3'
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: 'no'
+    depends_on:
+      cache:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+      - zinusit-storage:/var/www/html/storage
+      - /var/www/html/node_modules
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-http://localhost:8001}
+      DB_HOST: ${DB_HOST:?DB_HOST must point to the external database}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-zinusit}
+      DB_USERNAME: ${DB_USERNAME:-zinusit}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: cache
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      SESSION_DRIVER: database
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: ['/usr/local/bin/docker-init.sh']
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
   scheduler:
     build:
       context: .
@@ -109,12 +144,7 @@ services:
       QUEUE_CONNECTION: redis
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    command: >
-      bash -c "
-        php artisan config:cache &&
-        php artisan route:cache &&
-        php artisan schedule:work
-      "
+    command: php artisan schedule:work
     deploy:
       resources:
         limits:

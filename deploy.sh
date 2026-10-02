@@ -5,8 +5,21 @@
 # =============================================================================
 set -e
 
-# Trap for rollback on error
-trap 'echo "[✗] Deployment failed - rolling back"; docker compose up -d; exit 1' ERR
+DEPLOY_STARTED=false
+
+on_deploy_exit() {
+    status=$?
+
+    if [ "$status" -ne 0 ] && [ "$DEPLOY_STARTED" = true ]; then
+        echo "[✗] Deployment failed; not retrying application startup"
+        docker compose logs --tail=100 migrate || true
+        docker compose stop app queue scheduler || true
+    fi
+
+    exit "$status"
+}
+
+trap on_deploy_exit EXIT
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$APP_DIR"
@@ -85,6 +98,7 @@ echo "[✓] Docker and Docker Compose are available"
 # 4. Stop existing containers
 echo ""
 echo "[→] Stopping existing containers..."
+DEPLOY_STARTED=true
 docker compose down --remove-orphans || true
 echo "[✓] Containers stopped"
 

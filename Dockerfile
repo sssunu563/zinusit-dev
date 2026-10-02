@@ -64,7 +64,9 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
     CMD curl -f http://localhost/up || exit 1
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown www-data:www-data /usr/local/bin/docker-entrypoint.sh
+COPY docker-init.sh /usr/local/bin/docker-init.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-init.sh \
+    && chown www-data:www-data /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-init.sh
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["apache2-foreground"]

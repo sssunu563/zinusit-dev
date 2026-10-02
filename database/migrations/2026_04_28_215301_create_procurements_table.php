@@ -11,6 +11,43 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('procurements')) {
+            $requiredColumns = [
+                'id',
+                'title',
+                'request_number',
+                'requester_name',
+                'department',
+                'estimated_cost',
+                'actual_cost',
+                'status',
+                'request_date',
+                'purchase_date',
+                'po_number',
+                'description',
+                'vendor_id',
+                'created_by',
+                'created_at',
+                'updated_at',
+            ];
+
+            if (! Schema::hasColumns('procurements', $requiredColumns)) {
+                $missingColumns = array_diff($requiredColumns, Schema::getColumnListing('procurements'));
+
+                throw new RuntimeException(
+                    'Existing procurements table is missing columns: '.implode(', ', $missingColumns)
+                );
+            }
+
+            if (! Schema::hasIndex('procurements', ['request_number'], 'unique')) {
+                Schema::table('procurements', function (Blueprint $table): void {
+                    $table->unique('request_number');
+                });
+            }
+
+            return;
+        }
+
         Schema::create('procurements', function (Blueprint $table) {
             $table->id();
             $table->string('title');
