@@ -105,7 +105,7 @@ echo "[✓] Containers stopped"
 # 5. Rebuild Docker image
 echo ""
 echo "[→] Rebuilding Docker image..."
-if ! docker compose build --no-cache app; then
+if ! docker compose build --no-cache app migrate queue scheduler; then
     echo "[✗] ERROR: Docker build failed!"
     exit 1
 fi
