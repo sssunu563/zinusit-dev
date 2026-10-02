@@ -8,27 +8,40 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Recreate cctv_fetch_logs with full schema (old table was empty/incomplete)
-        Schema::dropIfExists('cctv_fetch_logs');
-        Schema::create('cctv_fetch_logs', function (Blueprint $table) {
-            $table->id();
-            $table->date('fetch_date');
-            $table->string('source', 20);
-            $table->string('source_instance', 20);
-            $table->string('device_type', 20)->default('cctv');
-            $table->string('group_name', 200)->nullable();
-            $table->string('status', 10);
-            $table->unsignedSmallInteger('devices_ok')->default(0);
-            $table->unsignedSmallInteger('devices_fail')->default(0);
-            $table->text('notes')->nullable();
-            $table->boolean('is_manual')->default(false);
-            $table->foreignId('triggered_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamps();
+        $fetchLogColumns = [
+            'id', 'fetch_date', 'source', 'source_instance', 'device_type',
+            'group_name', 'status', 'devices_ok', 'devices_fail', 'notes',
+            'is_manual', 'triggered_by', 'created_at', 'updated_at',
+        ];
 
-            $table->index(['fetch_date', 'source'],       'cfl_date_source_idx');
-            $table->index(['fetch_date', 'device_type'],  'cfl_date_type_idx');
-            $table->index('status',                       'cfl_status_idx');
-        });
+        $hasCompleteFetchLogsTable = Schema::hasTable('cctv_fetch_logs')
+            && collect($fetchLogColumns)->every(
+                fn (string $column): bool => Schema::hasColumn('cctv_fetch_logs', $column)
+            );
+
+        if (!$hasCompleteFetchLogsTable) {
+            // Rebuild only the old empty/incomplete table; preserve complete fetch history.
+            Schema::dropIfExists('cctv_fetch_logs');
+            Schema::create('cctv_fetch_logs', function (Blueprint $table) {
+                $table->id();
+                $table->date('fetch_date');
+                $table->string('source', 20);
+                $table->string('source_instance', 20);
+                $table->string('device_type', 20)->default('cctv');
+                $table->string('group_name', 200)->nullable();
+                $table->string('status', 10);
+                $table->unsignedSmallInteger('devices_ok')->default(0);
+                $table->unsignedSmallInteger('devices_fail')->default(0);
+                $table->text('notes')->nullable();
+                $table->boolean('is_manual')->default(false);
+                $table->foreignId('triggered_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->timestamps();
+
+                $table->index(['fetch_date', 'source'],       'cfl_date_source_idx');
+                $table->index(['fetch_date', 'device_type'],  'cfl_date_type_idx');
+                $table->index('status',                       'cfl_status_idx');
+            });
+        }
 
         // Add missing columns to cctv_devices if not present
         Schema::table('cctv_devices', function (Blueprint $table) {
