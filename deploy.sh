@@ -144,11 +144,33 @@ fi
 # 8. Copy built assets to container
 echo ""
 echo "[→] Copying built assets to container..."
-if ! docker cp public/build "$CONTAINER_NAME":/var/www/html/public/; then
+if ! docker exec "$CONTAINER_NAME" mkdir -p /var/www/html/public/build; then
+    echo "[✗] ERROR: Could not prepare build directory in container"
+    exit 1
+fi
+if ! docker cp public/build/. "$CONTAINER_NAME":/var/www/html/public/build/; then
     echo "[✗] ERROR: Failed to copy assets to container"
     exit 1
 fi
 echo "[✓] Assets copied to container"
+
+echo "[→] Verifying manifest assets in container..."
+if ! docker exec "$CONTAINER_NAME" php -r '
+$manifest = json_decode(file_get_contents("/var/www/html/public/build/manifest.json"), true, 512, JSON_THROW_ON_ERROR);
+foreach ($manifest as $entry) {
+    $assets = array_merge(isset($entry["file"]) ? [$entry["file"]] : [], $entry["css"] ?? []);
+    foreach ($assets as $asset) {
+        if (!is_file("/var/www/html/public/build/" . $asset)) {
+            fwrite(STDERR, "Missing build asset: " . $asset . PHP_EOL);
+            exit(1);
+        }
+    }
+}
+'; then
+    echo "[✗] ERROR: One or more assets referenced by manifest.json are missing"
+    exit 1
+fi
+echo "[✓] All manifest assets are present"
 
 # 9. Clear view cache to use new assets
 echo ""
