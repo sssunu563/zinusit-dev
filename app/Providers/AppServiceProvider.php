@@ -27,8 +27,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Force HTTPS in production
-        if (app()->environment('production') || config('app.url') && str_starts_with(config('app.url'), 'https://')) {
+        // Force HTTPS only when accessed via domain (not IP)
+        if (request()->getHost() !== 'localhost' 
+            && !filter_var(request()->getHost(), FILTER_VALIDATE_IP)
+            && (app()->environment('production') || config('app.url') && str_starts_with(config('app.url'), 'https://'))
+        ) {
             \URL::forceScheme('https');
         }
 
