@@ -1,7 +1,7 @@
 FROM php:8.4-apache
 
-# Apache modules
-RUN a2enmod rewrite headers deflate ssl
+# Apache modules (enable SSL early)
+RUN a2enmod rewrite headers deflate ssl socache_shmcb
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
@@ -22,20 +22,19 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
     && echo "memory_limit = 512M"       >> "$PHP_INI_DIR/php.ini" \
     && echo "output_buffering = 4096"   >> "$PHP_INI_DIR/php.ini"
 
-# Apache: listen on port 80 (default)
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+# Apache: listen on ports 80 and 443
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf \
+    && echo "Listen 443" >> /etc/apache2/ports.conf
 
-# Generate self-signed SSL certificate (valid 10 years for local production)
+# Generate self-signed SSL certificate (valid 10 years)
 RUN mkdir -p /etc/apache2/ssl \
     && openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
        -keyout /etc/apache2/ssl/apache-selfsigned.key \
        -out /etc/apache2/ssl/apache-selfsigned.crt \
        -subj "/C=ID/ST=West Java/L=Bogor/O=Zinus IT/OU=IT Department/CN=Zinus IT Internal System/emailAddress=it@zinus.co.id" \
-       -addext "subjectAltName=IP:10.62.8.101,DNS:zinusit.local,DNS:localhost,DNS:it.zinus.co.id"
-
-# Copy SSL VirtualHost config
-COPY apache-ssl.conf /etc/apache2/sites-available/default-ssl.conf
-RUN a2ensite default-ssl
+       -addext "subjectAltName=IP:10.62.8.101,DNS:zinusit.local,DNS:localhost,DNS:it.zinus.co.id" \
+    && chmod 644 /etc/apache2/ssl/apache-selfsigned.crt \
+    && chmod 600 /etc/apache2/ssl/apache-selfsigned.key
 
 # Apache: Security headers and compression
 RUN echo '<Directory /var/www/html/public>' >> /etc/apache2/apache2.conf \
@@ -56,6 +55,10 @@ WORKDIR /var/www/html
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
     && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
+# Configure SSL VirtualHost and enable it
+COPY apache-ssl.conf /etc/apache2/sites-available/000-default-ssl.conf
+RUN a2ensite 000-default-ssl
 
 # Copy project files
 COPY --chown=www-data:www-data . .
