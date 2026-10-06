@@ -25,13 +25,13 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
 # Apache: listen on port 80 (default)
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
-# Generate self-signed SSL certificate
+# Generate self-signed SSL certificate (valid 10 years for local production)
 RUN mkdir -p /etc/apache2/ssl \
-    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    && openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
        -keyout /etc/apache2/ssl/apache-selfsigned.key \
        -out /etc/apache2/ssl/apache-selfsigned.crt \
-       -subj "/C=ID/ST=West Java/L=Bogor/O=Zinus IT/OU=Development/CN=10.62.8.101" \
-       -addext "subjectAltName=IP:10.62.8.101"
+       -subj "/C=ID/ST=West Java/L=Bogor/O=Zinus IT/OU=IT Department/CN=Zinus IT Internal System/emailAddress=it@zinus.co.id" \
+       -addext "subjectAltName=IP:10.62.8.101,DNS:zinusit.local,DNS:localhost,DNS:it.zinus.co.id"
 
 # Copy SSL VirtualHost config
 COPY apache-ssl.conf /etc/apache2/sites-available/default-ssl.conf
@@ -71,9 +71,9 @@ RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cac
 
 EXPOSE 80 443
 
-# Health check
+# Health check (test HTTPS)
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
-    CMD curl -f http://localhost/up || exit 1
+    CMD curl -fk https://localhost/up || curl -f http://localhost/up || exit 1
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker-init.sh /usr/local/bin/docker-init.sh
