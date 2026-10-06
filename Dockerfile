@@ -1,7 +1,7 @@
 FROM php:8.4-apache
 
 # Apache modules
-RUN a2enmod rewrite headers deflate
+RUN a2enmod rewrite headers deflate ssl
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,6 +24,18 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
 
 # Apache: listen on port 80 (default)
 RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
+
+# Generate self-signed SSL certificate
+RUN mkdir -p /etc/apache2/ssl \
+    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+       -keyout /etc/apache2/ssl/apache-selfsigned.key \
+       -out /etc/apache2/ssl/apache-selfsigned.crt \
+       -subj "/C=ID/ST=West Java/L=Bogor/O=Zinus IT/OU=Development/CN=10.62.8.101" \
+       -addext "subjectAltName=IP:10.62.8.101"
+
+# Copy SSL VirtualHost config
+COPY apache-ssl.conf /etc/apache2/sites-available/default-ssl.conf
+RUN a2ensite default-ssl
 
 # Apache: Security headers and compression
 RUN echo '<Directory /var/www/html/public>' >> /etc/apache2/apache2.conf \
@@ -57,7 +69,7 @@ RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cac
     && chmod -R 755 storage bootstrap/cache \
     && find storage bootstrap/cache -type f -exec chmod 644 {} \;
 
-EXPOSE 80
+EXPOSE 80 443
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
