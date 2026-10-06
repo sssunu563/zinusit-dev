@@ -37,3 +37,12 @@ yarn-error.log
 /.zed
 database/*.sqlite
 _*.php
+
+# Personal notes & working files
+*.txt
+ACTIVITY_HISTORY*.md
+
+# Documentation (uncomment to ignore)
+# README*.md
+# PRODUCTION*.md
+# USER_GUIDE*.md
