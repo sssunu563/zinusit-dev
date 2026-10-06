@@ -22,9 +22,8 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
     && echo "memory_limit = 512M"       >> "$PHP_INI_DIR/php.ini" \
     && echo "output_buffering = 4096"   >> "$PHP_INI_DIR/php.ini"
 
-# Apache: listen on ports 80 and 443
-RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf \
-    && echo "Listen 443" >> /etc/apache2/ports.conf
+# Apache: set server name (Listen 443 auto-added by mod_ssl)
+RUN echo "ServerName localhost" >> /etc/apache2/apache2.conf
 
 # Generate self-signed SSL certificate (valid 10 years)
 RUN mkdir -p /etc/apache2/ssl \
