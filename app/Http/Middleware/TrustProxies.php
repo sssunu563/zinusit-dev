@@ -44,6 +44,11 @@ class TrustProxies
      */
     protected function proxies(): array|string|null
     {
+        // If trust all proxies, return as array with wildcard
+        if ($this->proxies === '*') {
+            return ['*'];
+        }
+
         return $this->proxies;
     }
 }
