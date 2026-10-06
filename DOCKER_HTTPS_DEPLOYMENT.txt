@@ -1,0 +1,201 @@
+═══════════════════════════════════════════════════════════
+  DOCKER + NPM DEPLOYMENT - HTTPS Setup
+═══════════════════════════════════════════════════════════
+
+📊 CURRENT SETUP:
+───────────────────────────────────────────────────────────
+Container: zinusit-app
+Internal Port: 80
+Host Port: 8001
+Network: zinusit-network
+APP_URL: Dari .env host
+
+═══════════════════════════════════════════════════════════
+
+🚀 DEPLOYMENT STEPS (Di Server):
+───────────────────────────────────────────────────────────
+
+# 1. Navigate ke project
+cd /home/admin/zinusit-dev
+
+# 2. Pull latest code
+git pull origin master
+
+# 3. Update .env
+nano .env
+
+# Update baris ini:
+APP_URL=https://it.zinus.co.id
+# atau jika pakai IP:
+# APP_URL=https://10.62.8.101
+
+# 4. Restart containers agar environment update
+docker-compose down
+docker-compose up -d
+
+# 5. Check container status
+docker-compose ps
+
+# 6. Check logs
+docker-compose logs -f app
+
+# 7. Clear cache di dalam container
+docker exec zinusit-app php artisan optimize:clear
+
+═══════════════════════════════════════════════════════════
+
+🌐 NGINX PROXY MANAGER SETUP:
+───────────────────────────────────────────────────────────
+
+Login ke NPM Dashboard (biasanya port 81)
+
+📍 Add Proxy Host:
+
+Tab "Details":
+──────────────────────────────────────
+Domain Names: it.zinus.co.id
+Scheme: http
+Forward Hostname/IP: 10.62.8.101
+Forward Port: 8001
+☑ Cache Assets
+☑ Block Common Exploits
+☑ Websockets Support
+
+Tab "SSL":
+──────────────────────────────────────
+☑ Force SSL
+☑ HTTP/2 Support
+☑ HSTS Enabled
+SSL Certificate: 
+  → Request a new SSL Certificate (Let's Encrypt)
+  → Domain: it.zinus.co.id
+☑ Agree to Let's Encrypt ToS
+Email: admin@zinus.co.id
+
+Tab "Advanced" (Optional):
+──────────────────────────────────────
+# Headers untuk Laravel detect HTTPS
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Port $server_port;
+proxy_set_header X-Real-IP $remote_addr;
+
+# Increase upload size
+client_max_body_size 100M;
+
+# Timeout untuk long requests
+proxy_read_timeout 300s;
+
+═══════════════════════════════════════════════════════════
+
+✅ VERIFICATION:
+───────────────────────────────────────────────────────────
+
+# 1. Container running
+docker ps | grep zinusit-app
+
+# 2. App accessible from host
+curl -I http://localhost:8001
+
+# 3. NPM can reach app
+curl -I http://10.62.8.101:8001
+
+# 4. HTTPS working
+curl -I https://it.zinus.co.id
+
+# 5. Check URL generation in Laravel
+docker exec zinusit-app php artisan tinker
+>>> route('dashboard')
+# Should return: "https://it.zinus.co.id/dashboard"
+
+═══════════════════════════════════════════════════════════
+
+🔧 TROUBLESHOOTING:
+───────────────────────────────────────────────────────────
+
+Issue: Container won't start
+→ docker-compose logs app
+→ Check .env has all required variables
+
+Issue: 502 Bad Gateway from NPM
+→ Check container is running: docker ps
+→ Check port 8001 accessible: curl http://localhost:8001
+→ Check NPM can reach: ping 10.62.8.101
+
+Issue: SSL Certificate failed
+→ Ensure DNS A record points to server IP
+→ Ensure port 80/443 open to Let's Encrypt servers
+→ Check domain is publicly accessible
+
+Issue: Laravel still generates http:// URLs
+→ Check .env: APP_URL=https://...
+→ docker-compose down && docker-compose up -d
+→ docker exec zinusit-app php artisan optimize:clear
+→ Check TrustProxies middleware active
+
+Issue: Session/Login issues
+→ Check SESSION_DOMAIN in .env (should be empty or .zinus.co.id)
+→ Clear browser cookies
+→ docker exec zinusit-app php artisan cache:clear
+
+═══════════════════════════════════════════════════════════
+
+📱 QUICK COMMANDS:
+───────────────────────────────────────────────────────────
+
+# Pull & restart
+cd /home/admin/zinusit-dev && git pull && docker-compose down && docker-compose up -d
+
+# View logs
+docker-compose logs -f app
+
+# Clear cache
+docker exec zinusit-app php artisan optimize:clear
+
+# Restart specific container
+docker-compose restart app
+
+# Enter container shell
+docker exec -it zinusit-app bash
+
+# Check container IP (jika perlu untuk NPM)
+docker inspect zinusit-app | grep IPAddress
+
+═══════════════════════════════════════════════════════════
+
+🔄 NPM ALTERNATIVE CONFIGS:
+───────────────────────────────────────────────────────────
+
+Option 1: Forward to Host IP + Port (Current)
+Forward to: 10.62.8.101:8001
+✅ Simple
+✅ Works even if containers restart
+
+Option 2: Forward to Container IP
+Forward to: <container-ip>:80
+⚠️ IP might change on restart
+
+Option 3: Connect NPM to same network
+# Add NPM container to zinusit-network:
+docker network connect zinusit-network nginx-proxy-manager
+# Then forward to:
+Forward to: zinusit-app:80
+✅ Best for production
+✅ No port conflicts
+
+═══════════════════════════════════════════════════════════
+
+✅ POST-DEPLOYMENT CHECKLIST:
+───────────────────────────────────────────────────────────
+
+- [ ] .env updated with APP_URL=https://...
+- [ ] docker-compose down && up -d executed
+- [ ] All containers running (docker ps)
+- [ ] App accessible on http://localhost:8001
+- [ ] NPM Proxy Host configured
+- [ ] SSL certificate issued/installed
+- [ ] https://it.zinus.co.id accessible
+- [ ] Login works
+- [ ] No mixed content warnings
+- [ ] All features tested
+
+═══════════════════════════════════════════════════════════
